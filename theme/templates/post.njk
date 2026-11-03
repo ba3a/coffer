@@ -1,0 +1,35 @@
+{% extends "base.njk" %}
+
+{% block main %}
+<article class="post">
+<header class="post-header">
+<h1>{{ page.title }}</h1>
+{% block meta %}
+<p class="post-meta">
+<time datetime="{{ post.date | date('iso') }}">{{ 'post.published' | t({ date: (post.date | date) }) }}</time>
+<span aria-hidden="true">&middot;</span>
+<span class="reading-time">{{ 'post.reading_time' | t({ count: post.readingMinutes }) }}</span>
+</p>
+{% endblock %}
+{% if post.unpublished %}<p class="preview-note">{{ 'post.unpublished' | t }}</p>
+{% endif %}
+</header>
+<div class="post-layout{% if toc.length %} has-toc{% endif %}">
+{% if toc.length %}
+{% block toc %}
+<details class="toc">
+<summary>{{ 'post.contents' | t }}</summary>
+<ol>
+{% for entry in toc %}
+<li class="toc-depth-{{ entry.depth }}"><a href="#{{ entry.id }}">{{ entry.text }}</a></li>
+{% endfor %}
+</ol>
+</details>
+{% endblock %}
+{% endif %}
+<div class="post-body">
+{% block body %}{{ page.content | safe }}{% endblock %}
+</div>
+</div>
+</article>
+{% endblock %}

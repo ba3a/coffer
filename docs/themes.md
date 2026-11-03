@@ -86,6 +86,23 @@ To change a block on every page at once, override it in `templates/base.njk`:
 {% block footer %}...{% endblock %}
 ```
 
+## Templates of the blog
+
+| Template         | Page                | Blocks besides the ones of `base.njk`                                   |
+| ---------------- | ------------------- | ----------------------------------------------------------------------- |
+| `post.njk`       | a post              | `meta` (date and reading time), `toc`, `body`                          |
+| `blog-index.njk` | the list of posts   | `item` (one entry of the list)                                          |
+
+`post.njk` receives `post` (`slug`, `url`, `title`, `date`, `tags`, `summary`, `draft`, `unpublished`, `readingMinutes`), `toc` (a list of `{ id, text, depth }`, empty for short posts), `blog` and `page.content` (the rendered body). `blog-index.njk` receives `posts`, a list of the same `post` objects, newest first. Static files of a theme go in its `assets/` folder and are copied to `assets/` of the output (see [Building a site](build.md)).
+
+To change only the line with the date and reading time of a post:
+
+```njk
+{% extends "coffer:post.njk" %}
+
+{% block meta %}<p>{{ post.date | date('long') }}</p>{% endblock %}
+```
+
 ## Variables
 
 The engine's pages receive `site` (title, content license, links, ...), `page` (title, description, content, ...) and, for the navigation, `nav`, a list of `{ label, url }` or `{ key, url }` items (`key` is a UI string key). Without `nav`, the navigation holds a link to the home page. `lang` and `basePath` are available in every template.

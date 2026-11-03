@@ -1,0 +1,16 @@
+# An example site for coffer: a made-up woodworker and her workshop journal.
+# Build it with `npm run example` from the coffer directory.
+sites:
+  - id: workshop
+    baseUrl: https://tove-marlowe.example
+    lang: en
+    timezone: Europe/Berlin
+    title: Tove Marlowe
+    description: Small wooden things, and notes on making them.
+    contentDir: content
+    contentLicense: CC BY 4.0
+    links:
+      - { label: Workshop photos, url: "https://photos.example/tove" }
+      - { label: Email, url: "mailto:tove@tove-marlowe.example" }
+    blogs:
+      - { id: journal, dir: content/journal, prefix: journal, title: Workshop journal }

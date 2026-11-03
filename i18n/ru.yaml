@@ -23,6 +23,9 @@ post:
     many: "{count} минут"
     other: "{count} минуты"
   contents: Содержание
+  unpublished: "Предпросмотр: эта запись ещё не опубликована."
+blog:
+  empty: Записей пока нет.
 feeds:
   title: Ленты
   subscribe: Подписаться

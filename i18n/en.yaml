@@ -22,6 +22,9 @@ post:
     one: "{count} minute"
     other: "{count} minutes"
   contents: Contents
+  unpublished: "Preview: this post is not published yet."
+blog:
+  empty: No posts yet.
 feeds:
   title: Feeds
   subscribe: Subscribe

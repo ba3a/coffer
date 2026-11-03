@@ -1,5 +1,14 @@
 export { run, USAGE, readVersion } from './cli.js';
 export {
+  BuildError,
+  DEFAULT_OUT_DIR,
+  DEPLOY_EXCLUDES,
+  MANIFEST_FILE_NAME,
+  MANIFEST_VERSION,
+  buildSites,
+  postUrl,
+} from './build.js';
+export {
   CONFIG_FILE_NAME,
   ConfigError,
   DEFAULT_URLS,
