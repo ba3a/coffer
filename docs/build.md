@@ -67,7 +67,8 @@ Each site's output contains `.coffer-manifest.json`, which records what the buil
 | `tags`             | Every tag page: blog id, tag `path`, `url`, `file`, shown `name`, post `count` and the `posts` (URLs, newest first) it lists. |
 | `series`           | Every series page: blog id, series `slug`, `url`, `file`, shown `name`, part `count` and the `posts` (URLs, in reading order). Each entry of `posts` has a `series` field (`slug`, `number`, `count`), or null. |
 | `redirects`        | Every alias redirect: `from`, `to` (site-relative URLs) and `status`.                                          |
-| `feeds`, `images`  | Empty lists for now; features that write feeds or images record them here.                                     |
+| `feeds`            | Every Atom feed: `type` (`blog`, `tag` or `series`), blog id, `url`, `selfUrl` (absolute), `file`, the `page` it belongs to, `title`, number of `entries`, and the `tag` path or `series` slug. See [Feeds](feeds.md). |
+| `images`           | An empty list for now; the image pipeline records its work here.                                               |
 
 The manifest is for checks and not for visitors. It is excluded from deployment by its name, `.coffer-manifest.json` (exported as `MANIFEST_FILE_NAME`; `DEPLOY_EXCLUDES` lists every name a deployment must skip). Leave it out when uploading the output to a host.
 

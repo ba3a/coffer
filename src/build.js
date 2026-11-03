@@ -5,6 +5,14 @@ import { fileURLToPath } from 'node:url';
 import { DEFAULT_LATEST_POSTS, loadHome } from './content/home.js';
 import { discoverPosts, isPublished, resolveNow } from './content/posts.js';
 import {
+  FEED_FILE_NAME,
+  absoluteUrl,
+  createFeedEntry,
+  feedUrlFor,
+  renderFeed,
+  selectEntries,
+} from './feeds.js';
+import {
   buildTagTree,
   loadTagMeta,
   tagName,
@@ -135,8 +143,24 @@ export class BuildError extends Error {
  */
 
 /**
- * The build manifest of one site. `feeds` and `images` are filled by later
- * features; checks read this file instead of guessing what the build wrote.
+ * One Atom feed listed in the manifest.
+ *
+ * @typedef {object} ManifestFeed
+ * @property {'blog' | 'tag' | 'series'} type What the feed lists.
+ * @property {string} blog Id of the blog.
+ * @property {string} url Site-relative URL of the feed.
+ * @property {string} selfUrl Absolute URL of the feed, as its self link says.
+ * @property {string} file Path of the feed file, relative to the site's output directory.
+ * @property {string} page Site-relative URL of the page the feed belongs to.
+ * @property {string} title
+ * @property {number} entries Number of entries in the feed.
+ * @property {string | null} tag Tag path of a tag feed.
+ * @property {string | null} series Series slug of a series feed.
+ */
+
+/**
+ * The build manifest of one site. `images` is filled by a later feature;
+ * checks read this file instead of guessing what the build wrote.
  *
  * @typedef {object} Manifest
  * @property {number} manifestVersion
@@ -149,7 +173,7 @@ export class BuildError extends Error {
  * @property {ManifestTag[]} tags Every tag page, with the posts it lists.
  * @property {ManifestSeries[]} series Every series page, with its parts in order.
  * @property {ManifestRedirect[]} redirects Permanent redirects from old post addresses.
- * @property {unknown[]} feeds
+ * @property {ManifestFeed[]} feeds Every Atom feed, with the page it belongs to.
  * @property {unknown[]} images
  */
 
@@ -256,6 +280,14 @@ function postView(post, url, readingMinutes, unpublished, tagLinks = [], series 
 }
 
 /**
+ * A feed as templates see it: the address and a text for people and readers.
+ *
+ * @typedef {object} FeedLink
+ * @property {string} url Site-relative address of the feed.
+ * @property {string} title
+ */
+
+/**
  * @param {string} outDir
  * @param {string} file Path relative to `outDir`, with forward slashes.
  * @param {string} content
@@ -325,6 +357,29 @@ async function buildSite(config, site, options, outRoot, version) {
     ...site.blogs.map((blog) => ({ label: blog.title, url: blogUrl(blog) })),
   ];
 
+  const t = (/** @type {string} */ key, /** @type {Record<string, unknown>} */ params) =>
+    templates.translator.t(key, params);
+  /** @type {Map<string, FeedLink>} */
+  const blogFeeds = new Map(
+    site.blogs.map((blog) => [
+      blog.id,
+      { url: feedUrlFor(blogUrl(blog)), title: t('feeds.blog', { title: blog.title }) },
+    ]),
+  );
+  /**
+   * The feeds a page advertises in its head: those of its own blog first, then
+   * the ones that belong to the page itself, then those of the other blogs.
+   *
+   * @param {BlogConfig | null} blog
+   * @param {FeedLink[]} [specific]
+   * @returns {FeedLink[]}
+   */
+  const feedLinksFor = (blog, specific = []) => {
+    const own = blog ? (blogFeeds.get(blog.id) ?? null) : null;
+    const others = [...blogFeeds].filter(([id]) => id !== blog?.id).map(([, link]) => link);
+    return [...(own ? [own] : []), ...specific, ...others];
+  };
+
   rmSync(outDir, { recursive: true, force: true });
   mkdirSync(outDir, { recursive: true });
   copyAssets(site, outDir);
@@ -337,6 +392,8 @@ async function buildSite(config, site, options, outRoot, version) {
   const manifestTags = [];
   /** @type {ManifestSeries[]} */
   const manifestSeries = [];
+  /** @type {ManifestFeed[]} */
+  const manifestFeeds = [];
   /** @type {{ url: string, aliasUrls: string[], source: string }[]} */
   const aliasing = [];
   /**
@@ -356,8 +413,19 @@ async function buildSite(config, site, options, outRoot, version) {
         `${clash.file}: slug: "${clash.slug}" is the address of the tag pages of the blog "${blog.id}" (${tagUrl(blogBase, site.urls.tags)}); rename the post or change "urls.tags"`,
       );
     }
+    if (selected.some((post) => post.slug === FEED_FILE_NAME)) {
+      throw new BuildError(
+        `a post with the slug "${FEED_FILE_NAME}" in the blog "${blog.id}" would collide with the blog's feed (${feedUrlFor(blogBase)}); rename the post`,
+      );
+    }
     const tagMeta = loadTagMeta(blog.dir);
     const tagTree = buildTagTree(selected);
+    const clashingTag = tagTree.all.find((node) => node.path.includes('/') && node.path.split('/').pop() === FEED_FILE_NAME);
+    if (clashingTag) {
+      throw new BuildError(
+        `the tag "${clashingTag.path}" of the blog "${blog.id}" would collide with the feed of its parent; rename the tag`,
+      );
+    }
     if (tagMeta.file !== null) {
       const shown = posix(relative(config.dir, tagMeta.file));
       for (const warning of [
@@ -388,6 +456,8 @@ async function buildSite(config, site, options, outRoot, version) {
     );
     /** @param {string} slug */
     const seriesPageUrl = (slug) => seriesUrl(blogBase, site.urls.series, slug);
+    /** @param {string} slug */
+    const seriesNameOf = (slug) => seriesList.find((entry) => entry.slug === slug)?.name ?? slug;
     /** @type {Map<Post, SeriesView>} */
     const seriesOf = new Map();
     for (const entry of seriesList) {
@@ -408,6 +478,23 @@ async function buildSite(config, site, options, outRoot, version) {
 
     /** @type {{ post: Post, url: string, readingMinutes: number, unpublished: boolean }[]} */
     const entries = [];
+    /**
+     * The feed entries of the published posts. A draft, or a post dated after
+     * `now` that is only built for a preview, never gets one.
+     * @type {Map<Post, import('./feeds.js').FeedEntry>}
+     */
+    const feedEntries = new Map();
+    /** @param {string} path */
+    const tagFeedLink = (path) => ({
+      url: feedUrlFor(urlOf(path)),
+      title: t('feeds.tag', { tag: nameOf(path) }),
+    });
+    /** @param {string} slug */
+    const seriesFeedLink = (slug) => ({
+      url: feedUrlFor(seriesPageUrl(slug)),
+      title: t('feeds.series', { title: seriesNameOf(slug) }),
+    });
+    const tagsIndexUrl = tagUrl(blogBase, site.urls.tags);
     for (const post of selected) {
       const rendered = await renderMarkdown(post.body, {
         file: post.file,
@@ -416,6 +503,21 @@ async function buildSite(config, site, options, outRoot, version) {
       const url = postUrl(blog, post.slug);
       const unpublished = !isPublished(post, { now });
       entries.push({ post, url, readingMinutes: rendered.readingMinutes, unpublished });
+      if (!unpublished) {
+        feedEntries.set(
+          post,
+          createFeedEntry({
+            baseUrl: site.baseUrl,
+            url,
+            title: post.title,
+            date: post.date,
+            summary: post.summary,
+            html: rendered.html,
+            tags: post.tags.map((path) => ({ path, name: nameOf(path) })),
+            tagsIndexUrl,
+          }),
+        );
+      }
       if (!unpublished && post.aliases.length > 0) {
         aliasing.push({
           url,
@@ -436,6 +538,10 @@ async function buildSite(config, site, options, outRoot, version) {
         site,
         nav,
         blog,
+        feedLinks: feedLinksFor(blog, [
+          ...post.tags.map(tagFeedLink),
+          ...(view.series ? [seriesFeedLink(view.series.slug)] : []),
+        ]),
         post: view,
         series: view.series,
         toc: rendered.toc,
@@ -472,10 +578,13 @@ async function buildSite(config, site, options, outRoot, version) {
     if (blog === site.blogs[0]) firstBlogPosts = views;
 
     const indexUrl = blogBase;
+    const blogFeedLink = /** @type {FeedLink} */ (blogFeeds.get(blog.id));
     const indexHtml = templates.render('blog-index.njk', {
       site,
       nav,
       blog,
+      feedLinks: feedLinksFor(blog),
+      pageFeed: blogFeedLink,
       posts: views,
       tagsUrl: tagUrl(blogBase, site.urls.tags),
       page: { title: blog.title, description: site.description, content: '' },
@@ -487,7 +596,6 @@ async function buildSite(config, site, options, outRoot, version) {
     // The posts of a tag page are the same objects as on the blog index, found
     // by their address.
     const viewByUrl = new Map(views.map((view) => [view.url, view]));
-    const tagsIndexUrl = tagUrl(blogBase, site.urls.tags);
     const tagsTitle = templates.translator.t('tags.title');
 
     /**
@@ -517,6 +625,7 @@ async function buildSite(config, site, options, outRoot, version) {
       site,
       nav,
       blog,
+      feedLinks: feedLinksFor(blog),
       tagsUrl: tagsIndexUrl,
       tree: tagTree.roots.map(treeView),
       page: { title: tagsTitle, description: '', content: '' },
@@ -528,10 +637,13 @@ async function buildSite(config, site, options, outRoot, version) {
     for (const node of tagTree.all) {
       const view = treeView(node);
       const tagPostUrls = node.posts.map((post) => postUrl(blog, post.slug));
+      const tagFeed = tagFeedLink(node.path);
       const html = templates.render('tag.njk', {
         site,
         nav,
         blog,
+        feedLinks: feedLinksFor(blog, [tagFeed]),
+        pageFeed: tagFeed,
         tagsUrl: tagsIndexUrl,
         tag: view,
         ancestors: tagPaths(node.path)
@@ -561,10 +673,13 @@ async function buildSite(config, site, options, outRoot, version) {
         const view = viewByUrl.get(postUrl(blog, part.post.slug));
         return view ? [{ ...view, part: part.number }] : [];
       });
+      const seriesFeed = seriesFeedLink(entry.slug);
       const html = templates.render('series.njk', {
         site,
         nav,
         blog,
+        feedLinks: feedLinksFor(blog, [seriesFeed]),
+        pageFeed: seriesFeed,
         posts: parts,
         series: {
           slug: entry.slug,
@@ -586,6 +701,85 @@ async function buildSite(config, site, options, outRoot, version) {
         name: entry.name,
         count: entry.count,
         posts: entry.parts.map((part) => postUrl(blog, part.post.slug)),
+      });
+    }
+
+    // Feeds. They list published posts only, so a draft or a future-dated post
+    // that a preview build renders never reaches them.
+    const blogTitle =
+      blog.title === site.title ? site.title : `${blog.title} | ${site.title}`;
+    const subscribed = [...feedEntries.values()];
+    /**
+     * @param {object} feed
+     * @param {'blog' | 'tag' | 'series'} feed.type
+     * @param {string} feed.page Site-relative URL of the page the feed belongs to.
+     * @param {string} feed.title
+     * @param {string} feed.subtitle
+     * @param {import('./feeds.js').FeedEntry[]} feed.entries
+     * @param {number | null} feed.limit
+     * @param {string | null} [feed.tag]
+     * @param {string | null} [feed.series]
+     */
+    const writeFeed = ({ type, page, title, subtitle, entries: candidates, limit, tag = null, series = null }) => {
+      const chosen = selectEntries(candidates, limit);
+      const url = feedUrlFor(page);
+      const selfUrl = absoluteUrl(site.baseUrl, url);
+      writeOutput(
+        outDir,
+        url.slice(1),
+        renderFeed({
+          lang: site.lang,
+          selfUrl,
+          alternateUrl: absoluteUrl(site.baseUrl, page),
+          title,
+          subtitle,
+          author: site.author,
+          updated: chosen[0]?.updated ?? now,
+          generator: { name: 'coffer', version },
+          entries: chosen,
+        }),
+      );
+      manifestFeeds.push({
+        type,
+        blog: blog.id,
+        url,
+        selfUrl,
+        file: url.slice(1),
+        page,
+        title,
+        entries: chosen.length,
+        tag,
+        series,
+      });
+    };
+    writeFeed({
+      type: 'blog',
+      page: blogBase,
+      title: blogTitle,
+      subtitle: site.description,
+      entries: subscribed,
+      limit: site.feeds.limit,
+    });
+    for (const node of tagTree.all) {
+      writeFeed({
+        type: 'tag',
+        page: urlOf(node.path),
+        title: `${nameOf(node.path)} | ${blogTitle}`,
+        subtitle: tagMeta.meta.get(node.path)?.description ?? '',
+        entries: node.posts.flatMap((post) => feedEntries.get(post) ?? []),
+        limit: site.feeds.limit,
+        tag: node.path,
+      });
+    }
+    for (const entry of seriesList) {
+      writeFeed({
+        type: 'series',
+        page: seriesPageUrl(entry.slug),
+        title: `${entry.name} | ${blogTitle}`,
+        subtitle: entry.description ?? '',
+        entries: entry.parts.flatMap((part) => feedEntries.get(part.post) ?? []),
+        limit: null,
+        series: entry.slug,
       });
     }
   }
@@ -610,6 +804,7 @@ async function buildSite(config, site, options, outRoot, version) {
       site,
       nav,
       blog: firstBlog,
+      feedLinks: feedLinksFor(null),
       blogUrl: firstBlog ? blogUrl(firstBlog) : null,
       posts: latest,
       secondaryLinks: home?.secondaryLinks ?? [],
@@ -630,6 +825,7 @@ async function buildSite(config, site, options, outRoot, version) {
     templates.render('404.njk', {
       site,
       nav,
+      feedLinks: feedLinksFor(null),
       page: { title: notFoundTitle, description: '', content: '' },
     }),
   );
@@ -661,6 +857,7 @@ async function buildSite(config, site, options, outRoot, version) {
   manifestPosts.sort((a, b) => (a.url < b.url ? -1 : a.url > b.url ? 1 : 0));
   manifestTags.sort((a, b) => (a.url < b.url ? -1 : a.url > b.url ? 1 : 0));
   manifestSeries.sort((a, b) => (a.url < b.url ? -1 : a.url > b.url ? 1 : 0));
+  manifestFeeds.sort((a, b) => (a.url < b.url ? -1 : a.url > b.url ? 1 : 0));
 
   /** @type {Manifest} */
   const manifest = {
@@ -674,7 +871,7 @@ async function buildSite(config, site, options, outRoot, version) {
     tags: manifestTags,
     series: manifestSeries,
     redirects: redirects.map(({ from, to, status }) => ({ from, to, status })),
-    feeds: [],
+    feeds: manifestFeeds,
     images: [],
   };
   writeFileSync(join(outDir, MANIFEST_FILE_NAME), `${JSON.stringify(manifest, null, 2)}\n`);
@@ -699,6 +896,8 @@ async function buildSite(config, site, options, outRoot, version) {
  * - for every series, a page at `{blogPrefix}/{series}/{slug}/` listing its
  *   parts in order, and on every part a navigation block (series name, "part
  *   n of m", previous and next) at the top and at the end;
+ * - for the blog, every tag and every series, a full-content Atom feed named
+ *   `feed.xml` under the page's address, newest first (see `docs/feeds.md`);
  * - the assets of the default theme, then of the site's theme, in `assets/`;
  * - the build manifest `.coffer-manifest.json`.
  *

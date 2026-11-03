@@ -191,6 +191,8 @@ test('defaults are applied to a minimal site', () => {
     contentDir: resolve('/work/content'),
     theme: null,
     contentLicense: '',
+    author: { name: 'Main', email: null, url: null },
+    feeds: { limit: 20 },
     links: [],
     blogs: [],
     urls: { projects: 'made', docs: 'docs', tags: 'tags', series: 'series' },
@@ -660,4 +662,37 @@ test('docs/configuration.md documents every configuration key', () => {
   for (const key of keys) {
     assert.ok(page.includes(`\`${key}\``), `configuration.md misses \`${key}\``);
   }
+});
+
+test('author is a name or a mapping, and defaults to the site title', () => {
+  assert.deepEqual(normalize(oneSite({ author: 'Ada Lovelace' })).sites[0].author, {
+    name: 'Ada Lovelace',
+    email: null,
+    url: null,
+  });
+  assert.deepEqual(
+    normalize(
+      oneSite({ author: { name: 'Ada', email: 'ada@example.org', url: 'https://ada.example.org/' } }),
+    ).sites[0].author,
+    { name: 'Ada', email: 'ada@example.org', url: 'https://ada.example.org/' },
+  );
+  assert.deepEqual(normalize(oneSite({ author: { email: 'ada@example.org' } })).sites[0].author, {
+    name: 'Main',
+    email: 'ada@example.org',
+    url: null,
+  });
+  assert.deepEqual(normalizeErrors(oneSite({ author: { name: 'A', email: 'nope', url: '/x' } })), [
+    'coffer.yaml: sites[0].author.email: must be an email address',
+    'coffer.yaml: sites[0].author.url: must be an absolute http(s) URL',
+  ]);
+});
+
+test('feeds.limit is a positive integer', () => {
+  assert.equal(normalize(oneSite({ feeds: { limit: 5 } })).sites[0].feeds.limit, 5);
+  assert.deepEqual(normalizeErrors(oneSite({ feeds: { limit: 0 } })), [
+    'coffer.yaml: sites[0].feeds.limit: must be a positive integer',
+  ]);
+  assert.deepEqual(normalizeErrors(oneSite({ feeds: { count: 3 } })), [
+    'coffer.yaml: sites[0].feeds.count: unknown key (expected one of: limit)',
+  ]);
 });

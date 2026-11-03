@@ -64,11 +64,22 @@ Unknown keys are errors everywhere in the file, so a misspelled key never passes
 | `contentDir`     | no       | `content`    | Directory with the site's content: the home page (`home.md`, see [Home](home.md)) and pages.                                                                |
 | `theme`          | no       | default theme | Directory of the site's theme. When absent, the engine's default theme is used and the value is `null` in the loaded configuration.                       |
 | `contentLicense` | no       | empty        | Text shown in the footer to state the license of the site's content, for example `All rights reserved`. The engine's own license does not cover content.    |
+| `author`         | no       | the site title | Author named in feeds: a name, or a mapping with `name`, `email` and `url` (see [Feeds](feeds.md)).                                                        |
+| `feeds`          | no       | see below    | Settings of the Atom feeds.                                                                                                                                  |
 | `links`          | no       | `[]`         | List of links, see below.                                                                                                                                    |
 | `blogs`          | no       | `[]`         | List of blogs, see below.                                                                                                                                    |
 | `urls`           | no       | see below    | URL prefixes of generated sections.                                                                                                                          |
 | `location`       | no       | see below    | Image metadata policy.                                                                                                                                       |
 | `projects`       | no       | none         | Where the site's projects live. Without it the site has no projects.                                                                                         |
+
+## `author` and `feeds`
+
+```yaml
+author: { name: Tove Marlowe, email: tove@example.org, url: https://example.org/ }
+feeds: { limit: 20 }
+```
+
+`author` is either a name (`author: Tove Marlowe`) or a mapping with `name` (default: the site title), `email` and `url` (an absolute `http(s)` URL). It is the author of every feed and entry. `feeds.limit` is the number of entries in the feed of a blog or a tag (a positive integer, default 20); series feeds always list every part. See [Feeds](feeds.md).
 
 ## `links`
 

@@ -51,6 +51,22 @@ export const CONFIG_FILE_NAME = 'coffer.yaml';
  */
 
 /**
+ * The author named in the site's feeds.
+ *
+ * @typedef {object} AuthorConfig
+ * @property {string} name Name of the author; the site title when the configuration gives none.
+ * @property {string | null} email Email address, or null.
+ * @property {string | null} url Absolute `http(s)` URL of the author's home page, or null.
+ */
+
+/**
+ * Settings of the Atom feeds.
+ *
+ * @typedef {object} FeedsConfig
+ * @property {number} limit Number of entries in the feed of a blog or a tag; series feeds always list every part.
+ */
+
+/**
  * A site as configured, with defaults applied and paths made absolute.
  *
  * @typedef {object} SiteConfig
@@ -63,6 +79,8 @@ export const CONFIG_FILE_NAME = 'coffer.yaml';
  * @property {string} contentDir Absolute path of the content directory.
  * @property {string | null} theme Absolute path of the theme directory, or null for the default theme.
  * @property {string} contentLicense Content license text shown in the footer; may be empty.
+ * @property {AuthorConfig} author Author named in feeds.
+ * @property {FeedsConfig} feeds Settings of the Atom feeds.
  * @property {LinkConfig[]} links Links of the site.
  * @property {BlogConfig[]} blogs Blogs of the site.
  * @property {UrlsConfig} urls URL prefixes of the generated sections.
@@ -104,6 +122,9 @@ export const DEFAULT_URLS = Object.freeze({
   series: 'series',
 });
 
+/** Number of entries in a blog or tag feed unless the site says otherwise. */
+export const DEFAULT_FEED_LIMIT = 20;
+
 const LOCATION_POLICIES = ['strip', 'coarse', 'keep'];
 const CAMERA_POLICIES = ['strip', 'keep'];
 const SITE_KEYS = [
@@ -116,6 +137,8 @@ const SITE_KEYS = [
   'contentDir',
   'theme',
   'contentLicense',
+  'author',
+  'feeds',
   'links',
   'blogs',
   'urls',
@@ -571,6 +594,69 @@ function normalizeLocation(raw, path, problems) {
 }
 
 /**
+ * Reads the `author` key: a name, or a mapping with `name`, `email` and `url`.
+ *
+ * @param {unknown} raw
+ * @param {string} path
+ * @param {string} siteTitle Name used when the configuration gives no author.
+ * @param {Problems} problems
+ * @returns {AuthorConfig}
+ */
+function normalizeAuthor(raw, path, siteTitle, problems) {
+  /** @type {AuthorConfig} */
+  const author = { name: siteTitle, email: null, url: null };
+  if (raw === undefined || raw === null) return author;
+  if (typeof raw === 'string') {
+    if (raw.trim() === '') {
+      problems.add(path, 'must be a non-empty string or a mapping');
+    } else {
+      author.name = raw.trim();
+    }
+    return author;
+  }
+  if (!isMapping(raw)) {
+    problems.add(path, 'must be a name or a mapping with "name", "email" and "url"');
+    return author;
+  }
+  rejectUnknownKeys(raw, ['name', 'email', 'url'], path, problems);
+  const name = readString(raw, 'name', path, problems, { fallback: siteTitle });
+  if (name !== undefined) author.name = name;
+  const email = readString(raw, 'email', path, problems);
+  if (email !== undefined) {
+    if (/^[^\s@<>]+@[^\s@<>]+$/.test(email)) author.email = email;
+    else problems.add(`${path}.email`, 'must be an email address');
+  }
+  const url = readString(raw, 'url', path, problems);
+  if (url !== undefined) {
+    if (/^https?:/i.test(url) && isValidLinkUrl(url)) author.url = url;
+    else problems.add(`${path}.url`, 'must be an absolute http(s) URL');
+  }
+  return author;
+}
+
+/**
+ * @param {Record<string, unknown> | undefined} raw
+ * @param {string} path
+ * @param {Problems} problems
+ * @returns {FeedsConfig}
+ */
+function normalizeFeeds(raw, path, problems) {
+  /** @type {FeedsConfig} */
+  const feeds = { limit: DEFAULT_FEED_LIMIT };
+  if (raw === undefined) return feeds;
+  rejectUnknownKeys(raw, ['limit'], path, problems);
+  const limit = raw.limit;
+  if (limit !== undefined && limit !== null) {
+    if (typeof limit === 'number' && Number.isInteger(limit) && limit >= 1) {
+      feeds.limit = limit;
+    } else {
+      problems.add(`${path}.limit`, 'must be a positive integer');
+    }
+  }
+  return feeds;
+}
+
+/**
  * @param {unknown} raw
  * @param {number} index
  * @param {string} baseDir
@@ -639,6 +725,12 @@ function normalizeSite(raw, index, baseDir, problems) {
     fallback: null,
   });
   const contentLicense = readText(raw, 'contentLicense', path, problems);
+  const author = normalizeAuthor(raw.author, `${path}.author`, title ?? '', problems);
+  const feeds = normalizeFeeds(
+    readMapping(raw, 'feeds', path, problems),
+    `${path}.feeds`,
+    problems,
+  );
   const links = normalizeLinks(
     readList(raw, 'links', path, problems),
     `${path}.links`,
@@ -704,6 +796,8 @@ function normalizeSite(raw, index, baseDir, problems) {
     contentDir,
     theme,
     contentLicense,
+    author,
+    feeds,
     links,
     blogs,
     urls,

@@ -53,6 +53,7 @@ Templates in the engine refer to each other by plain names (`{% extends "base.nj
 | -------- | --------------------------------------------------------------------- |
 | `head`   | `<meta>` tags, the theme script, the stylesheet and `<title>`; add stylesheets and feed links here |
 | `theme_script` | the inline script that applies the saved colour scheme (nested in `head`) |
+| `feed_links` | the `<link rel="alternate">` elements that advertise feeds (nested in `head`) |
 | `header` | the site title and the navigation (inside `<header>`)                 |
 | `nav`    | the navigation list; nested in `header`, so it can be replaced alone  |
 | `theme_switch` | the light/dark button; nested in `header`                       |
@@ -152,7 +153,7 @@ The default theme defines no animation or transition: state changes are instant.
 | Template         | Page                | Blocks besides the ones of `base.njk`                                   |
 | ---------------- | ------------------- | ----------------------------------------------------------------------- |
 | `post.njk`       | a post              | `meta` (date and reading time), `tags`, `series_top`, `toc`, `body`, `series_bottom` |
-| `blog-index.njk` | the list of posts   | `heading` (title and link to the tags), `item` (one entry of the list)  |
+| `blog-index.njk` | the list of posts   | `heading` (title and link to the tags), `feed_link` (the visible link to the page's feed), `item` (one entry of the list) |
 | `tag.njk`        | a tag page          | extends `blog-index.njk`; `heading`, `breadcrumbs`, `children`          |
 | `tag-index.njk`  | the tag tree        | `tree`                                                                  |
 | `series.njk`     | a series page       | extends `blog-index.njk`; `heading`, `breadcrumbs`, `item` (see [Series](series.md)) |
@@ -160,7 +161,7 @@ The default theme defines no animation or transition: state changes are instant.
 | `home.njk`       | the home page       | `about`, `links`, `showcase`, `latest`, `secondary` (see [Home](home.md)) |
 | `404.njk`        | `404.html`          | `head` is extended with a `noindex` tag                                 |
 
-`post.njk` receives `post` (`slug`, `url`, `title`, `date`, `tags`, `tagLinks` (the tags as `{ path, name, url }`), `summary`, `draft`, `unpublished`, `readingMinutes`, `series`), `series` (the same object as `post.series`: `slug`, `name`, `url`, `number`, `count`, `previous` and `next` as `{ title, url }`; null when the post is in no series), `toc` (a list of `{ id, text, depth }`, empty for short posts), `blog` and `page.content` (the rendered body). `blog-index.njk` receives `posts`, a list of the same `post` objects, newest first, and `tagsUrl`, the address of the tag tree. `tag.njk` receives the same, plus `tag` (`path`, `name`, `description`, `url`, `count`), `ancestors` (`{ path, name, url }`, top down) and `children` (`{ path, name, description, url, count }`); `tag-index.njk` receives `tree`, the nested list of the same tag objects with their `children`. See [Tags](tags.md). Static files of a theme go in its `assets/` folder and are copied to `assets/` of the output (see [Building a site](build.md)).
+`post.njk` receives `post` (`slug`, `url`, `title`, `date`, `tags`, `tagLinks` (the tags as `{ path, name, url }`), `summary`, `draft`, `unpublished`, `readingMinutes`, `series`), `series` (the same object as `post.series`: `slug`, `name`, `url`, `number`, `count`, `previous` and `next` as `{ title, url }`; null when the post is in no series), `toc` (a list of `{ id, text, depth }`, empty for short posts), `blog` and `page.content` (the rendered body). `blog-index.njk` receives `posts`, a list of the same `post` objects, newest first, `tagsUrl`, the address of the tag tree, and `pageFeed` (`url`, `title`), the feed that belongs to the page (the blog's, the tag's or the series'). Every page template receives `feedLinks`, a list of `{ url, title }`, which `base.njk` turns into `<link rel="alternate" type="application/atom+xml">` elements in the `feed_links` block of the head; see [Feeds](feeds.md). `tag.njk` receives the same, plus `tag` (`path`, `name`, `description`, `url`, `count`), `ancestors` (`{ path, name, url }`, top down) and `children` (`{ path, name, description, url, count }`); `tag-index.njk` receives `tree`, the nested list of the same tag objects with their `children`. See [Tags](tags.md). Static files of a theme go in its `assets/` folder and are copied to `assets/` of the output (see [Building a site](build.md)).
 
 To change only the line with the date and reading time of a post:
 

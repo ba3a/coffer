@@ -127,7 +127,18 @@ test('the manifest is written and lists the pages and the posts', async () => {
         '/journal/walnut-box/',
       ],
     );
-    assert.deepEqual(manifest.feeds, []);
+    assert.deepEqual(
+      manifest.feeds.map((feed) => feed.url),
+      [
+        '/journal/feed.xml',
+        '/journal/series/boxes-by-hand/feed.xml',
+        '/journal/tags/trips/feed.xml',
+        '/journal/tags/trips/mountains/feed.xml',
+        '/journal/tags/workshop/boxes/dovetails/feed.xml',
+        '/journal/tags/workshop/boxes/feed.xml',
+        '/journal/tags/workshop/feed.xml',
+      ],
+    );
     assert.deepEqual(manifest.images, []);
     assert.equal(manifest.site.id, 'workshop');
     assert.equal(manifest.now, NOW.toISOString());

@@ -601,6 +601,7 @@ main > article > .post-layout {
 }
 
 .tags-link,
+.feed-link,
 .breadcrumbs,
 .post-tags,
 .tag-count,
@@ -609,7 +610,8 @@ main > article > .post-layout {
   font-size: 0.9375rem;
 }
 
-.tags-link {
+.tags-link,
+.feed-link {
   margin: 0 0 1rem;
 }
 

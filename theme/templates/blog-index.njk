@@ -6,6 +6,10 @@
 {% if tagsUrl %}<p class="tags-link"><a href="{{ tagsUrl | url }}">{{ 'tags.title' | t }}</a></p>
 {% endif %}
 {% endblock %}
+{% block feed_link %}
+{% if pageFeed %}<p class="feed-link"><a rel="alternate" type="application/atom+xml" href="{{ pageFeed.url | url }}">{{ pageFeed.title }}</a></p>
+{% endif %}
+{% endblock %}
 {% if posts.length %}
 <ol class="post-list">
 {% for post in posts %}

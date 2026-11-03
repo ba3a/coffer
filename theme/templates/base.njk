@@ -54,6 +54,11 @@
 <title>{% if page.title and page.title != site.title %}{{ page.title }} | {% endif %}{{ site.title }}</title>
 {% if page.description %}<meta name="description" content="{{ page.description }}">
 {% endif %}
+{% block feed_links %}
+{% for feed in feedLinks or [] %}
+<link rel="alternate" type="application/atom+xml" title="{{ feed.title }}" href="{{ feed.url | url }}">
+{% endfor %}
+{% endblock %}
 {% endblock %}
 </head>
 <body>
