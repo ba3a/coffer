@@ -15,3 +15,10 @@ export {
   parsePostSource,
   resolveNow,
 } from './content/posts.js';
+export {
+  DEFAULT_CODE_THEMES,
+  DEFAULT_TOC_MIN_HEADINGS,
+  DEFAULT_WORDS_PER_MINUTE,
+  MarkdownError,
+  renderMarkdown,
+} from './markdown/render.js';
