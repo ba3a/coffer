@@ -111,7 +111,7 @@ test('the manifest is written and lists the pages and the posts', async () => {
     assert.deepEqual(onDisk, manifest);
     assert.deepEqual(
       manifest.pages.map((entry) => entry.url),
-      ['/journal/', '/journal/first-dovetail/'],
+      ['/', '/404.html', '/journal/', '/journal/first-dovetail/'],
     );
     assert.deepEqual(manifest.feeds, []);
     assert.deepEqual(manifest.images, []);
@@ -143,7 +143,7 @@ test('coffer build with --out, --now and --drafts builds the example from the co
       { encoding: 'utf8', cwd: tmpdir() },
     );
     assert.equal(result.status, 0, result.stderr);
-    assert.match(result.stdout, /workshop: 1 post\(s\), 2 page\(s\)/);
+    assert.match(result.stdout, /workshop: 1 post\(s\), 4 page\(s\)/);
     assert.equal(existsSync(join(out, 'workshop', 'journal', 'spring-open-house')), false);
 
     const preview = spawnSync(
@@ -152,7 +152,7 @@ test('coffer build with --out, --now and --drafts builds the example from the co
       { encoding: 'utf8', cwd: tmpdir() },
     );
     assert.equal(preview.status, 0, preview.stderr);
-    assert.match(preview.stdout, /workshop: 3 post\(s\), 4 page\(s\)/);
+    assert.match(preview.stdout, /workshop: 3 post\(s\), 6 page\(s\)/);
     assert.ok(existsSync(join(out, 'workshop', 'journal', 'spring-open-house', 'index.html')));
   } finally {
     rmSync(out, { recursive: true, force: true });
@@ -177,4 +177,67 @@ test('the example script builds the example site with one command', () => {
   } finally {
     rmSync(out, { recursive: true, force: true });
   }
+});
+
+test('the example home shows the about text, the links and the latest posts from content and config', async () => {
+  await withExample({}, (site, manifest) => {
+    const html = readFileSync(join(site, 'index.html'), 'utf8');
+    assert.match(html, /<h1>Tove Marlowe<\/h1>/);
+    // The about text is the body of content/home.md, rendered from Markdown.
+    assert.match(html, /<div class="about">\s*<p>I am Tove, a woodworker/);
+    // The links come from the site's `links` in coffer.yaml.
+    assert.match(html, /<a href="https:\/\/www\.linkedin\.example\/in\/tove-marlowe">LinkedIn<\/a>/);
+    assert.match(html, /<a href="https:\/\/github\.example\/tove-marlowe">GitHub<\/a>/);
+    assert.match(html, /<a href="mailto:tove@tove-marlowe\.example">Email<\/a>/);
+    // The latest posts of the first blog, linked to their pages.
+    assert.match(html, /<h2>Latest posts<\/h2>/);
+    assert.match(html, /<a href="\/journal\/first-dovetail\/">My first hand-cut dovetail<\/a>/);
+    assert.match(html, /<a href="\/journal\/">All posts: Workshop journal<\/a>/);
+    // Posts that are not published are not listed.
+    assert.doesNotMatch(html, /planer-notes|Spring open house/);
+    // The secondary link comes from the front matter and is marked as secondary.
+    assert.match(
+      html,
+      /<nav class="secondary-links"[^>]*>\s*<ul>\s*<li><a href="https:\/\/sketchbook\.example\/tove">/,
+    );
+    const home = manifest.pages.find((entry) => entry.url === '/');
+    assert.deepEqual(home, { url: '/', file: 'index.html', type: 'home', title: 'Tove Marlowe' });
+  });
+});
+
+test('preview mode lists unpublished posts on the home page and marks them', async () => {
+  await withExample({ drafts: true }, (site) => {
+    const html = readFileSync(join(site, 'index.html'), 'utf8');
+    assert.match(html, /<a href="\/journal\/planer-notes\/">/);
+    assert.match(html, /class="preview-note"/);
+  });
+});
+
+test('404.html is written with the layout of the site, a noindex hint and a link home', async () => {
+  await withExample({}, (site, manifest) => {
+    const html = readFileSync(join(site, '404.html'), 'utf8');
+    assert.match(html, /<html lang="en">/);
+    assert.match(html, /<link rel="stylesheet" href="\/assets\/coffer\.css">/);
+    assert.match(html, /<a class="site-title" href="\/">Tove Marlowe<\/a>/);
+    assert.match(html, /<h1>Page not found<\/h1>/);
+    assert.match(html, /<a href="\/">Back to the home page<\/a>/);
+    assert.match(html, /<meta name="robots" content="noindex">/);
+    assert.deepEqual(
+      manifest.pages.find((entry) => entry.type === 'not-found'),
+      { url: '/404.html', file: '404.html', type: 'not-found', title: 'Page not found' },
+    );
+  });
+});
+
+test('the footer of every page shows the content license from the configuration', async () => {
+  await withExample({}, (site, manifest) => {
+    for (const entry of manifest.pages) {
+      const html = readFileSync(join(site, ...entry.file.split('/')), 'utf8');
+      assert.match(
+        html,
+        /<footer class="site-footer">[\s\S]*<p class="license">Content: CC BY 4\.0<\/p>/,
+        entry.file,
+      );
+    }
+  });
 });

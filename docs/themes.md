@@ -92,6 +92,8 @@ To change a block on every page at once, override it in `templates/base.njk`:
 | ---------------- | ------------------- | ----------------------------------------------------------------------- |
 | `post.njk`       | a post              | `meta` (date and reading time), `toc`, `body`                          |
 | `blog-index.njk` | the list of posts   | `item` (one entry of the list)                                          |
+| `home.njk`       | the home page       | `about`, `links`, `showcase`, `latest`, `secondary` (see [Home](home.md)) |
+| `404.njk`        | `404.html`          | `head` is extended with a `noindex` tag                                 |
 
 `post.njk` receives `post` (`slug`, `url`, `title`, `date`, `tags`, `summary`, `draft`, `unpublished`, `readingMinutes`), `toc` (a list of `{ id, text, depth }`, empty for short posts), `blog` and `page.content` (the rendered body). `blog-index.njk` receives `posts`, a list of the same `post` objects, newest first. Static files of a theme go in its `assets/` folder and are copied to `assets/` of the output (see [Building a site](build.md)).
 

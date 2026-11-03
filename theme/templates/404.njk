@@ -1,0 +1,14 @@
+{% extends "base.njk" %}
+
+{% block head %}
+{{ super() }}
+<meta name="robots" content="noindex">
+{% endblock %}
+
+{% block main %}
+<article class="not-found">
+<h1>{{ 'not_found.title' | t }}</h1>
+<p>{{ 'not_found.text' | t }}</p>
+<p><a href="{{ '/' | url }}">{{ 'not_found.home' | t }}</a></p>
+</article>
+{% endblock %}

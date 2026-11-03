@@ -73,3 +73,19 @@
     display: block;
   }
 }
+
+/* The home page: links under the about text, and the less prominent ones last. */
+.home-links ul,
+.secondary-links ul {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem 1.25rem;
+  list-style: none;
+  margin: 1rem 0;
+  padding: 0;
+}
+
+.secondary-links {
+  margin-top: 2rem;
+  font-size: 0.875em;
+}

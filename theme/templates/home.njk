@@ -1,0 +1,59 @@
+{% extends "base.njk" %}
+
+{% block main %}
+<article class="home">
+<h1>{{ page.title }}</h1>
+{% block about %}
+{% if page.content %}<div class="about">
+{{ page.content | safe }}
+</div>
+{% endif %}
+{% endblock %}
+{% block links %}
+{% if site.links.length %}
+<nav class="home-links" aria-label="{{ 'home.links' | t }}">
+<ul>
+{% for link in site.links %}
+<li><a href="{{ link.url | url }}">{{ link.label }}</a></li>
+{% endfor %}
+</ul>
+</nav>
+{% endif %}
+{% endblock %}
+{# The project showcase goes here; the projects feature fills it. #}
+{% block showcase %}{% endblock %}
+{% block latest %}
+{% if blog and posts.length %}
+<section class="latest-posts">
+<h2>{{ 'home.latest' | t }}</h2>
+<ol class="post-list">
+{% for post in posts %}
+<li class="post-item">
+<h3><a href="{{ post.url | url }}">{{ post.title }}</a></h3>
+<p class="post-meta">
+<time datetime="{{ post.date | date('iso') }}">{{ post.date | date }}</time>
+</p>
+{% if post.summary %}<p class="post-summary">{{ post.summary }}</p>
+{% endif %}
+{% if post.unpublished %}<p class="preview-note">{{ 'post.unpublished' | t }}</p>
+{% endif %}
+</li>
+{% endfor %}
+</ol>
+<p class="all-posts"><a href="{{ blogUrl | url }}">{{ 'home.all_posts' | t({ title: blog.title }) }}</a></p>
+</section>
+{% endif %}
+{% endblock %}
+{% block secondary %}
+{% if secondaryLinks.length %}
+<nav class="secondary-links" aria-label="{{ 'home.more' | t }}">
+<ul>
+{% for link in secondaryLinks %}
+<li><a href="{{ link.url | url }}">{{ link.label }}</a></li>
+{% endfor %}
+</ul>
+</nav>
+{% endif %}
+{% endblock %}
+</article>
+{% endblock %}

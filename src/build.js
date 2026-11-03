@@ -2,6 +2,7 @@ import { cpSync, existsSync, mkdirSync, rmSync, statSync, writeFileSync } from '
 import { dirname, isAbsolute, join, relative, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
+import { DEFAULT_LATEST_POSTS, loadHome } from './content/home.js';
 import { discoverPosts, isPublished, resolveNow } from './content/posts.js';
 import { renderMarkdown } from './markdown/render.js';
 import { createTemplates } from './render/templates.js';
@@ -63,7 +64,7 @@ export class BuildError extends Error {
  * @typedef {object} ManifestPage
  * @property {string} url Site-relative URL, ending in a slash.
  * @property {string} file Path of the HTML file, relative to the site's output directory.
- * @property {'blog-index' | 'post'} type
+ * @property {'home' | 'not-found' | 'blog-index' | 'post'} type
  * @property {string} title
  */
 
@@ -139,6 +140,10 @@ function blogUrl(blog) {
 export function postUrl(blog, slug) {
   return `${blogUrl(blog)}${slug}/`;
 }
+
+/** Site-relative URL and file of the page that hosts serve for an unknown address. */
+export const NOT_FOUND_URL = '/404.html';
+const NOT_FOUND_FILE = '404.html';
 
 /**
  * Path of the HTML file for a site-relative URL, relative to the output directory.
@@ -250,6 +255,11 @@ async function buildSite(config, site, options, outRoot, version) {
   const pages = [];
   /** @type {ManifestPost[]} */
   const manifestPosts = [];
+  /**
+   * The posts of the first blog, newest first, for the home page.
+   * @type {ReturnType<typeof postView>[]}
+   */
+  let firstBlogPosts = [];
 
   for (const blog of site.blogs) {
     const found = discoverPosts(blog.dir, { timezone: site.timezone });
@@ -297,20 +307,68 @@ async function buildSite(config, site, options, outRoot, version) {
       });
     }
 
+    const views = entries.map(({ post, url, readingMinutes, unpublished }) =>
+      postView(post, url, readingMinutes, unpublished),
+    );
+    if (blog === site.blogs[0]) firstBlogPosts = views;
+
     const indexUrl = blogUrl(blog);
     const indexHtml = templates.render('blog-index.njk', {
       site,
       nav,
       blog,
-      posts: entries.map(({ post, url, readingMinutes, unpublished }) =>
-        postView(post, url, readingMinutes, unpublished),
-      ),
+      posts: views,
       page: { title: blog.title, description: site.description, content: '' },
     });
     const indexFile = fileForUrl(indexUrl);
     writeOutput(outDir, indexFile, indexHtml);
     pages.push({ url: indexUrl, file: indexFile, type: 'blog-index', title: blog.title });
   }
+
+  // The home page lives at "/". A blog at the site root has that address.
+  const rootBlog = site.blogs.find((blog) => blog.prefix === '');
+  const home = loadHome(site.contentDir);
+  if (rootBlog) {
+    if (home) {
+      warnings.push(
+        `${home.file}: not used, because the blog "${rootBlog.id}" has an empty prefix and its index is the home page of the site`,
+      );
+    }
+  } else {
+    const rendered = home
+      ? await renderMarkdown(home.body, { file: home.file, startLine: home.bodyLine })
+      : null;
+    const firstBlog = site.blogs[0];
+    const latest = firstBlogPosts.slice(0, home?.latestPosts ?? DEFAULT_LATEST_POSTS);
+    const title = home?.title ?? site.title;
+    const homeHtml = templates.render('home.njk', {
+      site,
+      nav,
+      blog: firstBlog,
+      blogUrl: firstBlog ? blogUrl(firstBlog) : null,
+      posts: latest,
+      secondaryLinks: home?.secondaryLinks ?? [],
+      page: {
+        title,
+        description: site.description,
+        content: rendered?.html ?? '',
+      },
+    });
+    writeOutput(outDir, fileForUrl('/'), homeHtml);
+    pages.push({ url: '/', file: fileForUrl('/'), type: 'home', title });
+  }
+
+  const notFoundTitle = templates.translator.t('not_found.title');
+  writeOutput(
+    outDir,
+    NOT_FOUND_FILE,
+    templates.render('404.njk', {
+      site,
+      nav,
+      page: { title: notFoundTitle, description: '', content: '' },
+    }),
+  );
+  pages.push({ url: NOT_FOUND_URL, file: NOT_FOUND_FILE, type: 'not-found', title: notFoundTitle });
 
   pages.sort((a, b) => (a.url < b.url ? -1 : a.url > b.url ? 1 : 0));
   manifestPosts.sort((a, b) => (a.url < b.url ? -1 : a.url > b.url ? 1 : 0));
@@ -338,6 +396,9 @@ async function buildSite(config, site, options, outRoot, version) {
  *
  * - every published post at `{blogPrefix}/{slug}/index.html`;
  * - the blog index at `{blogPrefix}/index.html`, newest post first;
+ * - the home page at `index.html`, from `{contentDir}/home.md` (not written
+ *   when a blog has an empty prefix: its index is the front page);
+ * - `404.html`, the page hosts show for an unknown address;
  * - the assets of the default theme, then of the site's theme, in `assets/`;
  * - the build manifest `.coffer-manifest.json`.
  *
@@ -348,6 +409,7 @@ async function buildSite(config, site, options, outRoot, version) {
  * @returns {Promise<SiteResult[]>}
  * @throws {BuildError} For an unknown site id or an invalid `--now`.
  * @throws {import('./content/posts.js').PostError} When posts are invalid.
+ * @throws {import('./content/home.js').HomeError} When the home page file is invalid.
  * @throws {import('./markdown/render.js').MarkdownError} When a post's Markdown is invalid.
  */
 export async function buildSites(config, options = {}) {

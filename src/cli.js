@@ -1,5 +1,6 @@
 import { BuildError, buildSites, DEFAULT_OUT_DIR } from './build.js';
 import { ConfigError, loadConfig } from './config.js';
+import { HomeError } from './content/home.js';
 import { PostError } from './content/posts.js';
 import { MarkdownError } from './markdown/render.js';
 import { I18nError } from './render/i18n.js';
@@ -116,7 +117,11 @@ const commands = {
       }
       return 0;
     } catch (error) {
-      if (error instanceof ConfigError || error instanceof PostError) {
+      if (
+        error instanceof ConfigError ||
+        error instanceof PostError ||
+        error instanceof HomeError
+      ) {
         io.err(`${error.errors.join('\n')}\n`);
         return 1;
       }

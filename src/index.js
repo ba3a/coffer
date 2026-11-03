@@ -5,6 +5,7 @@ export {
   DEPLOY_EXCLUDES,
   MANIFEST_FILE_NAME,
   MANIFEST_VERSION,
+  NOT_FOUND_URL,
   buildSites,
   postUrl,
 } from './build.js';
@@ -16,6 +17,14 @@ export {
   loadConfig,
   normalizeConfig,
 } from './config.js';
+export {
+  DEFAULT_LATEST_POSTS,
+  HOME_FILE_NAME,
+  HomeError,
+  MAX_LATEST_POSTS,
+  loadHome,
+  parseHomeSource,
+} from './content/home.js';
 export {
   PostError,
   discoverPosts,

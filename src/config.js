@@ -400,10 +400,13 @@ function normalizeLinks(raw, path, problems) {
 }
 
 /**
+ * Whether a link target is an http(s) or `mailto:` URL, or a site-relative
+ * path starting with a single `/`.
+ *
  * @param {string} value
  * @returns {boolean}
  */
-function isValidLinkUrl(value) {
+export function isValidLinkUrl(value) {
   if (value.startsWith('/')) return !value.startsWith('//');
   try {
     const parsed = new URL(value);

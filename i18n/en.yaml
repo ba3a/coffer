@@ -25,6 +25,11 @@ post:
   unpublished: "Preview: this post is not published yet."
 blog:
   empty: No posts yet.
+home:
+  links: Find me elsewhere
+  latest: Latest posts
+  all_posts: "All posts: {title}"
+  more: Also
 feeds:
   title: Feeds
   subscribe: Subscribe

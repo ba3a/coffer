@@ -204,19 +204,14 @@ function normalizeTag(tag) {
 }
 
 /**
- * Reads the posts' YAML front matter from the text of one file.
+ * Splits a Markdown file into its front matter, parsed, and its body.
  *
  * @param {string} file Path shown in error messages.
  * @param {string} text Whole content of the file.
- * @param {string} slug
- * @param {'folder' | 'file'} kind
- * @param {string} dir
- * @param {ParseOptions} options
  * @param {string[]} errors Receives one entry per problem.
- * @returns {Post | undefined} The post, or undefined when problems were found.
+ * @returns {{ data: Record<string, unknown>, body: string, bodyLine: number } | undefined} Undefined when problems were found.
  */
-function parseInto(file, text, slug, kind, dir, options, errors) {
-  const before = errors.length;
+export function readFrontMatter(file, text, errors) {
   /** @param {string} field @param {string} message */
   const fail = (field, message) => {
     errors.push(`${file}: ${field}: ${message}`);
@@ -249,8 +244,31 @@ function parseInto(file, text, slug, kind, dir, options, errors) {
     fail('front matter', 'must be a mapping of keys to values');
     return undefined;
   }
-  /** @type {Record<string, unknown>} */
-  const fm = data ?? {};
+  return { data: data ?? {}, body: parts.body, bodyLine: parts.bodyLine };
+}
+
+/**
+ * Reads the posts' YAML front matter from the text of one file.
+ *
+ * @param {string} file Path shown in error messages.
+ * @param {string} text Whole content of the file.
+ * @param {string} slug
+ * @param {'folder' | 'file'} kind
+ * @param {string} dir
+ * @param {ParseOptions} options
+ * @param {string[]} errors Receives one entry per problem.
+ * @returns {Post | undefined} The post, or undefined when problems were found.
+ */
+function parseInto(file, text, slug, kind, dir, options, errors) {
+  const before = errors.length;
+  /** @param {string} field @param {string} message */
+  const fail = (field, message) => {
+    errors.push(`${file}: ${field}: ${message}`);
+  };
+
+  const parts = readFrontMatter(file, text, errors);
+  if (parts === undefined) return undefined;
+  const fm = parts.data;
 
   /**
    * @param {string} key

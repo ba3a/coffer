@@ -61,7 +61,7 @@ Unknown keys are errors everywhere in the file, so a misspelled key never passes
 | `timezone`       | no       | `UTC`        | IANA time zone name such as `Europe/Samara`. Dates written without a time are read in this zone. Numeric offsets such as `+04:00` are not accepted.        |
 | `title`          | yes      | -            | Title of the site.                                                                                                                                           |
 | `description`    | no       | empty        | Short description of the site, used for page metadata.                                                                                                      |
-| `contentDir`     | no       | `content`    | Directory with the site's content (home page, pages).                                                                                                       |
+| `contentDir`     | no       | `content`    | Directory with the site's content: the home page (`home.md`, see [Home](home.md)) and pages.                                                                |
 | `theme`          | no       | default theme | Directory of the site's theme. When absent, the engine's default theme is used and the value is `null` in the loaded configuration.                       |
 | `contentLicense` | no       | empty        | Text shown in the footer to state the license of the site's content, for example `All rights reserved`. The engine's own license does not cover content.    |
 | `links`          | no       | `[]`         | List of links, see below.                                                                                                                                    |

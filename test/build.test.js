@@ -86,7 +86,7 @@ test('the blog index lists published posts newest first with date, summary and r
       assert.match(html, /<link rel="stylesheet" href="\/assets\/coffer\.css">/);
       assert.deepEqual(
         result.manifest.pages.map((entry) => entry.url),
-        ['/log/', '/log/middle/', '/log/new/', '/log/old/'],
+        ['/', '/404.html', '/log/', '/log/middle/', '/log/new/', '/log/old/'],
       );
     },
   );
@@ -312,4 +312,149 @@ test('coffer build with a missing config file exits 1', async () => {
   const result = await runInProcess(['build', '--config', join(tmpdir(), 'coffer-no-such-file.yaml')]);
   assert.equal(result.code, 1);
   assert.match(result.err, /file not found/);
+});
+
+/** A site in Russian with a home page, for the tests of the home and 404 pages. */
+const homeFiles = {
+  'coffer.yaml': [
+    'sites:',
+    '  - id: demo',
+    '    baseUrl: https://demo.example',
+    '    lang: ru',
+    '    title: Демо',
+    '    contentLicense: Все права защищены',
+    '    links:',
+    '      - { label: Почта, url: "mailto:me@demo.example" }',
+    '    blogs:',
+    '      - { id: notes, dir: notes, prefix: log, title: Записки }',
+    '      - { id: other, dir: other, prefix: more, title: Другое }',
+    '',
+  ].join('\n'),
+  'content/home.md': '---\ntitle: Привет\nlatestPosts: 2\n---\n\nЯ делаю вещи.\n',
+  'notes/a.md': post('Первая', '2025-01-01'),
+  'notes/b.md': post('Вторая', '2025-02-01'),
+  'notes/c.md': post('Третья', '2025-03-01'),
+  'other/x.md': post('Чужая', '2025-04-01'),
+};
+
+test('the home page lists as many latest posts as latestPosts says, from the first blog only', async () => {
+  await inTree(homeFiles, async (root) => {
+    const [result] = await buildSites(loadConfig({ configPath: join(root, 'coffer.yaml') }), {
+      out: join(root, 'out'),
+      now: NOW,
+    });
+    const html = readFileSync(join(result.outDir, 'index.html'), 'utf8');
+    assert.match(html, /<html lang="ru">/);
+    assert.match(html, /<h1>Привет<\/h1>/);
+    assert.match(html, /Я делаю вещи\./);
+    assert.match(html, /<a href="mailto:me@demo\.example">Почта<\/a>/);
+    assert.match(html, /<h2>Свежие записи<\/h2>/);
+    const titles = [...html.matchAll(/<h3><a href="[^"]+">([^<]+)<\/a><\/h3>/g)].map((m) => m[1]);
+    assert.deepEqual(titles, ['Третья', 'Вторая']);
+    assert.match(html, /<a href="\/log\/">Все записи: Записки<\/a>/);
+    assert.deepEqual(result.warnings, []);
+  });
+});
+
+test('without latestPosts the home page lists five posts, and zero hides the list', async () => {
+  const many = Object.fromEntries(
+    Array.from({ length: 7 }, (_, i) => [`notes/p${i}.md`, post(`Post ${i}`, `2025-0${i + 1}-01`)]),
+  );
+  await inTree(
+    { ...homeFiles, ...many, 'content/home.md': '---\ntitle: Hi\n---\n\nAbout.\n' },
+    async (root) => {
+      const config = loadConfig({ configPath: join(root, 'coffer.yaml') });
+      const [result] = await buildSites(config, { out: join(root, 'out'), now: NOW });
+      const html = readFileSync(join(result.outDir, 'index.html'), 'utf8');
+      assert.equal([...html.matchAll(/<h3>/g)].length, 5);
+
+      writeFileSync(join(root, 'content', 'home.md'), '---\ntitle: Hi\nlatestPosts: 0\n---\n\nAbout.\n');
+      const [none] = await buildSites(config, { out: join(root, 'out'), now: NOW });
+      assert.doesNotMatch(readFileSync(join(none.outDir, 'index.html'), 'utf8'), /latest-posts/);
+    },
+  );
+});
+
+test('a site without home.md still gets a home page with its title, links and posts', async () => {
+  const { 'content/home.md': _home, ...files } = homeFiles;
+  await inTree(files, async (root) => {
+    const [result] = await buildSites(loadConfig({ configPath: join(root, 'coffer.yaml') }), {
+      out: join(root, 'out'),
+      now: NOW,
+    });
+    const html = readFileSync(join(result.outDir, 'index.html'), 'utf8');
+    assert.match(html, /<h1>Демо<\/h1>/);
+    assert.doesNotMatch(html, /class="about"/);
+    assert.match(html, /Почта/);
+    assert.match(html, /Третья/);
+  });
+});
+
+test('404.html is written in the language of the site, with its layout and license', async () => {
+  await inTree(homeFiles, async (root) => {
+    const [result] = await buildSites(loadConfig({ configPath: join(root, 'coffer.yaml') }), {
+      out: join(root, 'out'),
+      now: NOW,
+    });
+    const html = readFileSync(join(result.outDir, '404.html'), 'utf8');
+    assert.match(html, /<html lang="ru">/);
+    assert.match(html, /<h1>Страница не найдена<\/h1>/);
+    assert.match(html, /<a href="\/">На главную<\/a>/);
+    assert.match(html, /<title>Страница не найдена \| Демо<\/title>/);
+    assert.match(html, /Материалы: Все права защищены/);
+  });
+});
+
+test('a theme can override one block of home.njk and replace 404.njk', async () => {
+  await inTree(
+    {
+      ...homeFiles,
+      'coffer.yaml': `${homeFiles['coffer.yaml']}    theme: theme\n`,
+      'theme/templates/home.njk':
+        '{% extends "coffer:home.njk" %}\n{% block showcase %}<section class="showcase">Витрина</section>{% endblock %}\n',
+      'theme/templates/404.njk':
+        '{% extends "base.njk" %}\n{% block main %}<p class="lost">Потерялись</p>{% endblock %}\n',
+    },
+    async (root) => {
+      const [result] = await buildSites(loadConfig({ configPath: join(root, 'coffer.yaml') }), {
+        out: join(root, 'out'),
+        now: NOW,
+      });
+      const home = readFileSync(join(result.outDir, 'index.html'), 'utf8');
+      assert.match(home, /<section class="showcase">Витрина<\/section>/);
+      assert.match(home, /Третья/);
+      assert.match(readFileSync(join(result.outDir, '404.html'), 'utf8'), /<p class="lost">Потерялись<\/p>/);
+    },
+  );
+});
+
+test('a blog at the site root keeps "/" and home.md is reported as unused', async () => {
+  await inTree(
+    { ...homeFiles, 'coffer.yaml': homeFiles['coffer.yaml'].replace('prefix: log', "prefix: ''") },
+    async (root) => {
+      const [result] = await buildSites(loadConfig({ configPath: join(root, 'coffer.yaml') }), {
+        out: join(root, 'out'),
+        now: NOW,
+      });
+      const html = readFileSync(join(result.outDir, 'index.html'), 'utf8');
+      assert.match(html, /<h1>Записки<\/h1>/);
+      assert.equal(result.manifest.pages.filter((entry) => entry.url === '/').length, 1);
+      assert.equal(result.manifest.pages.find((entry) => entry.url === '/')?.type, 'blog-index');
+      assert.equal(result.warnings.length, 1);
+      assert.match(result.warnings[0], /home\.md/);
+      assert.ok(existsSync(join(result.outDir, '404.html')));
+    },
+  );
+});
+
+test('coffer build reports an invalid home.md with its file and field and exits 1', async () => {
+  await inTree(
+    { ...homeFiles, 'content/home.md': '---\nlatestPosts: many\n---\n\nAbout.\n' },
+    async (root) => {
+      const result = await runInProcess(['build', '--config', join(root, 'coffer.yaml'), '--out', join(root, 'out')]);
+      assert.equal(result.code, 1);
+      assert.match(result.err, /home\.md: title: is required/);
+      assert.match(result.err, /home\.md: latestPosts: must be a whole number/);
+    },
+  );
 });

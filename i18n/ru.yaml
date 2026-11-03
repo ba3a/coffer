@@ -26,6 +26,11 @@ post:
   unpublished: "Предпросмотр: эта запись ещё не опубликована."
 blog:
   empty: Записей пока нет.
+home:
+  links: Где меня найти
+  latest: Свежие записи
+  all_posts: "Все записи: {title}"
+  more: Ещё
 feeds:
   title: Ленты
   subscribe: Подписаться

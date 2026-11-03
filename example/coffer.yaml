@@ -10,7 +10,8 @@ sites:
     contentDir: content
     contentLicense: CC BY 4.0
     links:
-      - { label: Workshop photos, url: "https://photos.example/tove" }
+      - { label: LinkedIn, url: "https://www.linkedin.example/in/tove-marlowe" }
+      - { label: GitHub, url: "https://github.example/tove-marlowe" }
       - { label: Email, url: "mailto:tove@tove-marlowe.example" }
     blogs:
       - { id: journal, dir: content/journal, prefix: journal, title: Workshop journal }
