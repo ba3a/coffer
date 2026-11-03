@@ -51,9 +51,11 @@ Templates in the engine refer to each other by plain names (`{% extends "base.nj
 
 | Block    | Contents                                                              |
 | -------- | --------------------------------------------------------------------- |
-| `head`   | `<meta>` tags and `<title>`; add stylesheets and feed links here      |
+| `head`   | `<meta>` tags, the theme script, the stylesheet and `<title>`; add stylesheets and feed links here |
+| `theme_script` | the inline script that applies the saved colour scheme (nested in `head`) |
 | `header` | the site title and the navigation (inside `<header>`)                 |
 | `nav`    | the navigation list; nested in `header`, so it can be replaced alone  |
+| `theme_switch` | the light/dark button; nested in `header`                       |
 | `main`   | the page itself (inside `<main id="main">`)                           |
 | `footer` | the content license and the credit line (inside `<footer>`)           |
 | `scripts`| scripts at the end of `<body>`; empty by default                      |
@@ -85,6 +87,65 @@ To change a block on every page at once, override it in `templates/base.njk`:
 
 {% block footer %}...{% endblock %}
 ```
+
+## Colours, fonts and the theme switch
+
+The default stylesheet (`assets/coffer.css`) takes every colour, font and width from CSS custom properties, so a site theme can restyle the engine's pages by overriding variables only, with no change to the templates.
+
+| Variable                 | Light default | Dark default | Used for                                       |
+| ------------------------ | ------------- | ------------ | ---------------------------------------------- |
+| `--coffer-bg`            | `#ffffff`     | `#16181d`    | page background                                |
+| `--coffer-text`          | `#1b1b1f`     | `#e8e8ec`    | body text                                      |
+| `--coffer-muted`         | `#5a5a63`     | `#a9a9b3`    | dates, footer, quotes                          |
+| `--coffer-accent`        | `#0b5cad`     | `#7ab7ff`    | links and the focus ring                       |
+| `--coffer-border`        | `#d3d3da`     | `#3a3e48`    | rules, table and code borders                  |
+| `--coffer-code-bg`       | `#f3f3f6`     | `#20232a`    | background of code (unhighlighted)             |
+| `--coffer-code-fg`       | `#1b1b1f`     | `#e8e8ec`    | text of code (unhighlighted)                   |
+| `--coffer-font-body`     | system sans-serif stack | same | body text                                |
+| `--coffer-font-heading`  | the body font | same         | headings and the site title                    |
+| `--coffer-font-mono`     | system monospace stack | same | code                                     |
+| `--coffer-measure`       | `68ch`        | same         | width of a line of text                        |
+
+Light values are set on `:root`. Dark values are set twice, under `@media (prefers-color-scheme: dark)` (the reader's system setting) and under `:root[data-theme="dark"]` (the reader's choice with the switch). `:root[data-theme="light"]` sets the light values again, so a reader on a dark system can choose light. Pages follow the system setting without any JavaScript.
+
+A site theme adds its own stylesheet after the engine's (see [Overriding one block](#overriding-one-block), `{{ super() }}` in `head`) and repeats the three places for the variables it changes:
+
+```css
+:root {
+  --coffer-accent: #8a2be2;
+  --coffer-font-heading: Georgia, serif;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --coffer-accent: #c9a0ff;
+  }
+}
+
+:root[data-theme="dark"] {
+  --coffer-accent: #c9a0ff;
+}
+
+:root[data-theme="light"] {
+  --coffer-accent: #8a2be2;
+}
+```
+
+Fonts and the measure are the same in both modes and need only the `:root` rule.
+
+### The theme switch
+
+With JavaScript, a button in the header cycles through "system", "light" and "dark". The choice is stored in `localStorage` under the key `coffer-theme` (nothing is stored for "system", and a browser that blocks storage simply forgets the choice). A small inline script at the top of `<head>` reads it and sets `data-theme` on `<html>` before the page is painted, so a reload does not flash the wrong theme. The same script adds the class `js` to `<html>`; the stylesheet shows the button only then, so without JavaScript there is no button and the page follows the system. The button's text comes from the UI strings `theme.button`, `theme.system`, `theme.light` and `theme.dark`.
+
+Override the blocks `theme_script` and `theme_switch` to change the script or the button; a theme that replaces the whole `head` block without `{{ super() }}` also drops the script.
+
+### Code
+
+Highlighted code carries both colour schemes as the variables `--shiki-light`, `--shiki-dark`, `--shiki-light-bg` and `--shiki-dark-bg` (see [Markdown](markdown.md)). The default stylesheet picks the pair that matches the active colour scheme in the same three places as above, so code is readable in both modes.
+
+### Motion, small screens and print
+
+The default theme defines no animation or transition: state changes are instant. The layout is a single column that works from 360 px wide, with a table of contents beside the text on wide screens. Focus is shown with an outline in the accent colour. Printing always uses black on white, hides the navigation and the switch, and prints the address after external links.
 
 ## Templates of the blog
 

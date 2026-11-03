@@ -70,7 +70,7 @@ Code uses two colour themes at once, `github-light` and `github-dark`. Each toke
 <pre class="shiki shiki-themes github-light github-dark" style="--shiki-light-bg:#fff;--shiki-dark-bg:#24292e" tabindex="0"><code><span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">const</span> ...
 ```
 
-The stylesheet chooses which one applies. The default theme does it with a media query, and a site that lets readers switch themes can do the same with a class:
+The stylesheet chooses which one applies. The default theme follows the system setting with a media query and the reader's choice with a `data-theme` attribute on `<html>` (see [Themes](themes.md#the-theme-switch)). In its simplest form the rules are:
 
 ```css
 .shiki,

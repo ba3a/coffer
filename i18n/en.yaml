@@ -41,6 +41,11 @@ not_found:
   title: Page not found
   text: The page you are looking for does not exist or has moved.
   home: Back to the home page
+theme:
+  button: "Theme: {mode}"
+  system: System
+  light: Light
+  dark: Dark
 footer:
   license: "Content: {license}"
   credit: Built with coffer

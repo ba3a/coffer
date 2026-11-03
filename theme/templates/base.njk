@@ -4,6 +4,52 @@
 {% block head %}
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
+{% block theme_script %}
+<script>
+(function () {
+  var root = document.documentElement;
+  var key = 'coffer-theme';
+  var modes = ['system', 'light', 'dark'];
+  function read() {
+    try {
+      var stored = window.localStorage.getItem(key);
+      return modes.indexOf(stored) < 0 ? 'system' : stored;
+    } catch (e) {
+      return 'system';
+    }
+  }
+  function write(mode) {
+    try {
+      if (mode === 'system') window.localStorage.removeItem(key);
+      else window.localStorage.setItem(key, mode);
+    } catch (e) {}
+  }
+  function apply(mode) {
+    if (mode === 'system') root.removeAttribute('data-theme');
+    else root.setAttribute('data-theme', mode);
+  }
+  function label(button, mode) {
+    button.textContent = button.getAttribute('data-label-' + mode);
+    button.setAttribute('data-mode', mode);
+  }
+  var mode = read();
+  root.classList.add('js');
+  apply(mode);
+  document.addEventListener('DOMContentLoaded', function () {
+    var buttons = document.querySelectorAll('[data-theme-toggle]');
+    for (var i = 0; i < buttons.length; i++) label(buttons[i], mode);
+  });
+  document.addEventListener('click', function (event) {
+    var button = event.target && event.target.closest && event.target.closest('[data-theme-toggle]');
+    if (!button) return;
+    mode = modes[(modes.indexOf(mode) + 1) % modes.length];
+    apply(mode);
+    write(mode);
+    label(button, mode);
+  });
+})();
+</script>
+{% endblock %}
 <link rel="stylesheet" href="{{ '/assets/coffer.css' | url }}">
 <title>{% if page.title and page.title != site.title %}{{ page.title }} | {% endif %}{{ site.title }}</title>
 {% if page.description %}<meta name="description" content="{{ page.description }}">
@@ -23,6 +69,9 @@
 {% endfor %}
 </ul>
 </nav>
+{% endblock %}
+{% block theme_switch %}
+<button type="button" class="theme-switch" data-theme-toggle data-mode="system"{% for mode in ['system', 'light', 'dark'] %} data-label-{{ mode }}="{{ 'theme.button' | t({ mode: ('theme.' + mode) | t }) }}"{% endfor %}>{{ 'theme.button' | t({ mode: 'theme.system' | t }) }}</button>
 {% endblock %}
 {% endblock %}
 </header>

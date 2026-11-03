@@ -42,6 +42,11 @@ not_found:
   title: Страница не найдена
   text: Такой страницы нет, или она переехала.
   home: На главную
+theme:
+  button: "Тема: {mode}"
+  system: Системная
+  light: Светлая
+  dark: Тёмная
 footer:
   license: "Материалы: {license}"
   credit: Сделано на coffer
