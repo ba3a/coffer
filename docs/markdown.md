@@ -146,7 +146,8 @@ A post gets a table of contents only when it has at least `tocMinHeadings` such 
 | `words`          | Number of words in the text.                                                                  |
 | `readingMinutes` | Estimated reading time in minutes, at least 1.                                                |
 | `firstImage`     | `{ src, alt }` of the first Markdown image, or `null`. `src` is as written, not yet resolved. |
-| `links`          | Every Markdown link and image as `{ url, kind: 'link' \| 'image', line }`, for link checks.    |
+| `links`          | Every Markdown link and image as `{ url, kind: 'link' \| 'image', line, column }`; `coffer build` checks them (see [Links](links.md)). |
+| `ids`            | Every id a link can point at: heading ids, ids of other elements and `id`/`name` attributes in raw HTML. |
 
 ## Options
 

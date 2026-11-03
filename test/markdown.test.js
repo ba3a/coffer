@@ -169,9 +169,9 @@ test('collects links and images with their lines', async () => {
   const source = 'See [one](https://a.example/).\n\n![pic](p.png)\n\n[ref][r]\n\n[r]: ../other/\n';
   const { links } = await renderMarkdown(source, { startLine: 10 });
   assert.deepEqual(links, [
-    { url: 'https://a.example/', kind: 'link', line: 10 },
-    { url: 'p.png', kind: 'image', line: 12 },
-    { url: '../other/', kind: 'link', line: 14 },
+    { url: 'https://a.example/', kind: 'link', line: 10, column: 5 },
+    { url: 'p.png', kind: 'image', line: 12, column: 1 },
+    { url: '../other/', kind: 'link', line: 14, column: 1 },
   ]);
 });
 
@@ -224,4 +224,14 @@ test('colons in ordinary prose and URLs are not directives', async () => {
 test('a backslash gives a plain colon before a letter', async () => {
   const { html } = await renderMarkdown(String.raw`Say \:smile\: please.`);
   assert.match(html, /Say :smile: please\./);
+});
+
+test('collects the ids a link can point at, from headings, elements and raw HTML', async () => {
+  const source = '# Top\n\n## Second part\n\n<a id="manual"></a> <span name=\'named\'></span>\n\nNote[^1]\n\n[^1]: Text.\n';
+  const { ids, links } = await renderMarkdown(source);
+  for (const id of ['top', 'second-part', 'manual', 'named', 'user-content-fn-1']) {
+    assert.ok(ids.includes(id), `${id} in ${ids.join(', ')}`);
+  }
+  // The footnote mark is a link at the place it is written; the back reference the renderer adds is not.
+  assert.deepEqual(links.map((link) => link.url), ['#user-content-fn-1']);
 });

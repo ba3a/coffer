@@ -11,6 +11,7 @@ import { TagsError } from './content/tags.js';
 import { FontError } from './font-metrics.js';
 import { MarkdownError } from './markdown/render.js';
 import { I18nError } from './render/i18n.js';
+import { ReportError } from './report.js';
 import { DEFAULT_PORT, startServer } from './serve.js';
 import { readVersion } from './version.js';
 
@@ -199,7 +200,8 @@ const commands = {
         error instanceof PostError ||
         error instanceof SeriesError ||
         error instanceof TagsError ||
-        error instanceof HomeError
+        error instanceof HomeError ||
+        error instanceof ReportError
       ) {
         io.err(`${error.errors.join('\n')}\n`);
         return 1;

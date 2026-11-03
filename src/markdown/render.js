@@ -46,6 +46,7 @@ export const DEFAULT_CODE_THEMES = Object.freeze({
  * @property {string} url The `href` or `src` exactly as written.
  * @property {'link' | 'image'} kind
  * @property {number} line 1-based line of the file.
+ * @property {number} column 1-based column of the link on that line.
  */
 
 /**
@@ -55,7 +56,8 @@ export const DEFAULT_CODE_THEMES = Object.freeze({
  * @property {number} words Number of words in the text, code blocks excluded.
  * @property {number} readingMinutes Estimated reading time in whole minutes, at least 1.
  * @property {{ src: string, alt: string } | null} firstImage The first Markdown image, or null.
- * @property {FoundLink[]} links Every Markdown link and image.
+ * @property {FoundLink[]} links Every Markdown link and image written in the text (links the renderer makes up, such as footnote back references, are left out).
+ * @property {string[]} ids Every `id` a link can point at: heading ids, ids of other elements and ids and names set by raw HTML, without duplicates.
  */
 
 /**
@@ -66,6 +68,7 @@ export const DEFAULT_CODE_THEMES = Object.freeze({
  * @property {string} text
  * @property {{ src: string, alt: string } | null} firstImage
  * @property {FoundLink[]} links
+ * @property {Set<string>} ids
  */
 
 /**
@@ -199,7 +202,7 @@ function rejectDirectives({ file, lineOffset }) {
 function collect({ lineOffset, onResult }) {
   return (tree) => {
     /** @type {Collected} */
-    const found = { headings: [], text: '', firstImage: null, links: [] };
+    const found = { headings: [], text: '', firstImage: null, links: [], ids: new Set() };
     /** @type {string[]} */
     const textParts = [];
 
@@ -208,11 +211,24 @@ function collect({ lineOffset, onResult }) {
         textParts.push(node.value);
         return;
       }
+      if (/** @type {string} */ (node.type) === 'raw') {
+        // Raw HTML is not parsed; the anchors it declares are found by their attributes.
+        const html = String(/** @type {{ value?: unknown }} */ (node).value ?? '');
+        for (const match of html.matchAll(/\s(?:id|name)\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s"'=<>`]+))/gi)) {
+          const id = match[1] ?? match[2] ?? match[3];
+          if (id) found.ids.add(id);
+        }
+        return;
+      }
       if (node.type !== 'element') return;
+      if (typeof node.properties.id === 'string' && node.properties.id !== '') {
+        found.ids.add(node.properties.id);
+      }
       if (node.tagName === 'pre' || node.tagName === 'script' || node.tagName === 'style') {
         return SKIP;
       }
       const line = (node.position?.start.line ?? 1) + lineOffset;
+      const column = node.position?.start.column ?? 1;
 
       if (node.tagName === 'h2' || node.tagName === 'h3') {
         const id = node.properties.id;
@@ -224,10 +240,10 @@ function collect({ lineOffset, onResult }) {
           });
         }
       } else if (node.tagName === 'a' && typeof node.properties.href === 'string') {
-        found.links.push({ url: node.properties.href, kind: 'link', line });
+        if (node.position) found.links.push({ url: node.properties.href, kind: 'link', line, column });
       } else if (node.tagName === 'img' && typeof node.properties.src === 'string') {
         const alt = typeof node.properties.alt === 'string' ? node.properties.alt : '';
-        found.links.push({ url: node.properties.src, kind: 'image', line });
+        if (node.position) found.links.push({ url: node.properties.src, kind: 'image', line, column });
         found.firstImage ??= { src: node.properties.src, alt };
       }
       // Words of adjacent blocks must not run together.
@@ -336,5 +352,6 @@ export async function renderMarkdown(source, options = {}) {
     readingMinutes: Math.max(1, Math.ceil(words / wordsPerMinute)),
     firstImage: collected.firstImage,
     links: collected.links,
+    ids: [...collected.ids],
   };
 }

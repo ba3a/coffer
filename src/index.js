@@ -107,3 +107,18 @@ export {
 } from './cards.js';
 export { FontError, readFontMetrics } from './font-metrics.js';
 export { renderRobots, renderSitemap } from './sitemap.js';
+export {
+  PROJECT_SCHEME,
+  applyLinkRewrites,
+  checkSourceLinks,
+  listProjectSlugs,
+} from './check/source-links.js';
+export {
+  REPORT_DIR_NAME,
+  REPORT_FILE_NAME,
+  REPORT_VERSION,
+  Report,
+  ReportError,
+  formatIssue,
+  writeReport,
+} from './report.js';

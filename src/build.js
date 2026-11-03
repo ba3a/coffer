@@ -29,6 +29,7 @@ import {
   seriesUrl,
   unusedSeriesWarnings,
 } from './content/series.js';
+import { applyLinkRewrites, checkSourceLinks, listProjectSlugs } from './check/source-links.js';
 import { buildMeta } from './meta.js';
 import { renderMarkdown } from './markdown/render.js';
 import {
@@ -39,6 +40,7 @@ import {
   renderRedirectsFile,
 } from './redirects.js';
 import { createTemplates } from './render/templates.js';
+import { REPORT_DIR_NAME, REPORT_FILE_NAME, Report, ReportError, writeReport } from './report.js';
 import { ROBOTS_FILE_NAME, SITEMAP_FILE_NAME, renderRobots, renderSitemap } from './sitemap.js';
 import { readVersion } from './version.js';
 
@@ -91,6 +93,7 @@ export class BuildError extends Error {
  * @property {string} [cwd] Directory that a relative `out` resolves against (default the working directory).
  * @property {string[]} [siteIds] Build only these sites (default all).
  * @property {string} [cacheDir] Directory for work that is worth keeping between builds, such as title cards (default `.cache` beside the configuration file; an absolute path, or relative to the working directory).
+ * @property {string} [reportDir] Directory that receives `report.json`, the errors, warnings and notes of the build (default `.coffer` beside the configuration file; an absolute path, or relative to the working directory). It is never inside the output.
  */
 
 /**
@@ -295,6 +298,29 @@ function postView(post, url, readingMinutes, unpublished, tagLinks = [], series 
  */
 
 /**
+ * A post as rendered from Markdown.
+ *
+ * @typedef {Awaited<ReturnType<typeof renderMarkdown>>} RenderedPost
+ */
+
+/**
+ * Whether a host that serves the output directory the way Cloudflare Pages
+ * does would answer a site path with a page or a file: `/a/b/` with
+ * `a/b/index.html`, and `/a/b` with `a/b`, `a/b.html` or `a/b/index.html`.
+ *
+ * @param {string} outDir
+ * @param {string} path Normalized site path starting with `/`.
+ * @returns {boolean}
+ */
+function outputServes(outDir, path) {
+  const base = join(outDir, ...path.split('/').filter(Boolean));
+  /** @param {string} file */
+  const isFile = (file) => existsSync(file) && statSync(file).isFile();
+  if (path.endsWith('/')) return isFile(join(base, 'index.html'));
+  return isFile(base) || isFile(`${base}.html`) || isFile(join(base, 'index.html'));
+}
+
+/**
  * @param {string} outDir
  * @param {string} file Path relative to `outDir`, with forward slashes.
  * @param {string} content
@@ -331,9 +357,10 @@ function copyAssets(site, outDir) {
  * @param {BuildOptions} options
  * @param {string} outRoot
  * @param {string} version
+ * @param {Report} report Receives the errors found in the sources.
  * @returns {Promise<SiteResult>}
  */
-async function buildSite(config, site, options, outRoot, version) {
+async function buildSite(config, site, options, outRoot, version, report) {
   const outDir = join(outRoot, site.id);
   const drafts = options.drafts === true;
 
@@ -457,9 +484,43 @@ async function buildSite(config, site, options, outRoot, version) {
    */
   let firstBlogPosts = [];
 
+  // Every post of every blog is read and rendered first, so that links between posts
+  // can be resolved before any page is written.
+  /** @type {Map<string, { selected: Post[], rendered: Map<Post, RenderedPost> }>} */
+  const prepared = new Map();
+  /** @type {import('./check/source-links.js').SourcePost[]} */
+  const sourcePosts = [];
   for (const blog of site.blogs) {
     const found = discoverPosts(blog.dir, { timezone: site.timezone });
     const selected = found.filter((post) => isPublished(post, { now, drafts }));
+    /** @type {Map<Post, RenderedPost>} */
+    const rendered = new Map();
+    for (const post of selected) {
+      rendered.set(post, await renderMarkdown(post.body, { file: post.file, startLine: post.bodyLine }));
+    }
+    prepared.set(blog.id, { selected, rendered });
+    for (const post of found) {
+      sourcePosts.push({ post, url: postUrl(blog, post.slug), rendered: rendered.get(post) ?? null });
+    }
+  }
+  const linkCheck = checkSourceLinks({
+    posts: sourcePosts,
+    rootDir: config.dir,
+    contentDir: site.contentDir,
+    projects: listProjectSlugs(site.projects?.dir),
+  });
+  for (const issue of linkCheck.issues) report.addError({ site: site.id, ...issue });
+  for (const [post, rewrites] of linkCheck.rewrites) {
+    for (const { rendered } of prepared.values()) {
+      const entry = rendered.get(post);
+      if (entry) rendered.set(post, { ...entry, html: applyLinkRewrites(entry.html, rewrites) });
+    }
+  }
+
+  for (const blog of site.blogs) {
+    const { selected, rendered: renderedPosts } = /** @type {{ selected: Post[], rendered: Map<Post, RenderedPost> }} */ (
+      prepared.get(blog.id)
+    );
 
     const blogBase = blogUrl(blog);
     const clash = selected.find((post) => post.slug === site.urls.tags);
@@ -551,10 +612,7 @@ async function buildSite(config, site, options, outRoot, version) {
     });
     const tagsIndexUrl = tagUrl(blogBase, site.urls.tags);
     for (const post of selected) {
-      const rendered = await renderMarkdown(post.body, {
-        file: post.file,
-        startLine: post.bodyLine,
-      });
+      const rendered = /** @type {RenderedPost} */ (renderedPosts.get(post));
       const url = postUrl(blog, post.slug);
       const unpublished = !isPublished(post, { now });
       entries.push({ post, url, readingMinutes: rendered.readingMinutes, unpublished });
@@ -941,6 +999,11 @@ async function buildSite(config, site, options, outRoot, version) {
   writeOutput(outDir, SITEMAP_FILE_NAME, renderSitemap(site.baseUrl, sitemapEntries));
   writeOutput(outDir, ROBOTS_FILE_NAME, renderRobots(site.baseUrl));
 
+  // Links that start with "/" can only be checked now that every page is written.
+  for (const issue of linkCheck.verifyOutput((path) => outputServes(outDir, path))) {
+    report.addError({ site: site.id, ...issue });
+  }
+
   pages.sort((a, b) => (a.url < b.url ? -1 : a.url > b.url ? 1 : 0));
   manifestPosts.sort((a, b) => (a.url < b.url ? -1 : a.url > b.url ? 1 : 0));
   manifestTags.sort((a, b) => (a.url < b.url ? -1 : a.url > b.url ? 1 : 0));
@@ -994,6 +1057,12 @@ async function buildSite(config, site, options, outRoot, version) {
  * - the assets of the default theme, then of the site's theme, in `assets/`;
  * - the build manifest `.coffer-manifest.json`.
  *
+ * Before any page is written, every Markdown link and image of every post is resolved (see
+ * `docs/links.md`): a broken link, a missing image or an unknown `project:` reference is an
+ * error, and relative links to other posts become their canonical URLs. All errors are collected
+ * and thrown together as a `ReportError`. The errors, warnings and notes of the build are also
+ * written to `report.json` in `reportDir`, outside the output.
+ *
  * Drafts and posts dated after `now` are left out unless `drafts` is set.
  *
  * @param {CofferConfig} config
@@ -1005,6 +1074,7 @@ async function buildSite(config, site, options, outRoot, version) {
  * @throws {import('./content/tags.js').TagsError} When a blog's `tags.yaml` is invalid.
  * @throws {import('./content/series.js').SeriesError} When a blog's `series.yaml` is invalid.
  * @throws {import('./markdown/render.js').MarkdownError} When a post's Markdown is invalid.
+ * @throws {import('./report.js').ReportError} When the sources have broken links, missing images or unknown project references; it lists them all.
  */
 export async function buildSites(config, options = {}) {
   const cwd = resolve(options.cwd ?? process.cwd());
@@ -1026,10 +1096,35 @@ export async function buildSites(config, options = {}) {
 
   const version = readVersion();
 
+  const report = new Report();
+  const reportFile = join(resolve(options.reportDir ?? join(config.dir, REPORT_DIR_NAME)), REPORT_FILE_NAME);
+
   /** @type {SiteResult[]} */
   const results = [];
-  for (const site of sites) {
-    results.push(await buildSite(config, site, options, outRoot, version));
+  /** @type {unknown} */
+  let failure;
+  try {
+    for (const site of sites) {
+      const result = await buildSite(config, site, options, outRoot, version, report);
+      for (const message of result.warnings) report.addWarning({ site: result.id, message });
+      report.addInfo({
+        site: result.id,
+        message: `${result.manifest.posts.length} post(s), ${result.manifest.pages.length} page(s) built`,
+      });
+      results.push(result);
+    }
+    report.throwIfFailed();
+  } catch (error) {
+    failure = error;
+    if (!(error instanceof ReportError)) {
+      const lines =
+        error instanceof Error && 'errors' in error && Array.isArray(error.errors)
+          ? error.errors.map(String)
+          : [error instanceof Error ? error.message : String(error)];
+      for (const message of lines) report.addError(message);
+    }
   }
+  writeReport(report, reportFile);
+  if (failure !== undefined) throw failure;
   return results;
 }

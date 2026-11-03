@@ -226,6 +226,7 @@ test('feed content has absolute links, images and srcset URLs', async () => {
         '',
       ].join('\n'),
     );
+    addPost(root, 'links/bench.jpg', 'not really a picture');
     const result = await build(root);
     const xml = feedText(result, '/journal/feed.xml');
     const entry = entriesOf(xml).find((candidate) => candidate.title === 'Links and pictures');
