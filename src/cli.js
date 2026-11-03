@@ -1,8 +1,12 @@
 import { readFileSync } from 'node:fs';
 
+import { ConfigError, loadConfig } from './config.js';
+
 export const USAGE = `Usage: coffer <command> [options]
 
 Commands:
+  config          Check coffer.yaml and list the configured sites
+                  (--config <path> selects another file)
   help            Show this help text
   --version, -v   Print the coffer version
 
@@ -33,8 +37,54 @@ export function readVersion() {
   return String(parsed.version);
 }
 
+/**
+ * Extracts the value of `--config <path>` or `--config=<path>`.
+ *
+ * @param {string[]} args
+ * @returns {{ configPath?: string } | { error: string }}
+ */
+export function parseConfigArgs(args) {
+  /** @type {string | undefined} */
+  let configPath;
+  for (let i = 0; i < args.length; i += 1) {
+    const arg = args[i];
+    if (arg === '--config') {
+      const value = args[i + 1];
+      if (value === undefined || value === '') {
+        return { error: '--config needs a path' };
+      }
+      configPath = value;
+      i += 1;
+    } else if (arg.startsWith('--config=') && arg.length > '--config='.length) {
+      configPath = arg.slice('--config='.length);
+    } else {
+      return { error: `unexpected argument "${arg}"` };
+    }
+  }
+  return configPath === undefined ? {} : { configPath };
+}
+
 /** @type {Record<string, Command>} */
 const commands = {
+  config: (args, io) => {
+    const parsed = parseConfigArgs(args);
+    if ('error' in parsed) {
+      io.err(`coffer: ${parsed.error}\n`);
+      return 1;
+    }
+    try {
+      const config = loadConfig(parsed);
+      const names = config.sites.map((site) => site.id).join(', ');
+      io.out(`${config.sites.length} site(s) configured: ${names}\n`);
+      return 0;
+    } catch (error) {
+      if (error instanceof ConfigError) {
+        io.err(`${error.errors.join('\n')}\n`);
+        return 1;
+      }
+      throw error;
+    }
+  },
   help: (_args, io) => {
     io.out(USAGE);
     return 0;
