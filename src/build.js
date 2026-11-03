@@ -4,6 +4,14 @@ import { fileURLToPath } from 'node:url';
 
 import { DEFAULT_LATEST_POSTS, loadHome } from './content/home.js';
 import { discoverPosts, isPublished, resolveNow } from './content/posts.js';
+import {
+  buildTagTree,
+  loadTagMeta,
+  tagName,
+  tagPaths,
+  tagUrl,
+  unusedTagWarnings,
+} from './content/tags.js';
 import { renderMarkdown } from './markdown/render.js';
 import {
   REDIRECTS_FILE_NAME,
@@ -71,7 +79,7 @@ export class BuildError extends Error {
  * @typedef {object} ManifestPage
  * @property {string} url Site-relative URL, ending in a slash.
  * @property {string} file Path of the HTML file, relative to the site's output directory.
- * @property {'home' | 'not-found' | 'blog-index' | 'post'} type
+ * @property {'home' | 'not-found' | 'blog-index' | 'post' | 'tag-index' | 'tag'} type
  * @property {string} title
  */
 
@@ -93,6 +101,19 @@ export class BuildError extends Error {
  */
 
 /**
+ * One tag page listed in the manifest.
+ *
+ * @typedef {object} ManifestTag
+ * @property {string} blog Id of the blog.
+ * @property {string} path Tag path such as `workshop/boxes`.
+ * @property {string} url Site-relative URL of the tag page, ending in a slash.
+ * @property {string} file Path of the HTML file, relative to the site's output directory.
+ * @property {string} name Name shown for the tag.
+ * @property {number} count Number of distinct posts in the tag's subtree.
+ * @property {string[]} posts Site-relative URLs of those posts, newest first.
+ */
+
+/**
  * The build manifest of one site. `feeds` and `images` are filled by later
  * features; checks read this file instead of guessing what the build wrote.
  *
@@ -104,6 +125,7 @@ export class BuildError extends Error {
  * @property {boolean} drafts True for a preview build.
  * @property {ManifestPage[]} pages
  * @property {ManifestPost[]} posts
+ * @property {ManifestTag[]} tags Every tag page, with the posts it lists.
  * @property {ManifestRedirect[]} redirects Permanent redirects from old post addresses.
  * @property {unknown[]} feeds
  * @property {unknown[]} images
@@ -179,14 +201,16 @@ function fileForUrl(url) {
  * @param {string} url
  * @param {number} readingMinutes
  * @param {boolean} unpublished True when the post is only built because of preview mode.
+ * @param {{ path: string, name: string, url: string }[]} [tagLinks] The post's tags with their names and page addresses.
  */
-function postView(post, url, readingMinutes, unpublished) {
+function postView(post, url, readingMinutes, unpublished, tagLinks = []) {
   return {
     slug: post.slug,
     url,
     title: post.title,
     date: post.date,
     tags: post.tags,
+    tagLinks,
     summary: post.summary,
     draft: post.draft,
     unpublished,
@@ -272,6 +296,8 @@ async function buildSite(config, site, options, outRoot, version) {
   const pages = [];
   /** @type {ManifestPost[]} */
   const manifestPosts = [];
+  /** @type {ManifestTag[]} */
+  const manifestTags = [];
   /** @type {{ url: string, aliasUrls: string[], source: string }[]} */
   const aliasing = [];
   /**
@@ -283,6 +309,29 @@ async function buildSite(config, site, options, outRoot, version) {
   for (const blog of site.blogs) {
     const found = discoverPosts(blog.dir, { timezone: site.timezone });
     const selected = found.filter((post) => isPublished(post, { now, drafts }));
+
+    const blogBase = blogUrl(blog);
+    const clash = selected.find((post) => post.slug === site.urls.tags);
+    if (clash) {
+      throw new BuildError(
+        `${clash.file}: slug: "${clash.slug}" is the address of the tag pages of the blog "${blog.id}" (${tagUrl(blogBase, site.urls.tags)}); rename the post or change "urls.tags"`,
+      );
+    }
+    const tagMeta = loadTagMeta(blog.dir);
+    const tagTree = buildTagTree(selected);
+    if (tagMeta.file !== null) {
+      const shown = posix(relative(config.dir, tagMeta.file));
+      for (const warning of [
+        ...tagMeta.warnings,
+        ...unusedTagWarnings(tagMeta.file, tagMeta.meta, tagTree),
+      ]) {
+        warnings.push(warning.replace(tagMeta.file, shown));
+      }
+    }
+    /** @param {string} path */
+    const nameOf = (path) => tagName(path, tagMeta.meta);
+    /** @param {string} path */
+    const urlOf = (path) => tagUrl(blogBase, site.urls.tags, path);
 
     /** @type {{ post: Post, url: string, readingMinutes: number, unpublished: boolean }[]} */
     const entries = [];
@@ -302,7 +351,13 @@ async function buildSite(config, site, options, outRoot, version) {
         });
       }
 
-      const view = postView(post, url, rendered.readingMinutes, unpublished);
+      const view = postView(
+        post,
+        url,
+        rendered.readingMinutes,
+        unpublished,
+        post.tags.map((path) => ({ path, name: nameOf(path), url: urlOf(path) })),
+      );
       const html = templates.render('post.njk', {
         site,
         nav,
@@ -338,17 +393,89 @@ async function buildSite(config, site, options, outRoot, version) {
     );
     if (blog === site.blogs[0]) firstBlogPosts = views;
 
-    const indexUrl = blogUrl(blog);
+    const indexUrl = blogBase;
     const indexHtml = templates.render('blog-index.njk', {
       site,
       nav,
       blog,
       posts: views,
+      tagsUrl: tagUrl(blogBase, site.urls.tags),
       page: { title: blog.title, description: site.description, content: '' },
     });
     const indexFile = fileForUrl(indexUrl);
     writeOutput(outDir, indexFile, indexHtml);
     pages.push({ url: indexUrl, file: indexFile, type: 'blog-index', title: blog.title });
+
+    // The posts of a tag page are the same objects as on the blog index, found
+    // by their address.
+    const viewByUrl = new Map(views.map((view) => [view.url, view]));
+    const tagsIndexUrl = tagUrl(blogBase, site.urls.tags);
+    const tagsTitle = templates.translator.t('tags.title');
+
+    /**
+     * @typedef {object} TagView
+     * @property {string} path
+     * @property {string} name
+     * @property {string} description
+     * @property {string} url
+     * @property {number} count
+     * @property {TagView[]} children
+     */
+
+    /**
+     * @param {import('./content/tags.js').TagNode} node
+     * @returns {TagView}
+     */
+    const treeView = (node) => ({
+      path: node.path,
+      name: nameOf(node.path),
+      description: tagMeta.meta.get(node.path)?.description ?? '',
+      url: urlOf(node.path),
+      count: node.count,
+      children: node.children.map(treeView),
+    });
+
+    const tagsIndexHtml = templates.render('tag-index.njk', {
+      site,
+      nav,
+      blog,
+      tagsUrl: tagsIndexUrl,
+      tree: tagTree.roots.map(treeView),
+      page: { title: tagsTitle, description: '', content: '' },
+    });
+    const tagsIndexFile = fileForUrl(tagsIndexUrl);
+    writeOutput(outDir, tagsIndexFile, tagsIndexHtml);
+    pages.push({ url: tagsIndexUrl, file: tagsIndexFile, type: 'tag-index', title: tagsTitle });
+
+    for (const node of tagTree.all) {
+      const view = treeView(node);
+      const tagPostUrls = node.posts.map((post) => postUrl(blog, post.slug));
+      const html = templates.render('tag.njk', {
+        site,
+        nav,
+        blog,
+        tagsUrl: tagsIndexUrl,
+        tag: view,
+        ancestors: tagPaths(node.path)
+          .slice(0, -1)
+          .map((path) => ({ path, name: nameOf(path), url: urlOf(path) })),
+        children: view.children,
+        posts: tagPostUrls.flatMap((address) => viewByUrl.get(address) ?? []),
+        page: { title: view.name, description: view.description, content: '' },
+      });
+      const file = fileForUrl(view.url);
+      writeOutput(outDir, file, html);
+      pages.push({ url: view.url, file, type: 'tag', title: view.name });
+      manifestTags.push({
+        blog: blog.id,
+        path: node.path,
+        url: view.url,
+        file,
+        name: view.name,
+        count: node.count,
+        posts: tagPostUrls,
+      });
+    }
   }
 
   // The home page lives at "/". A blog at the site root has that address.
@@ -420,6 +547,7 @@ async function buildSite(config, site, options, outRoot, version) {
 
   pages.sort((a, b) => (a.url < b.url ? -1 : a.url > b.url ? 1 : 0));
   manifestPosts.sort((a, b) => (a.url < b.url ? -1 : a.url > b.url ? 1 : 0));
+  manifestTags.sort((a, b) => (a.url < b.url ? -1 : a.url > b.url ? 1 : 0));
 
   /** @type {Manifest} */
   const manifest = {
@@ -430,6 +558,7 @@ async function buildSite(config, site, options, outRoot, version) {
     drafts,
     pages,
     posts: manifestPosts,
+    tags: manifestTags,
     redirects: redirects.map(({ from, to, status }) => ({ from, to, status })),
     feeds: [],
     images: [],
@@ -448,6 +577,9 @@ async function buildSite(config, site, options, outRoot, version) {
  * - the home page at `index.html`, from `{contentDir}/home.md` (not written
  *   when a blog has an empty prefix: its index is the front page);
  * - `404.html`, the page hosts show for an unknown address;
+ * - for every blog, the tag tree at `{blogPrefix}/{tags}/index.html` and a page
+ *   per tag at `{blogPrefix}/{tags}/{path}/index.html`, listing the posts with
+ *   the tag or any tag below it, newest first;
  * - for every `aliases` entry of a published post, a redirect page at the old
  *   address and a rule in `_redirects`;
  * - the assets of the default theme, then of the site's theme, in `assets/`;
@@ -458,9 +590,10 @@ async function buildSite(config, site, options, outRoot, version) {
  * @param {CofferConfig} config
  * @param {BuildOptions} [options]
  * @returns {Promise<SiteResult[]>}
- * @throws {BuildError} For an unknown site id, an invalid `--now` or an alias that collides with a live address.
+ * @throws {BuildError} For an unknown site id, an invalid `--now`, an alias that collides with a live address or a post whose slug is the address of the tag pages.
  * @throws {import('./content/posts.js').PostError} When posts are invalid.
  * @throws {import('./content/home.js').HomeError} When the home page file is invalid.
+ * @throws {import('./content/tags.js').TagsError} When a blog's `tags.yaml` is invalid.
  * @throws {import('./markdown/render.js').MarkdownError} When a post's Markdown is invalid.
  */
 export async function buildSites(config, options = {}) {

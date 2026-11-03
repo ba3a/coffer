@@ -26,6 +26,18 @@ post:
   unpublished: "Предпросмотр: эта запись ещё не опубликована."
 blog:
   empty: Записей пока нет.
+tags:
+  title: Теги
+  breadcrumbs: Путь тега
+  subtags: Вложенные теги
+  posts: Записи
+  post_tags: Теги
+  empty: Тегов пока нет.
+  post_count:
+    one: "{count} запись"
+    few: "{count} записи"
+    many: "{count} записей"
+    other: "{count} записи"
 home:
   links: Где меня найти
   latest: Свежие записи

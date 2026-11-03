@@ -1,0 +1,26 @@
+{% extends "base.njk" %}
+
+{% block main %}
+<h1>{{ page.title }}</h1>
+{% block tree %}
+{% macro branch(nodes) %}
+<ul>
+{% for node in nodes %}
+<li>
+<a href="{{ node.url | url }}">{{ node.name }}</a> <span class="tag-count">({{ node.count }})</span>
+{% if node.description %}<span class="tag-description"> &ndash; {{ node.description }}</span>
+{% endif %}
+{% if node.children.length %}{{ branch(node.children) }}{% endif %}
+</li>
+{% endfor %}
+</ul>
+{% endmacro %}
+{% if tree.length %}
+<div class="tag-tree">
+{{ branch(tree) }}
+</div>
+{% else %}
+<p class="empty">{{ 'tags.empty' | t }}</p>
+{% endif %}
+{% endblock %}
+{% endblock %}

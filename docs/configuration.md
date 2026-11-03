@@ -98,7 +98,7 @@ Prefixes of generated sections. All four are optional.
 | ---------- | --------- | ---------------------------------------------------------------- |
 | `projects` | `made`    | Prefix of the projects index and the project pages.              |
 | `docs`     | `docs`    | Segment under a project page that holds the project's docs.      |
-| `tags`     | `tags`    | Segment under a blog that holds the tag pages.                   |
+| `tags`     | `tags`    | Segment under a blog that holds the tag pages (see [Tags](tags.md)). |
 | `series`   | `series`  | Segment under a blog that holds the series pages.                |
 
 Values are single or nested path segments without a slash at either end. `tags` and `series` must differ, and `projects` must not equal the prefix of a blog.

@@ -5,6 +5,7 @@ import { BuildError, buildSites, DEFAULT_OUT_DIR } from './build.js';
 import { ConfigError, loadConfig } from './config.js';
 import { HomeError } from './content/home.js';
 import { PostError } from './content/posts.js';
+import { TagsError } from './content/tags.js';
 import { MarkdownError } from './markdown/render.js';
 import { I18nError } from './render/i18n.js';
 import { DEFAULT_PORT, startServer } from './serve.js';
@@ -193,6 +194,7 @@ const commands = {
       if (
         error instanceof ConfigError ||
         error instanceof PostError ||
+        error instanceof TagsError ||
         error instanceof HomeError
       ) {
         io.err(`${error.errors.join('\n')}\n`);

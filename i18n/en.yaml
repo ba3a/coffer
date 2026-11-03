@@ -25,6 +25,16 @@ post:
   unpublished: "Preview: this post is not published yet."
 blog:
   empty: No posts yet.
+tags:
+  title: Tags
+  breadcrumbs: Tag path
+  subtags: Subtags
+  posts: Posts
+  post_tags: Tags
+  empty: No tags yet.
+  post_count:
+    one: "{count} post"
+    other: "{count} posts"
 home:
   links: Find me elsewhere
   latest: Latest posts

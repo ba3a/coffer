@@ -11,6 +11,15 @@
 <span class="reading-time">{{ 'post.reading_time' | t({ count: post.readingMinutes }) }}</span>
 </p>
 {% endblock %}
+{% block tags %}
+{% if post.tagLinks.length %}
+<ul class="post-tags" aria-label="{{ 'tags.post_tags' | t }}">
+{% for tag in post.tagLinks %}
+<li><a href="{{ tag.url | url }}">{{ tag.name }}</a></li>
+{% endfor %}
+</ul>
+{% endif %}
+{% endblock %}
 {% if post.unpublished %}<p class="preview-note">{{ 'post.unpublished' | t }}</p>
 {% endif %}
 </header>

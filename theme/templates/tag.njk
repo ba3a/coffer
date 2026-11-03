@@ -1,0 +1,30 @@
+{% extends "blog-index.njk" %}
+
+{% block heading %}
+{% block breadcrumbs %}
+<nav class="breadcrumbs" aria-label="{{ 'tags.breadcrumbs' | t }}">
+<ol>
+<li><a href="{{ tagsUrl | url }}">{{ 'tags.title' | t }}</a></li>
+{% for crumb in ancestors %}
+<li><a href="{{ crumb.url | url }}">{{ crumb.name }}</a></li>
+{% endfor %}
+<li aria-current="page">{{ tag.name }}</li>
+</ol>
+</nav>
+{% endblock %}
+<h1>{{ page.title }}</h1>
+{% if tag.description %}<p class="tag-description">{{ tag.description }}</p>
+{% endif %}
+{% block children %}
+{% if children.length %}
+<section class="tag-children">
+<h2>{{ 'tags.subtags' | t }}</h2>
+<ul>
+{% for child in children %}
+<li><a href="{{ child.url | url }}">{{ child.name }}</a> <span class="tag-count">({{ child.count }})</span></li>
+{% endfor %}
+</ul>
+</section>
+{% endif %}
+{% endblock %}
+{% endblock %}

@@ -191,16 +191,18 @@ function splitFrontMatter(text) {
 }
 
 /**
- * Normalizes a tag to a lowercase slash path.
+ * Normalizes a tag to a lowercase slash path. Every segment becomes part of a
+ * URL and of a file name, so it must be made of letters, digits, ".", "_" and
+ * "-" and start with a letter or a digit (which also rules out "." and "..").
  *
  * @param {string} tag
- * @returns {string | undefined} The normalized tag, or undefined when a segment is empty.
+ * @returns {string | undefined} The normalized tag, or undefined when a segment is empty or unusable.
  */
-function normalizeTag(tag) {
+export function normalizeTag(tag) {
   const segments = tag.split('/').map((segment) => segment.trim().toLowerCase());
-  return segments.some((segment) => segment === '')
-    ? undefined
-    : segments.join('/');
+  return segments.every((segment) => SLUG_RE.test(segment))
+    ? segments.join('/')
+    : undefined;
 }
 
 /**
@@ -349,7 +351,7 @@ function parseInto(file, text, slug, kind, dir, options, errors) {
       if (normalized === undefined) {
         fail(
           `tags[${index}]`,
-          `"${tag}" must be a slash separated path without empty segments`,
+          `"${tag}" must be a slash separated path whose segments are made of letters, digits, ".", "_" and "-"`,
         );
       } else if (!tags.includes(normalized)) {
         tags.push(normalized);

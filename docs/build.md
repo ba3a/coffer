@@ -24,6 +24,8 @@ For a site `workshop` with a blog whose `prefix` is `journal`:
   index.html                          the home page
   404.html                            the page for unknown addresses
   journal/index.html                  the blog index
+  journal/tags/index.html             the tag tree of the blog
+  journal/tags/{tag path}/index.html  one page per tag
   journal/{slug}/index.html           one page per published post
   journal/{alias}/index.html          a redirect page for each old slug (see below)
   _redirects                          redirect rules for hosts that read them
@@ -34,6 +36,7 @@ For a site `workshop` with a blog whose `prefix` is `journal`:
 - **Post URLs** are `/{prefix}/{slug}/` and nothing else. The slug is the folder or file name of the post, so neither the date nor the tags ever change the address. A blog with an empty `prefix` writes its posts and its index at the root of the site.
 - **The home page and the 404 page** are described in [The home page, the 404 page and the footer](home.md).
 - **Old slugs** declared as `aliases` in a post's front matter get a `301` rule in `_redirects` and a fallback page; an alias that collides with a live address fails the build. See [URLs, redirects and hosting](urls.md), which also covers `coffer serve`.
+- **Tags**: the tree of the blog's tags and one page per tag, listing the posts with the tag or any tag below it. See [Tags](tags.md).
 - **The blog index** lists the published posts, newest first, with the date, the summary and the reading time of each.
 - **A post page** shows the title, the date, the reading time, the table of contents and the body. The table of contents is built from the `h2` and `h3` headings of posts with enough of them (see [Markdown](markdown.md)). It comes before the body in the page. On a narrow screen it is a collapsible block; on a wide screen the stylesheet puts it beside the body.
 - **Assets** are the files of the default theme's `assets/` folder, followed by the `assets/` folder of the site's theme, which wins on equal names. The default stylesheet is `assets/coffer.css`.
@@ -59,6 +62,7 @@ Each site's output contains `.coffer-manifest.json`, which records what the buil
 | `now`, `drafts`    | The moment used to decide which posts are published, and whether this was a preview build.                     |
 | `pages`            | Every HTML page written: `url`, `file` (relative to the site directory), `type` and `title`.                   |
 | `posts`            | Every post built: blog id, slug, `url`, `file`, `source` (relative to the configuration file), title, date, tags, `draft`, `published` and reading time. |
+| `tags`             | Every tag page: blog id, tag `path`, `url`, `file`, shown `name`, post `count` and the `posts` (URLs, newest first) it lists. |
 | `redirects`        | Every alias redirect: `from`, `to` (site-relative URLs) and `status`.                                          |
 | `feeds`, `images`  | Empty lists for now; features that write feeds or images record them here.                                     |
 
@@ -66,7 +70,7 @@ The manifest is for checks and not for visitors. It is excluded from deployment 
 
 ## The example site
 
-`example/` in the coffer repository is a complete small site with made-up content: one site with a home page and links, a blog with the prefix `journal`, a published post, a draft and a post dated far in the future. It is what coffer's own tests build.
+`example/` in the coffer repository is a complete small site with made-up content: one site with a home page and links, a blog with the prefix `journal`, three published posts with hierarchical tags (`workshop/boxes/dovetails`, `trips/mountains`) and a `tags.yaml`, a draft and a post dated far in the future. It is what coffer's own tests build.
 
 ```
 npm run example

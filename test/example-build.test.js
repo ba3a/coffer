@@ -58,7 +58,7 @@ test('the draft and the future-dated post are absent from a normal build', async
     assert.equal(existsSync(join(site, 'journal', 'spring-open-house')), false);
     assert.deepEqual(
       manifest.posts.map((post) => post.slug),
-      ['first-dovetail'],
+      ['first-dovetail', 'mountain-weekend', 'walnut-box'],
     );
     const index = page(site, '/journal/');
     assert.doesNotMatch(index, /planer-notes|Spring open house/);
@@ -111,7 +111,20 @@ test('the manifest is written and lists the pages and the posts', async () => {
     assert.deepEqual(onDisk, manifest);
     assert.deepEqual(
       manifest.pages.map((entry) => entry.url),
-      ['/', '/404.html', '/journal/', '/journal/first-dovetail/'],
+      [
+        '/',
+        '/404.html',
+        '/journal/',
+        '/journal/first-dovetail/',
+        '/journal/mountain-weekend/',
+        '/journal/tags/',
+        '/journal/tags/trips/',
+        '/journal/tags/trips/mountains/',
+        '/journal/tags/workshop/',
+        '/journal/tags/workshop/boxes/',
+        '/journal/tags/workshop/boxes/dovetails/',
+        '/journal/walnut-box/',
+      ],
     );
     assert.deepEqual(manifest.feeds, []);
     assert.deepEqual(manifest.images, []);
@@ -143,7 +156,7 @@ test('coffer build with --out, --now and --drafts builds the example from the co
       { encoding: 'utf8', cwd: tmpdir() },
     );
     assert.equal(result.status, 0, result.stderr);
-    assert.match(result.stdout, /workshop: 1 post\(s\), 4 page\(s\)/);
+    assert.match(result.stdout, /workshop: 3 post\(s\), 12 page\(s\)/);
     assert.equal(existsSync(join(out, 'workshop', 'journal', 'spring-open-house')), false);
 
     const preview = spawnSync(
@@ -152,7 +165,7 @@ test('coffer build with --out, --now and --drafts builds the example from the co
       { encoding: 'utf8', cwd: tmpdir() },
     );
     assert.equal(preview.status, 0, preview.stderr);
-    assert.match(preview.stdout, /workshop: 3 post\(s\), 6 page\(s\)/);
+    assert.match(preview.stdout, /workshop: 5 post\(s\), 16 page\(s\)/);
     assert.ok(existsSync(join(out, 'workshop', 'journal', 'spring-open-house', 'index.html')));
   } finally {
     rmSync(out, { recursive: true, force: true });

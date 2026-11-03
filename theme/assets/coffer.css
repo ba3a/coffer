@@ -599,3 +599,46 @@ main > article > .post-layout {
     break-after: avoid;
   }
 }
+
+.tags-link,
+.breadcrumbs,
+.post-tags,
+.tag-count,
+.tag-description {
+  color: var(--coffer-muted);
+  font-size: 0.9375rem;
+}
+
+.tags-link {
+  margin: 0 0 1rem;
+}
+
+.breadcrumbs ol,
+.post-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem 0.75rem;
+  margin: 0 0 0.75rem;
+  padding: 0;
+  list-style: none;
+}
+
+.breadcrumbs li + li::before {
+  content: "/";
+  margin-right: 0.75rem;
+}
+
+.tag-tree ul {
+  margin: 0.25rem 0;
+  padding-left: 1.25rem;
+}
+
+.tag-tree > ul {
+  padding-left: 0;
+  list-style: none;
+}
+
+.tag-children ul {
+  margin: 0;
+  padding-left: 1.25rem;
+}

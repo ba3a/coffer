@@ -56,7 +56,9 @@ Keys that coffer does not know are kept in the post's `frontMatter` and otherwis
 
 ### Tags
 
-Each tag is split at `/` into segments; every segment is trimmed and lowercased, and none may be empty. `Hiking/Alps`, ` hiking / alps ` and `hiking/alps` are the same tag. A tag with an empty segment (`""`, `a//b`, `/a`, `a/`) is an error.
+Each tag is split at `/` into segments; every segment is trimmed and lowercased, and none may be empty. `Hiking/Alps`, ` hiking / alps ` and `hiking/alps` are the same tag. A segment becomes part of a URL, so it is made of letters, digits, `.`, `_` and `-` and starts with a letter or a digit. A tag with an empty or unusable segment (`""`, `a//b`, `/a`, `a/`, `a b`, `a/../b`) is an error.
+
+Tags form a tree with a page per tag; see [Tags](tags.md).
 
 ### Dates
 
@@ -72,7 +74,7 @@ Problems are collected over the whole blog and reported together. Each line star
 ```
 /site/blog/first-walk/index.md: title: is required
 /site/blog/quick-note.md: date: must be a date (YYYY-MM-DD) or a date and time (YYYY-MM-DDTHH:MM)
-/site/blog/old.md: tags[1]: "a//b" must be a slash separated path without empty segments
+/site/blog/old.md: tags[1]: "a//b" must be a slash separated path whose segments are made of letters, digits, ".", "_" and "-"
 ```
 
 Missing or unclosed front matter, YAML syntax errors (with the line), wrong types, unusable slugs and duplicate slugs are all reported this way.

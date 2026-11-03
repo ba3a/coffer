@@ -1,0 +1,11 @@
+# Names and descriptions for some tags of this blog. A tag without an entry
+# is shown by the last segment of its path.
+workshop:
+  name: Workshop
+  description: Things made at the bench, and the tools and joints behind them.
+workshop/boxes:
+  name: Boxes
+  description: Small boxes and drawers, and the joints that hold them.
+trips/mountains:
+  name: Mountains
+  description: Walking days in the hills.

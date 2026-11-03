@@ -1,7 +1,11 @@
 {% extends "base.njk" %}
 
 {% block main %}
+{% block heading %}
 <h1>{{ page.title }}</h1>
+{% if tagsUrl %}<p class="tags-link"><a href="{{ tagsUrl | url }}">{{ 'tags.title' | t }}</a></p>
+{% endif %}
+{% endblock %}
 {% if posts.length %}
 <ol class="post-list">
 {% for post in posts %}

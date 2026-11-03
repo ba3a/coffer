@@ -34,6 +34,18 @@ export {
   resolveNow,
 } from './content/posts.js';
 export {
+  TAGS_FILE_NAME,
+  TAG_META_KEYS,
+  TagsError,
+  buildTagTree,
+  loadTagMeta,
+  parseTagMeta,
+  tagName,
+  tagPaths,
+  tagUrl,
+  unusedTagWarnings,
+} from './content/tags.js';
+export {
   DEFAULT_CODE_THEMES,
   DEFAULT_TOC_MIN_HEADINGS,
   DEFAULT_WORDS_PER_MINUTE,

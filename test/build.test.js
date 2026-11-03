@@ -86,7 +86,7 @@ test('the blog index lists published posts newest first with date, summary and r
       assert.match(html, /<link rel="stylesheet" href="\/assets\/coffer\.css">/);
       assert.deepEqual(
         result.manifest.pages.map((entry) => entry.url),
-        ['/', '/404.html', '/log/', '/log/middle/', '/log/new/', '/log/old/'],
+        ['/', '/404.html', '/log/', '/log/middle/', '/log/new/', '/log/old/', '/log/tags/'],
       );
     },
   );
@@ -457,4 +457,275 @@ test('coffer build reports an invalid home.md with its file and field and exits 
       assert.match(result.err, /home\.md: latestPosts: must be a whole number/);
     },
   );
+});
+
+/** Posts of a small tag tree: `one` is tagged a/b, `two` a/c, `three` both a/b/x and a/c. */
+const tagFiles = {
+  'coffer.yaml': configYaml(),
+  'notes/one.md': post('One', '2026-01-01', 'tags: [a/b]\n'),
+  'notes/two.md': post('Two', '2026-02-01', 'tags: [a/c]\n'),
+  'notes/three.md': post('Three', '2026-03-01', 'tags: [a/b/x, a/c]\n'),
+  'notes/lonely.md': post('Lonely', '2026-04-01', 'tags: [solo]\n'),
+};
+
+/**
+ * @param {string} outDir
+ * @param {string} url
+ * @returns {string}
+ */
+function pageAt(outDir, url) {
+  return readFileSync(join(outDir, ...url.split('/').filter(Boolean), 'index.html'), 'utf8');
+}
+
+/**
+ * The titles of the posts listed on a page, in order.
+ *
+ * @param {string} html
+ * @returns {string[]}
+ */
+function listed(html) {
+  return [...html.matchAll(/<h2><a href="[^"]+">([^<]+)<\/a><\/h2>/g)].map((m) => m[1]);
+}
+
+/**
+ * @param {string} root
+ * @param {Partial<import('../src/build.js').BuildOptions>} [options]
+ */
+async function buildTagged(root, options = {}) {
+  const [result] = await buildSites(loadConfig({ configPath: join(root, 'coffer.yaml') }), {
+    out: join(root, 'out'),
+    now: NOW,
+    ...options,
+  });
+  return result;
+}
+
+test('a tag page lists posts with the tag or any tag below it, newest first', async () => {
+  await inTree(tagFiles, async (root) => {
+    const result = await buildTagged(root);
+    assert.deepEqual(listed(pageAt(result.outDir, '/log/tags/a/')), ['Three', 'Two', 'One']);
+    assert.deepEqual(listed(pageAt(result.outDir, '/log/tags/a/b/')), ['Three', 'One']);
+    assert.deepEqual(listed(pageAt(result.outDir, '/log/tags/a/b/x/')), ['Three']);
+    // A post tagged a/b does not appear on a/c.
+    const c = pageAt(result.outDir, '/log/tags/a/c/');
+    assert.deepEqual(listed(c), ['Three', 'Two']);
+    assert.doesNotMatch(c, />One</);
+    assert.deepEqual(listed(pageAt(result.outDir, '/log/tags/solo/')), ['Lonely']);
+
+    const types = Object.fromEntries(result.manifest.pages.map((entry) => [entry.url, entry.type]));
+    assert.equal(types['/log/tags/'], 'tag-index');
+    assert.equal(types['/log/tags/a/b/x/'], 'tag');
+  });
+});
+
+test('a post tagged workshop/boxes appears on the workshop tag page', async () => {
+  await inTree(
+    { 'coffer.yaml': configYaml(), 'notes/box.md': post('A box', '2026-01-01', 'tags: [workshop/boxes]\n') },
+    async (root) => {
+      const result = await buildTagged(root);
+      assert.deepEqual(listed(pageAt(result.outDir, '/log/tags/workshop/')), ['A box']);
+      assert.deepEqual(listed(pageAt(result.outDir, '/log/tags/workshop/boxes/')), ['A box']);
+    },
+  );
+});
+
+test('a tag page links its child tags and breadcrumbs to its ancestors', async () => {
+  await inTree(tagFiles, async (root) => {
+    const result = await buildTagged(root);
+    const b = pageAt(result.outDir, '/log/tags/a/b/');
+    assert.match(b, /<h1>b<\/h1>/);
+    assert.match(
+      b,
+      /<nav class="breadcrumbs"[^>]*>[\s\S]*<a href="\/log\/tags\/">Tags<\/a>[\s\S]*<a href="\/log\/tags\/a\/">a<\/a>[\s\S]*<li aria-current="page">b<\/li>/,
+    );
+    assert.match(b, /<a href="\/log\/tags\/a\/b\/x\/">x<\/a> <span class="tag-count">\(1\)<\/span>/);
+
+    const top = pageAt(result.outDir, '/log/tags/a/');
+    assert.match(top, /<a href="\/log\/tags\/a\/b\/">b<\/a> <span class="tag-count">\(2\)<\/span>/);
+    assert.match(top, /<a href="\/log\/tags\/a\/c\/">c<\/a> <span class="tag-count">\(2\)<\/span>/);
+    // A top-level tag has the tree as its only ancestor.
+    assert.doesNotMatch(top, /<li><a href="\/log\/tags\/a\/">/);
+
+    // The manifest says what each tag page lists.
+    const manifestTag = result.manifest.tags.find((entry) => entry.path === 'a');
+    assert.deepEqual(manifestTag, {
+      blog: 'notes',
+      path: 'a',
+      url: '/log/tags/a/',
+      file: 'log/tags/a/index.html',
+      name: 'a',
+      count: 3,
+      posts: ['/log/three/', '/log/two/', '/log/one/'],
+    });
+  });
+});
+
+test('the tag tree page lists every node with the number of distinct posts in its subtree', async () => {
+  await inTree(tagFiles, async (root) => {
+    const result = await buildTagged(root);
+    const html = pageAt(result.outDir, '/log/tags/');
+    assert.match(html, /<h1>Tags<\/h1>/);
+    /** @type {Record<string, string>} */
+    const counts = {};
+    const entry = /<a href="(\/log\/tags\/[^"]+)">[^<]+<\/a> <span class="tag-count">\((\d+)\)<\/span>/g;
+    for (const m of html.matchAll(entry)) counts[m[1]] = m[2];
+    assert.deepEqual(counts, {
+      '/log/tags/a/': '3',
+      '/log/tags/a/b/': '2',
+      '/log/tags/a/b/x/': '1',
+      '/log/tags/a/c/': '2',
+      '/log/tags/solo/': '1',
+    });
+    // The tree is nested: x is inside the list of b.
+    assert.match(
+      html,
+      /<a href="\/log\/tags\/a\/b\/">b<\/a>[\s\S]*<ul>[\s\S]*<a href="\/log\/tags\/a\/b\/x\/">x<\/a>/,
+    );
+  });
+});
+
+test('a blog without tags still has a tag tree page, saying so', async () => {
+  await inTree({ 'coffer.yaml': configYaml(), 'notes/plain.md': post('Plain', '2026-01-01') }, async (root) => {
+    const result = await buildTagged(root);
+    assert.match(pageAt(result.outDir, '/log/tags/'), /<p class="empty">No tags yet\.<\/p>/);
+    assert.deepEqual(result.manifest.tags, []);
+  });
+});
+
+test('the blog index and the post page link the tags', async () => {
+  await inTree(tagFiles, async (root) => {
+    const result = await buildTagged(root);
+    assert.match(pageAt(result.outDir, '/log/'), /<a href="\/log\/tags\/">Tags<\/a>/);
+    const html = pageAt(result.outDir, '/log/three/');
+    assert.match(
+      html,
+      /<ul class="post-tags"[^>]*>\s*<li><a href="\/log\/tags\/a\/b\/x\/">x<\/a><\/li>\s*<li><a href="\/log\/tags\/a\/c\/">c<\/a><\/li>\s*<\/ul>/,
+    );
+    assert.doesNotMatch(pageAt(result.outDir, '/log/tags/solo/'), /post-tags/);
+  });
+});
+
+test('tags.yaml names and descriptions are shown, and a tag without one shows its slug', async () => {
+  await inTree(
+    {
+      ...tagFiles,
+      'notes/tags.yaml': 'a:\n  name: Alpha\n  description: The first letter.\na/b:\n  name: Бета\n',
+    },
+    async (root) => {
+      const result = await buildTagged(root);
+      const a = pageAt(result.outDir, '/log/tags/a/');
+      assert.match(a, /<h1>Alpha<\/h1>/);
+      assert.match(a, /<p class="tag-description">The first letter\.<\/p>/);
+      assert.match(a, /<meta name="description" content="The first letter\.">/);
+      assert.match(a, /<title>Alpha \| Demo<\/title>/);
+      assert.match(a, /<a href="\/log\/tags\/a\/b\/">Бета<\/a>/);
+      assert.match(a, /<a href="\/log\/tags\/a\/c\/">c<\/a>/);
+
+      const c = pageAt(result.outDir, '/log/tags/a/c/');
+      assert.match(c, /<h1>c<\/h1>/);
+      assert.match(c, /<a href="\/log\/tags\/a\/">Alpha<\/a>/);
+      assert.doesNotMatch(c, /tag-description/);
+
+      const tree = pageAt(result.outDir, '/log/tags/');
+      assert.match(tree, /<a href="\/log\/tags\/a\/">Alpha<\/a>/);
+      assert.match(tree, /The first letter\./);
+      assert.match(tree, /<a href="\/log\/tags\/a\/b\/x\/">x<\/a>/);
+      assert.match(pageAt(result.outDir, '/log/three/'), /<a href="\/log\/tags\/a\/b\/x\/">x<\/a>/);
+      assert.match(pageAt(result.outDir, '/log/one/'), /<a href="\/log\/tags\/a\/b\/">Бета<\/a>/);
+      assert.deepEqual(result.warnings, []);
+    },
+  );
+});
+
+test('unknown tags.yaml keys and entries for unused tags are warnings, not errors', async () => {
+  await inTree(
+    {
+      ...tagFiles,
+      'notes/tags.yaml': 'a:\n  name: Alpha\n  colour: red\nghost:\n  name: Ghost\n',
+    },
+    async (root) => {
+      const result = await buildTagged(root);
+      assert.equal(result.warnings.length, 2);
+      assert.match(result.warnings[0], /^notes[\\/]tags\.yaml: a\.colour: unknown key/);
+      assert.match(result.warnings[1], /^notes[\\/]tags\.yaml: ghost: no published post uses this tag/);
+      assert.equal(result.manifest.tags.some((entry) => entry.path === 'ghost'), false);
+      assert.equal(existsSync(join(result.outDir, 'log', 'tags', 'ghost')), false);
+    },
+  );
+});
+
+test('only published posts make the tag tree', async () => {
+  const files = {
+    ...tagFiles,
+    'notes/draft.md': post('Draft', '2026-05-01', 'draft: true\ntags: [a/b, secret]\n'),
+    'notes/future.md': post('Future', '2099-01-01', 'tags: [a, later]\n'),
+  };
+  await inTree(files, async (root) => {
+    const result = await buildTagged(root);
+    assert.equal(existsSync(join(result.outDir, 'log', 'tags', 'secret')), false);
+    assert.equal(existsSync(join(result.outDir, 'log', 'tags', 'later')), false);
+    assert.deepEqual(listed(pageAt(result.outDir, '/log/tags/a/b/')), ['Three', 'One']);
+    assert.match(
+      pageAt(result.outDir, '/log/tags/'),
+      /<a href="\/log\/tags\/a\/">a<\/a> <span class="tag-count">\(3\)<\/span>/,
+    );
+
+    const preview = await buildTagged(root, { drafts: true });
+    assert.ok(existsSync(join(preview.outDir, 'log', 'tags', 'secret', 'index.html')));
+    assert.deepEqual(listed(pageAt(preview.outDir, '/log/tags/a/b/')), ['Draft', 'Three', 'One']);
+  });
+});
+
+test('a blog without a prefix keeps its tag pages under the tags segment of the site', async () => {
+  await inTree(
+    { ...tagFiles, 'coffer.yaml': configYaml().replace('prefix: log', "prefix: ''") },
+    async (root) => {
+      const result = await buildTagged(root);
+      assert.deepEqual(listed(pageAt(result.outDir, '/tags/a/b/')), ['Three', 'One']);
+      assert.ok(existsSync(join(result.outDir, 'tags', 'index.html')));
+    },
+  );
+});
+
+test('the tags segment follows the urls.tags setting', async () => {
+  await inTree(
+    {
+      ...tagFiles,
+      'coffer.yaml': configYaml().replace('    blogs:', '    urls:\n      tags: themes\n    blogs:'),
+    },
+    async (root) => {
+      const result = await buildTagged(root);
+      assert.deepEqual(listed(pageAt(result.outDir, '/log/themes/a/b/')), ['Three', 'One']);
+      assert.match(pageAt(result.outDir, '/log/three/'), /href="\/log\/themes\/a\/c\/"/);
+    },
+  );
+});
+
+test('a post whose slug is the tags segment is a build error', async () => {
+  await inTree(
+    { 'coffer.yaml': configYaml(), 'notes/tags.md': post('Tags', '2026-01-01') },
+    async (root) => {
+      await assert.rejects(
+        buildTagged(root),
+        (error) => error instanceof BuildError && /slug: "tags" is the address of the tag pages/.test(error.message),
+      );
+    },
+  );
+});
+
+test('an alias that is the tags segment collides with the tag tree page', async () => {
+  await inTree(
+    { 'coffer.yaml': configYaml(), 'notes/one.md': post('One', '2026-01-01', 'aliases: [tags]\n') },
+    async (root) => {
+      await assert.rejects(buildTagged(root), (error) => error instanceof BuildError && /\/log\/tags\//.test(error.message));
+    },
+  );
+});
+
+test('coffer build reports an invalid tags.yaml with its file and exits 1', async () => {
+  await inTree({ ...tagFiles, 'notes/tags.yaml': 'a:\n  name: 5\n' }, async (root) => {
+    const result = await runInProcess(['build', '--config', join(root, 'coffer.yaml'), '--out', join(root, 'out')]);
+    assert.equal(result.code, 1);
+    assert.match(result.err, /tags\.yaml: a\.name: must be a non-empty string/);
+  });
 });
