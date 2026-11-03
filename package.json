@@ -36,6 +36,7 @@
     "typescript": "^5.9.0"
   },
   "dependencies": {
+    "@resvg/resvg-js": "^2.6.2",
     "hast-util-to-string": "^3.0.1",
     "nunjucks": "^3.2.4",
     "rehype-slug": "^6.0.0",

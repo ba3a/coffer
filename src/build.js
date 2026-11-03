@@ -1,7 +1,8 @@
 import { cpSync, existsSync, mkdirSync, rmSync, statSync, writeFileSync } from 'node:fs';
-import { dirname, isAbsolute, join, relative, resolve, sep } from 'node:path';
+import { dirname, extname, isAbsolute, join, relative, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
+import { CARDS_CACHE_DIR, COVER_EXTENSIONS, copyCover, createCardMaker } from './cards.js';
 import { DEFAULT_LATEST_POSTS, loadHome } from './content/home.js';
 import { discoverPosts, isPublished, resolveNow } from './content/posts.js';
 import {
@@ -89,6 +90,7 @@ export class BuildError extends Error {
  * @property {Record<string, string | undefined>} [env] Environment for `COFFER_NOW` (default `process.env`).
  * @property {string} [cwd] Directory that a relative `out` resolves against (default the working directory).
  * @property {string[]} [siteIds] Build only these sites (default all).
+ * @property {string} [cacheDir] Directory for work that is worth keeping between builds, such as title cards (default `.cache` beside the configuration file; an absolute path, or relative to the working directory).
  */
 
 /**
@@ -198,6 +200,7 @@ export class BuildError extends Error {
  * @property {string} outDir Absolute path of the site's output directory.
  * @property {Manifest} manifest
  * @property {string[]} warnings
+ * @property {{ generated: number, reused: number }} cards Title cards drawn by this build, and cards found in the cache.
  */
 
 /**
@@ -400,6 +403,42 @@ async function buildSite(config, site, options, outRoot, version) {
     );
   }
 
+  // Pages that have no picture of their own are shown in link previews with a
+  // card that carries the site title and the page title.
+  const cards = createCardMaker({
+    themeDir: site.theme,
+    cacheDir: join(resolve(options.cacheDir ?? join(config.dir, '.cache')), CARDS_CACHE_DIR),
+    siteTitle: site.title,
+  });
+  /** @param {string} title */
+  const cardFor = (title) => cards.makeAndPublish(title, outDir);
+  /**
+   * The preview image of a post: its cover, else a card with its title. A cover
+   * that is a URL is used as it is; a cover that is a file beside the post is
+   * copied to the output (the image pipeline replaces the copy later).
+   *
+   * @param {Post} post
+   * @returns {string}
+   */
+  const previewImageOf = (post) => {
+    const shown = posix(relative(config.dir, post.file));
+    const cover = post.cover;
+    if (cover === null) return cardFor(post.title);
+    if (/^https?:\/\//i.test(cover)) return cover;
+    const source = resolve(dirname(post.file), cover);
+    const inside = relative(site.contentDir, source);
+    if (inside.startsWith('..') || isAbsolute(inside)) {
+      warnings.push(`${shown}: cover: "${cover}" is outside the content directory; using a generated card`);
+    } else if (!COVER_EXTENSIONS.includes(extname(source).toLowerCase())) {
+      warnings.push(`${shown}: cover: "${cover}" must be one of ${COVER_EXTENSIONS.join(', ')}; using a generated card`);
+    } else if (!existsSync(source) || !statSync(source).isFile()) {
+      warnings.push(`${shown}: cover: "${cover}" does not exist; using a generated card`);
+    } else {
+      return copyCover(source, outDir);
+    }
+    return cardFor(post.title);
+  };
+
   /** @type {ManifestPage[]} */
   const pages = [];
   /** @type {ManifestPost[]} */
@@ -562,6 +601,7 @@ async function buildSite(config, site, options, outRoot, version) {
           title: post.title,
           description: post.summary || excerptOf(rendered.html),
           url,
+          image: previewImageOf(post),
           type: 'article',
           published: post.date,
           tags: view.tagLinks.map((tag) => tag.name),
@@ -608,7 +648,7 @@ async function buildSite(config, site, options, outRoot, version) {
       nav,
       blog,
       feedLinks: feedLinksFor(blog),
-      meta: metaFor({ title: blog.title, description: site.description, url: indexUrl }),
+      meta: metaFor({ title: blog.title, description: site.description, url: indexUrl, image: cardFor(blog.title) }),
       pageFeed: blogFeedLink,
       posts: views,
       tagsUrl: tagUrl(blogBase, site.urls.tags),
@@ -651,7 +691,7 @@ async function buildSite(config, site, options, outRoot, version) {
       nav,
       blog,
       feedLinks: feedLinksFor(blog),
-      meta: metaFor({ title: tagsTitle, description: site.description, url: tagsIndexUrl }),
+      meta: metaFor({ title: tagsTitle, description: site.description, url: tagsIndexUrl, image: cardFor(tagsTitle) }),
       tagsUrl: tagsIndexUrl,
       tree: tagTree.roots.map(treeView),
       page: { title: tagsTitle, description: '', content: '' },
@@ -669,7 +709,7 @@ async function buildSite(config, site, options, outRoot, version) {
         nav,
         blog,
         feedLinks: feedLinksFor(blog, [tagFeed]),
-        meta: metaFor({ title: view.name, description: view.description, url: view.url }),
+        meta: metaFor({ title: view.name, description: view.description, url: view.url, image: cardFor(view.name) }),
         pageFeed: tagFeed,
         tagsUrl: tagsIndexUrl,
         tag: view,
@@ -706,7 +746,7 @@ async function buildSite(config, site, options, outRoot, version) {
         nav,
         blog,
         feedLinks: feedLinksFor(blog, [seriesFeed]),
-        meta: metaFor({ title: entry.name, description: entry.description ?? '', url }),
+        meta: metaFor({ title: entry.name, description: entry.description ?? '', url, image: cardFor(entry.name) }),
         pageFeed: seriesFeed,
         posts: parts,
         series: {
@@ -925,7 +965,7 @@ async function buildSite(config, site, options, outRoot, version) {
   };
   writeFileSync(join(outDir, MANIFEST_FILE_NAME), `${JSON.stringify(manifest, null, 2)}\n`);
 
-  return { id: site.id, outDir, manifest, warnings };
+  return { id: site.id, outDir, manifest, warnings, cards: { ...cards.stats } };
 }
 
 /**
@@ -949,6 +989,8 @@ async function buildSite(config, site, options, outRoot, version) {
  *   `feed.xml` under the page's address, newest first (see `docs/feeds.md`);
  * - `sitemap.xml` (published canonical pages only) and `robots.txt` (see `docs/seo.md`),
  *   and `title`, description, canonical, Open Graph and Twitter card tags on every page;
+ * - for every post, tag, series and blog index without a picture of its own, a 1200 by 630 title card in `cards/{hash}.png`, cached in `.cache/cards/`
+ *   (see `docs/seo.md`); a post's `cover` is the preview image of a post that has one;
  * - the assets of the default theme, then of the site's theme, in `assets/`;
  * - the build manifest `.coffer-manifest.json`.
  *

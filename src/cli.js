@@ -2,11 +2,13 @@ import { existsSync, statSync } from 'node:fs';
 import { resolve } from 'node:path';
 
 import { BuildError, buildSites, DEFAULT_OUT_DIR } from './build.js';
+import { CardError } from './cards.js';
 import { ConfigError, loadConfig } from './config.js';
 import { HomeError } from './content/home.js';
 import { PostError } from './content/posts.js';
 import { SeriesError } from './content/series.js';
 import { TagsError } from './content/tags.js';
+import { FontError } from './font-metrics.js';
 import { MarkdownError } from './markdown/render.js';
 import { I18nError } from './render/i18n.js';
 import { DEFAULT_PORT, startServer } from './serve.js';
@@ -204,6 +206,8 @@ const commands = {
       }
       if (
         error instanceof BuildError ||
+        error instanceof CardError ||
+        error instanceof FontError ||
         error instanceof MarkdownError ||
         error instanceof I18nError
       ) {

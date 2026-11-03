@@ -96,4 +96,14 @@ export {
   startServer,
 } from './serve.js';
 export { buildMeta, openGraphLocale } from './meta.js';
+export {
+  CARD_HEIGHT,
+  CARD_MAX_TITLE_LINES,
+  CARD_WIDTH,
+  CardError,
+  createCardMaker,
+  layoutTitle,
+  loadCardColours,
+} from './cards.js';
+export { FontError, readFontMetrics } from './font-metrics.js';
 export { renderRobots, renderSitemap } from './sitemap.js';

@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="{{ width }}" height="{{ height }}" viewBox="0 0 {{ width }} {{ height }}">
+  {#- Variables: width, height, padding, background, foreground, muted, accent, fontFamily,
+      siteTitle, siteTitleSize, siteTitleY, titleLines ({ text, y }), titleSize. -#}
+  <rect width="{{ width }}" height="{{ height }}" fill="{{ background }}"/>
+  <rect width="{{ width }}" height="16" fill="{{ accent }}"/>
+  <g font-family="{{ fontFamily }}">
+    {% for line in titleLines %}
+    <text x="{{ padding }}" y="{{ line.y }}" font-size="{{ titleSize }}" font-weight="700" fill="{{ foreground }}">{{ line.text }}</text>
+    {% endfor %}
+    <rect x="{{ padding }}" y="{{ siteTitleY - siteTitleSize - 28 }}" width="96" height="6" fill="{{ accent }}"/>
+    <text x="{{ padding }}" y="{{ siteTitleY }}" font-size="{{ siteTitleSize }}" font-weight="400" fill="{{ muted }}">{{ siteTitle }}</text>
+  </g>
+</svg>

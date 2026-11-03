@@ -148,6 +148,31 @@ Highlighted code carries both colour schemes as the variables `--shiki-light`, `
 
 The default theme defines no animation or transition: state changes are instant. The layout is a single column that works from 360 px wide, with a table of contents beside the text on wide screens. Focus is shown with an outline in the accent colour. Printing always uses black on white, hides the navigation and the switch, and prints the address after external links.
 
+## Title cards
+
+Posts without a cover and the tag, series and blog index pages are shown in link previews with a generated card (see [SEO and link previews](seo.md#title-cards)). A theme can restyle the card with three optional things in its directory:
+
+```
+my-theme/
+  theme.yaml        colours
+  card.svg.njk      the SVG template of the card
+  fonts/            .ttf or .otf files for the card
+```
+
+`theme.yaml` sets the accent colour of the theme and, optionally, the colours of the card. Colours are written as `#rgb` or `#rrggbb`; every key may be left out:
+
+```yaml
+accent: "#c9a0ff"
+card:
+  background: "#101014"
+  text: "#ffffff"
+  mutedText: "#b0b0c0"
+```
+
+`card.svg.njk` is a Nunjucks template that must produce an SVG of 1200 by 630 pixels (any other size fails the build). It receives `width`, `height`, `padding`, the colours `background`, `foreground`, `muted` and `accent`, `fontFamily`, `siteTitle`, `siteTitleSize`, `siteTitleY`, `titleSize` and `titleLines`, a list of `{ text, y }` with the wrapped title and the baseline of each line. Values are escaped. The engine's `theme/card.svg.njk` is a working example.
+
+Font files in `fonts/` replace the bundled font; the template should use `fontFamily`, which is the family name read from the font that is closest to bold. The renderer reads only these files, never the fonts installed on the machine. WOFF and WOFF2 files are not supported, and a font should have the Latin and Cyrillic letters the site needs.
+
 ## Templates of the blog
 
 | Template         | Page                | Blocks besides the ones of `base.njk`                                   |

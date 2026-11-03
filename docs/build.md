@@ -30,6 +30,8 @@ For a site `workshop` with a blog whose `prefix` is `journal`:
   journal/{slug}/index.html           one page per published post
   journal/{alias}/index.html          a redirect page for each old slug (see below)
   _redirects                          redirect rules for hosts that read them
+  cards/{hash}.png                    generated 1200 by 630 title cards for link previews
+  covers/{hash}.{ext}                 covers of posts that are files beside the post
   sitemap.xml                         the published canonical pages
   robots.txt                          allows crawling and names the sitemap
   assets/                             the static files of the theme
@@ -43,7 +45,7 @@ For a site `workshop` with a blog whose `prefix` is `journal`:
 - **Series**: a navigation block (name, "part n of m", previous and next) at the top and the end of every post of a series, computed from all published posts, and one page per series listing its parts in order. See [Series](series.md).
 - **The blog index** lists the published posts, newest first, with the date, the summary and the reading time of each.
 - **A post page** shows the title, the date, the reading time, the table of contents and the body. The table of contents is built from the `h2` and `h3` headings of posts with enough of them (see [Markdown](markdown.md)). It comes before the body in the page. On a narrow screen it is a collapsible block; on a wide screen the stylesheet puts it beside the body.
-- **Page metadata**: every page has a title, a description, a canonical address and the Open Graph and Twitter card tags for link previews, and `<html lang>` is the site's language. The build also writes `sitemap.xml` and `robots.txt`. See [SEO and link previews](seo.md).
+- **Page metadata**: every page has a title, a description, a canonical address and the Open Graph and Twitter card tags for link previews, and `<html lang>` is the site's language. The build also writes `sitemap.xml` and `robots.txt`, and a title card for every page that has no image of its own (cached in `.cache/cards/`). See [SEO and link previews](seo.md).
 - **Assets** are the files of the default theme's `assets/` folder, followed by the `assets/` folder of the site's theme, which wins on equal names. The default stylesheet is `assets/coffer.css`.
 - An earlier build of the same site is removed first, so a post that is no longer published disappears from the output.
 

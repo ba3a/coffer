@@ -36,10 +36,28 @@ A `base.njk` rendered without `meta` (a theme test, for example) falls back to a
 
 A page's preview image is, in this order:
 
-1. the image the page supplies (later features fill it: a post's cover, a generated card with the title, a project's card picture);
+1. the image the page supplies: a post's `cover`, or a generated title card (below); a project's card picture arrives with projects;
 2. the site's default image.
 
-The default image is the `defaultImage` key of the site (see [Configuration](configuration.md)): a path starting with `/` or an absolute `http(s)` URL. It defaults to `/assets/social-default.png`, a 1200 by 630 picture that comes with the default theme; a theme can replace it by shipping a file of the same name in its `assets/` folder, or the site can point `defaultImage` at another file. When `defaultImage` is a path and no such file is in the output, the build warns.
+The default image is the `defaultImage` key of the site (see [Configuration](configuration.md)): a path starting with `/` or an absolute `http(s)` URL. It defaults to `/assets/social-default.png`, a 1200 by 630 picture that comes with the default theme; a theme can replace it by shipping a file of the same name in its `assets/` folder, or the site can point `defaultImage` at another file. When `defaultImage` is a path and no such file is in the output, the build warns. The home page and the 404 page use it.
+
+### A post's cover
+
+`cover` in the front matter of a post is either an `http(s)` URL, which is used as it is, or the path of an image beside the post (`cover.jpg`, `./images/cover.png`; `.jpg`, `.jpeg`, `.png`, `.webp`, `.gif` and `.avif` are accepted), which stays inside the content directory. The file is copied to `covers/{hash}.{ext}` in the output. A cover that cannot be used (missing, outside the content directory, another file type) is reported as a warning and the post gets a title card instead. The responsive image pipeline will later replace the plain copy with resized variants.
+
+### Title cards
+
+Every post without a cover, and every blog index, tag index, tag page and series page, gets a card: a 1200 by 630 PNG with the title of the page and the title of the site, in the theme's accent colour. The title is set in the largest size at which it takes at most three lines; a longer title is cut with an ellipsis. Cards are written to `{out}/{siteId}/cards/{hash}.png`, and the page's `og:image` and `twitter:image` point at them.
+
+The text is drawn by [resvg](https://github.com/RazrFalcon/resvg) (the `@resvg/resvg-js` package) from an SVG template, with the font that comes with coffer, Inter (SIL Open Font License; the license is `theme/fonts/OFL.txt`), which covers Latin and Cyrillic. The renderer never reads the fonts of the machine, so a card is the same on Windows, Linux and macOS, and a Russian title needs no setup.
+
+Cards are cached by the hash of everything they depend on (the finished SVG, the font files and the renderer version) in `.cache/cards/` beside the configuration file. A build draws only the cards that are not in the cache; the same title on the same site is one file. The cache is safe to delete, and `.cache/` belongs in `.gitignore`. A library user can pass another folder as `cacheDir` to `buildSites`, and reads how many cards a build drew and reused from the `cards` key of each site's result.
+
+A theme changes its cards by putting files in its directory (see [Themes](themes.md#title-cards)):
+
+- `theme.yaml` with the accent colour (and, if wanted, the card's background and text colours);
+- `card.svg.njk`, its own SVG template;
+- `fonts/`, its own `.ttf` or `.otf` files, which replace the bundled font.
 
 ## `sitemap.xml`
 
