@@ -54,3 +54,19 @@ export {
   createTemplates,
   siteUrl,
 } from './render/templates.js';
+export {
+  ALIAS_STATUS,
+  REDIRECTS_FILE_NAME,
+  checkRedirects,
+  collectRedirects,
+  renderRedirectPage,
+  renderRedirectsFile,
+} from './redirects.js';
+export {
+  DEFAULT_PORT,
+  contentTypeFor,
+  matchRedirect,
+  parseRedirects,
+  resolveRequest,
+  startServer,
+} from './serve.js';

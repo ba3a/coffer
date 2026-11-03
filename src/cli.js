@@ -1,9 +1,13 @@
+import { existsSync, statSync } from 'node:fs';
+import { resolve } from 'node:path';
+
 import { BuildError, buildSites, DEFAULT_OUT_DIR } from './build.js';
 import { ConfigError, loadConfig } from './config.js';
 import { HomeError } from './content/home.js';
 import { PostError } from './content/posts.js';
 import { MarkdownError } from './markdown/render.js';
 import { I18nError } from './render/i18n.js';
+import { DEFAULT_PORT, startServer } from './serve.js';
 import { readVersion } from './version.js';
 
 export { readVersion };
@@ -14,6 +18,9 @@ Commands:
   build           Build the sites into an output directory
                   (--config <path>, --out <dir> [default: ${DEFAULT_OUT_DIR}],
                   --drafts to include drafts and future posts, --now <date>)
+  serve [dir]     Serve one built site directory the way Cloudflare Pages does
+                  (--port <number> [default: ${DEFAULT_PORT}], --host <address>;
+                  dir defaults to the working directory)
   config          Check coffer.yaml and list the configured sites
                   (--config <path> selects another file)
   help            Show this help text
@@ -91,8 +98,74 @@ export function parseBuildArgs(args) {
   return options;
 }
 
+/**
+ * Reads the options of `coffer serve`.
+ *
+ * @param {string[]} args
+ * @returns {{ dir: string, port: number, host?: string } | { error: string }}
+ */
+export function parseServeArgs(args) {
+  /** @type {{ dir: string, port: number, host?: string }} */
+  const options = { dir: '.', port: DEFAULT_PORT };
+  let sawDir = false;
+  for (let i = 0; i < args.length; i += 1) {
+    const arg = args[i];
+    if (!arg.startsWith('--')) {
+      if (sawDir) return { error: `unexpected argument "${arg}"` };
+      options.dir = arg;
+      sawDir = true;
+      continue;
+    }
+    const [flag, inline] = arg.includes('=')
+      ? [arg.slice(0, arg.indexOf('=')), arg.slice(arg.indexOf('=') + 1)]
+      : [arg, undefined];
+    if (flag !== '--port' && flag !== '--host') return { error: `unexpected argument "${arg}"` };
+    const value = inline ?? args[i + 1];
+    if (value === undefined || value === '') return { error: `${flag} needs a value` };
+    if (inline === undefined) i += 1;
+    if (flag === '--host') {
+      options.host = value;
+    } else {
+      if (!/^\d+$/.test(value) || Number(value) > 65535) {
+        return { error: '--port must be a number from 0 to 65535' };
+      }
+      options.port = Number(value);
+    }
+  }
+  return options;
+}
+
 /** @type {Record<string, Command>} */
 const commands = {
+  serve: async (args, io) => {
+    const parsed = parseServeArgs(args);
+    if ('error' in parsed) {
+      io.err(`coffer: ${parsed.error}
+`);
+      return 1;
+    }
+    const dir = resolve(parsed.dir);
+    if (!existsSync(dir) || !statSync(dir).isDirectory()) {
+      io.err(`coffer: ${parsed.dir} is not a directory
+`);
+      return 1;
+    }
+    let running;
+    try {
+      running = await startServer({ dir, port: parsed.port, host: parsed.host });
+    } catch (error) {
+      io.err(`coffer: cannot start the server: ${error instanceof Error ? error.message : error}
+`);
+      return 1;
+    }
+    io.out(`Serving ${dir} at ${running.url}/ (Ctrl+C to stop)
+`);
+    const { server } = running;
+    process.once('SIGINT', () => void running.close());
+    process.once('SIGTERM', () => void running.close());
+    await new Promise((done) => server.once('close', done));
+    return 0;
+  },
   build: async (args, io) => {
     const parsed = parseBuildArgs(args);
     if ('error' in parsed) {

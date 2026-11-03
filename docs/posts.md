@@ -47,7 +47,7 @@ The text of the post.
 | `series`         | no       | Name of the series the post belongs to.                                                                     |
 | `seriesPosition` | no       | Whole number that fixes the post's place in its series. Needs `series`.                                     |
 | `draft`          | no       | `true` keeps the post out of the published site. Default `false`.                                           |
-| `aliases`        | no       | List of old slugs that should redirect to this post.                                                        |
+| `aliases`        | no       | List of old slugs that redirect permanently to this post; see [URLs](urls.md).                              |
 | `location`       | no       | Image location policy for this post, overriding the site and tag settings. Checked when the policy is applied. |
 | `camera`         | no       | Camera metadata policy for this post. Checked when the policy is applied.                                   |
 | `map`            | no       | `true` or `false` to force or suppress the map. Without it, a map appears when there is something to show. |

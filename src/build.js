@@ -5,6 +5,13 @@ import { fileURLToPath } from 'node:url';
 import { DEFAULT_LATEST_POSTS, loadHome } from './content/home.js';
 import { discoverPosts, isPublished, resolveNow } from './content/posts.js';
 import { renderMarkdown } from './markdown/render.js';
+import {
+  REDIRECTS_FILE_NAME,
+  checkRedirects,
+  collectRedirects,
+  renderRedirectPage,
+  renderRedirectsFile,
+} from './redirects.js';
 import { createTemplates } from './render/templates.js';
 import { readVersion } from './version.js';
 
@@ -97,8 +104,18 @@ export class BuildError extends Error {
  * @property {boolean} drafts True for a preview build.
  * @property {ManifestPage[]} pages
  * @property {ManifestPost[]} posts
+ * @property {ManifestRedirect[]} redirects Permanent redirects from old post addresses.
  * @property {unknown[]} feeds
  * @property {unknown[]} images
+ */
+
+/**
+ * One redirect listed in the manifest.
+ *
+ * @typedef {object} ManifestRedirect
+ * @property {string} from Site-relative URL of the old address, ending in a slash.
+ * @property {string} to Site-relative URL of the live page, ending in a slash.
+ * @property {number} status
  */
 
 /**
@@ -255,6 +272,8 @@ async function buildSite(config, site, options, outRoot, version) {
   const pages = [];
   /** @type {ManifestPost[]} */
   const manifestPosts = [];
+  /** @type {{ url: string, aliasUrls: string[], source: string }[]} */
+  const aliasing = [];
   /**
    * The posts of the first blog, newest first, for the home page.
    * @type {ReturnType<typeof postView>[]}
@@ -275,6 +294,13 @@ async function buildSite(config, site, options, outRoot, version) {
       const url = postUrl(blog, post.slug);
       const unpublished = !isPublished(post, { now });
       entries.push({ post, url, readingMinutes: rendered.readingMinutes, unpublished });
+      if (!unpublished && post.aliases.length > 0) {
+        aliasing.push({
+          url,
+          aliasUrls: post.aliases.map((alias) => postUrl(blog, alias)),
+          source: posix(relative(config.dir, post.file)),
+        });
+      }
 
       const view = postView(post, url, rendered.readingMinutes, unpublished);
       const html = templates.render('post.njk', {
@@ -370,6 +396,28 @@ async function buildSite(config, site, options, outRoot, version) {
   );
   pages.push({ url: NOT_FOUND_URL, file: NOT_FOUND_FILE, type: 'not-found', title: notFoundTitle });
 
+  const redirects = collectRedirects(aliasing);
+  const problems = checkRedirects(
+    redirects,
+    new Set(pages.map((entry) => entry.url)),
+    new Set(manifestPosts.map((entry) => entry.url)),
+  );
+  if (problems.length > 0) throw new BuildError(problems.join('\n'));
+  const baseUrl = site.baseUrl.replace(/\/+$/, '');
+  for (const redirect of redirects) {
+    writeOutput(
+      outDir,
+      fileForUrl(redirect.from),
+      renderRedirectPage({
+        lang: site.lang,
+        target: redirect.to,
+        canonical: `${baseUrl}${redirect.to}`,
+      }),
+    );
+  }
+  const redirectRules = renderRedirectsFile(redirects);
+  if (redirectRules !== '') writeOutput(outDir, REDIRECTS_FILE_NAME, redirectRules);
+
   pages.sort((a, b) => (a.url < b.url ? -1 : a.url > b.url ? 1 : 0));
   manifestPosts.sort((a, b) => (a.url < b.url ? -1 : a.url > b.url ? 1 : 0));
 
@@ -382,6 +430,7 @@ async function buildSite(config, site, options, outRoot, version) {
     drafts,
     pages,
     posts: manifestPosts,
+    redirects: redirects.map(({ from, to, status }) => ({ from, to, status })),
     feeds: [],
     images: [],
   };
@@ -399,6 +448,8 @@ async function buildSite(config, site, options, outRoot, version) {
  * - the home page at `index.html`, from `{contentDir}/home.md` (not written
  *   when a blog has an empty prefix: its index is the front page);
  * - `404.html`, the page hosts show for an unknown address;
+ * - for every `aliases` entry of a published post, a redirect page at the old
+ *   address and a rule in `_redirects`;
  * - the assets of the default theme, then of the site's theme, in `assets/`;
  * - the build manifest `.coffer-manifest.json`.
  *
@@ -407,7 +458,7 @@ async function buildSite(config, site, options, outRoot, version) {
  * @param {CofferConfig} config
  * @param {BuildOptions} [options]
  * @returns {Promise<SiteResult[]>}
- * @throws {BuildError} For an unknown site id or an invalid `--now`.
+ * @throws {BuildError} For an unknown site id, an invalid `--now` or an alias that collides with a live address.
  * @throws {import('./content/posts.js').PostError} When posts are invalid.
  * @throws {import('./content/home.js').HomeError} When the home page file is invalid.
  * @throws {import('./markdown/render.js').MarkdownError} When a post's Markdown is invalid.
