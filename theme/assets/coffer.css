@@ -642,3 +642,42 @@ main > article > .post-layout {
   margin: 0;
   padding-left: 1.25rem;
 }
+
+.series-nav {
+  margin: 1.25rem 0;
+  padding: 0.75rem 1rem;
+  border-left: 3px solid var(--coffer-border);
+  font-size: 0.9375rem;
+}
+
+.series-nav .series-title {
+  margin: 0;
+}
+
+.series-part,
+.series-kicker,
+.series-count,
+.series-label {
+  color: var(--coffer-muted);
+}
+
+.series-links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem 1.5rem;
+  margin: 0.5rem 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.series-label {
+  display: block;
+  font-size: 0.8125rem;
+}
+
+.series-kicker,
+.series-count,
+.post-item > .series-part {
+  margin: 0 0 0.25rem;
+  font-size: 0.9375rem;
+}

@@ -24,6 +24,13 @@ post:
     other: "{count} минуты"
   contents: Содержание
   unpublished: "Предпросмотр: эта запись ещё не опубликована."
+series:
+  navigation: "Серия: {name}"
+  parts:
+    one: "{count} часть"
+    few: "{count} части"
+    many: "{count} частей"
+    other: "{count} части"
 blog:
   empty: Записей пока нет.
 tags:

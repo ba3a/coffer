@@ -729,3 +729,199 @@ test('coffer build reports an invalid tags.yaml with its file and exits 1', asyn
     assert.match(result.err, /tags\.yaml: a\.name: must be a non-empty string/);
   });
 });
+
+// Series -----------------------------------------------------------------
+
+/**
+ * The series navigation blocks of a post page, in page order (top, then end).
+ *
+ * @param {string} html
+ * @returns {string[]}
+ */
+function seriesBlocks(html) {
+  return [...html.matchAll(/<nav class="series-nav [^>]*>[\s\S]*?<\/nav>/g)].map((m) => m[0]);
+}
+
+const seriesFiles = {
+  'coffer.yaml': configYaml(),
+  'notes/series.yaml': 'trip:\n  name: Alps trip\n  description: Ten days on foot.\n',
+  'notes/one.md': post('Day one', '2026-01-01', 'series: trip\n'),
+  'notes/two.md': post('Day two', '2026-01-02', 'series: trip\n'),
+  'notes/three.md': post('Day three', '2026-01-03', 'series: trip\n'),
+  'notes/alone.md': post('Not in it', '2026-01-04'),
+};
+
+test('every part shows the series name, "part n of m" and its neighbours at the top and at the end', async () => {
+  await inTree(seriesFiles, async (root) => {
+    const result = await buildTagged(root);
+    const html = pageAt(result.outDir, '/log/two/');
+    const middle = seriesBlocks(html);
+    assert.equal(middle.length, 2);
+    for (const block of middle) {
+      assert.match(block, /<a href="\/log\/series\/trip\/">Alps trip<\/a>/);
+      assert.match(block, /Part 2 of 3/);
+      assert.match(block, /<a rel="prev" href="\/log\/one\/">[\s\S]*Previous part[\s\S]*Day one<\/a>/);
+      assert.match(block, /<a rel="next" href="\/log\/three\/">[\s\S]*Next part[\s\S]*Day three<\/a>/);
+    }
+    assert.ok(html.indexOf('series-nav-top') < html.indexOf('class="post-body"'), 'top block precedes the text');
+    assert.ok(html.indexOf('series-nav-bottom') > html.indexOf('class="post-body"'), 'bottom block follows the text');
+
+    const first = seriesBlocks(pageAt(result.outDir, '/log/one/'));
+    assert.match(first[0], /Part 1 of 3/);
+    assert.doesNotMatch(first[0], /Previous part/);
+    assert.match(first[0], /rel="next" href="\/log\/two\/"/);
+    const last = seriesBlocks(pageAt(result.outDir, '/log/three/'));
+    assert.match(last[1], /Part 3 of 3/);
+    assert.doesNotMatch(last[1], /Next part/);
+    assert.match(last[1], /rel="prev" href="\/log\/two\/"/);
+
+    assert.deepEqual(seriesBlocks(pageAt(result.outDir, '/log/alone/')), []);
+  });
+});
+
+test('the series page lists all parts in order with the name, description and part numbers', async () => {
+  await inTree(seriesFiles, async (root) => {
+    const result = await buildTagged(root);
+    const html = pageAt(result.outDir, '/log/series/trip/');
+    assert.match(html, /<h1>Alps trip<\/h1>/);
+    assert.match(html, /Ten days on foot\./);
+    assert.match(html, /3 parts/);
+    assert.deepEqual(listed(html), ['Day one', 'Day two', 'Day three']);
+    assert.match(html, /Part 1 of 3[\s\S]*Part 2 of 3[\s\S]*Part 3 of 3/);
+    assert.match(html, /<meta name="description" content="Ten days on foot\.">/);
+
+    assert.deepEqual(result.manifest.series, [
+      {
+        blog: 'notes',
+        slug: 'trip',
+        url: '/log/series/trip/',
+        file: 'log/series/trip/index.html',
+        name: 'Alps trip',
+        count: 3,
+        posts: ['/log/one/', '/log/two/', '/log/three/'],
+      },
+    ]);
+    assert.deepEqual(
+      result.manifest.pages.find((page) => page.url === '/log/series/trip/'),
+      { url: '/log/series/trip/', file: 'log/series/trip/index.html', type: 'series', title: 'Alps trip' },
+    );
+    const byUrl = Object.fromEntries(result.manifest.posts.map((entry) => [entry.url, entry.series]));
+    assert.deepEqual(byUrl['/log/two/'], { slug: 'trip', number: 2, count: 3 });
+    assert.equal(byUrl['/log/alone/'], null);
+  });
+});
+
+test('explicit seriesPosition overrides date order on the post pages and the series page', async () => {
+  await inTree(
+    {
+      'coffer.yaml': configYaml(),
+      'notes/old.md': post('Old', '2026-01-01', 'series: s\nseriesPosition: 3\n'),
+      'notes/mid.md': post('Mid', '2026-01-02', 'series: s\nseriesPosition: 1\n'),
+      'notes/new.md': post('New', '2026-01-03', 'series: s\nseriesPosition: 2\n'),
+      'notes/free.md': post('Free', '2025-01-03', 'series: s\n'),
+    },
+    async (root) => {
+      const result = await buildTagged(root);
+      assert.deepEqual(listed(pageAt(result.outDir, '/log/series/s/')), ['Mid', 'New', 'Old', 'Free']);
+      const mid = seriesBlocks(pageAt(result.outDir, '/log/mid/'))[0];
+      assert.match(mid, /Part 1 of 4/);
+      assert.match(mid, /rel="next" href="\/log\/new\/"/);
+      const free = seriesBlocks(pageAt(result.outDir, '/log/free/'))[0];
+      assert.match(free, /Part 4 of 4/);
+      assert.match(free, /rel="prev" href="\/log\/old\/"/);
+      // Without series.yaml the series is shown by its slug.
+      assert.match(pageAt(result.outDir, '/log/series/s/'), /<h1>s<\/h1>/);
+    },
+  );
+});
+
+test('only published posts are parts of a series, so a future part joins on its day', async () => {
+  const files = {
+    'coffer.yaml': configYaml(),
+    'notes/one.md': post('One', '2026-01-01', 'series: s\n'),
+    'notes/two.md': post('Two', '2026-01-02', 'series: s\n'),
+    'notes/later.md': post('Later', '2099-01-01', 'series: s\n'),
+    'notes/hidden.md': post('Hidden', '2026-01-03', 'series: s\ndraft: true\n'),
+  };
+  await inTree(files, async (root) => {
+    const result = await buildTagged(root);
+    assert.match(seriesBlocks(pageAt(result.outDir, '/log/two/'))[0], /Part 2 of 2/);
+    assert.deepEqual(listed(pageAt(result.outDir, '/log/series/s/')), ['One', 'Two']);
+    assert.equal(existsSync(join(result.outDir, 'log', 'later')), false);
+
+    const preview = await buildTagged(root, { drafts: true });
+    assert.match(seriesBlocks(pageAt(preview.outDir, '/log/two/'))[0], /Part 2 of 4/);
+    assert.deepEqual(listed(pageAt(preview.outDir, '/log/series/s/')), ['One', 'Two', 'Hidden', 'Later']);
+
+    const due = await buildTagged(root, { now: new Date('2099-02-01T00:00:00Z') });
+    const block = seriesBlocks(pageAt(due.outDir, '/log/two/'))[0];
+    assert.match(block, /Part 2 of 3/);
+    assert.match(block, /rel="next" href="\/log\/later\/"/);
+  });
+});
+
+test('the series pages follow urls.series, and the series block follows the language', async () => {
+  const russian = configYaml('    urls: { series: cycles }').replace('lang: en', 'lang: ru');
+  await inTree({ ...seriesFiles, 'coffer.yaml': russian }, async (root) => {
+    const result = await buildTagged(root);
+    const middle = seriesBlocks(pageAt(result.outDir, '/log/two/'))[0];
+    assert.match(middle, /href="\/log\/cycles\/trip\/"/);
+    assert.match(middle, /Часть 2 из 3/);
+    assert.match(middle, /Предыдущая часть/);
+    assert.match(pageAt(result.outDir, '/log/cycles/trip/'), /3 части/);
+  });
+});
+
+test('series.yaml entries for unused series and duplicate positions are warnings, not errors', async () => {
+  await inTree(
+    {
+      'coffer.yaml': configYaml(),
+      'notes/series.yaml': 'ghost:\n  name: Ghost\n  colour: red\n',
+      'notes/a.md': post('A', '2026-01-01', 'series: s\nseriesPosition: 1\n'),
+      'notes/b.md': post('B', '2026-01-02', 'series: s\nseriesPosition: 1\n'),
+    },
+    async (root) => {
+      const result = await buildTagged(root);
+      const all = result.warnings.join('\n');
+      assert.match(all, /notes[\\/]series\.yaml: ghost\.colour: unknown key/);
+      assert.match(all, /notes[\\/]series\.yaml: ghost: no published post is in this series/);
+      assert.match(all, /notes[\\/]b\.md: seriesPosition: 1 is also used by notes[\\/]a\.md in the series "s"/);
+    },
+  );
+});
+
+test('a theme can override the series block of a post', async () => {
+  await inTree(
+    {
+      ...seriesFiles,
+      'coffer.yaml': configYaml('    theme: theme'),
+      'theme/templates/post.njk':
+        '{% extends "coffer:post.njk" %}\n{% block series_bottom %}<p class="mine">end of {{ series.name }}</p>{% endblock %}\n',
+    },
+    async (root) => {
+      const result = await buildTagged(root);
+      const html = pageAt(result.outDir, '/log/two/');
+      assert.match(html, /<p class="mine">end of Alps trip<\/p>/);
+      assert.equal(seriesBlocks(html).length, 1);
+    },
+  );
+});
+
+test('coffer build reports an invalid series.yaml with its file and exits 1', async () => {
+  await inTree({ ...seriesFiles, 'notes/series.yaml': 'trip:\n  name: 5\n' }, async (root) => {
+    const result = await runInProcess(['build', '--config', join(root, 'coffer.yaml'), '--out', join(root, 'out')]);
+    assert.equal(result.code, 1);
+    assert.match(result.err, /series\.yaml: trip\.name: must be a non-empty string/);
+  });
+});
+
+test('a post with a series that is not a slug fails the build with the file and field', async () => {
+  await inTree(
+    { 'coffer.yaml': configYaml(), 'notes/a.md': post('A', '2026-01-01', 'series: My trip\n') },
+    async (root) => {
+      const result = await runInProcess(['build', '--config', join(root, 'coffer.yaml'), '--out', join(root, 'out')]);
+      assert.equal(result.code, 1);
+      assert.match(result.err, /a\.md: series: "My trip" must be a slug/);
+    },
+  );
+});

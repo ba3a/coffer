@@ -34,6 +34,18 @@ export {
   resolveNow,
 } from './content/posts.js';
 export {
+  SERIES_FILE_NAME,
+  SERIES_META_KEYS,
+  SeriesError,
+  buildSeries,
+  compareSeriesParts,
+  duplicatePositionWarnings,
+  loadSeriesMeta,
+  parseSeriesMeta,
+  seriesUrl,
+  unusedSeriesWarnings,
+} from './content/series.js';
+export {
   TAGS_FILE_NAME,
   TAG_META_KEYS,
   TagsError,

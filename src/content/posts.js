@@ -16,7 +16,7 @@ import { LineCounter, parseDocument } from 'yaml';
  * @property {string[]} tags Normalized tag paths: lowercase, slash separated, no empty segments, no duplicates.
  * @property {string | null} summary Short summary, if given.
  * @property {string | null} cover Cover image reference as written (a path beside the post or a URL), if given.
- * @property {string | null} series Name of the series the post belongs to, if any.
+ * @property {string | null} series Slug of the series the post belongs to, if any: lowercase, made of letters, digits, ".", "_" and "-". It is the last segment of the series page's URL.
  * @property {number | null} seriesPosition Explicit position in the series, if given.
  * @property {boolean} draft True for a draft.
  * @property {string[]} aliases Old slugs that redirect to this post.
@@ -361,7 +361,19 @@ function parseInto(file, text, slug, kind, dir, options, errors) {
 
   const summary = optionalString('summary');
   const cover = optionalString('cover');
-  const series = optionalString('series');
+  const rawSeries = optionalString('series');
+  /** @type {string | null | undefined} */
+  let series = rawSeries;
+  if (typeof rawSeries === 'string') {
+    series = rawSeries.toLowerCase();
+    if (!SLUG_RE.test(series)) {
+      fail(
+        'series',
+        `"${rawSeries}" must be a slug made of letters, digits, ".", "_" and "-"; give the series a display name in series.yaml`,
+      );
+      series = undefined;
+    }
+  }
   const location = optionalString('location');
   const camera = optionalString('camera');
   const draft = optionalBoolean('draft');

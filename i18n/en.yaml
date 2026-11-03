@@ -23,6 +23,11 @@ post:
     other: "{count} minutes"
   contents: Contents
   unpublished: "Preview: this post is not published yet."
+series:
+  navigation: "Series: {name}"
+  parts:
+    one: "{count} part"
+    other: "{count} parts"
 blog:
   empty: No posts yet.
 tags:

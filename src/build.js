@@ -12,6 +12,13 @@ import {
   tagUrl,
   unusedTagWarnings,
 } from './content/tags.js';
+import {
+  buildSeries,
+  duplicatePositionWarnings,
+  loadSeriesMeta,
+  seriesUrl,
+  unusedSeriesWarnings,
+} from './content/series.js';
 import { renderMarkdown } from './markdown/render.js';
 import {
   REDIRECTS_FILE_NAME,
@@ -79,7 +86,7 @@ export class BuildError extends Error {
  * @typedef {object} ManifestPage
  * @property {string} url Site-relative URL, ending in a slash.
  * @property {string} file Path of the HTML file, relative to the site's output directory.
- * @property {'home' | 'not-found' | 'blog-index' | 'post' | 'tag-index' | 'tag'} type
+ * @property {'home' | 'not-found' | 'blog-index' | 'post' | 'tag-index' | 'tag' | 'series'} type
  * @property {string} title
  */
 
@@ -98,6 +105,7 @@ export class BuildError extends Error {
  * @property {boolean} draft True when the post is a draft.
  * @property {boolean} published False for a post that is only built because of preview mode.
  * @property {number} readingMinutes
+ * @property {{ slug: string, number: number, count: number } | null} series The series the post belongs to, with its place in it ("part number of count"), or null.
  */
 
 /**
@@ -114,6 +122,19 @@ export class BuildError extends Error {
  */
 
 /**
+ * One series page listed in the manifest.
+ *
+ * @typedef {object} ManifestSeries
+ * @property {string} blog Id of the blog.
+ * @property {string} slug Series slug.
+ * @property {string} url Site-relative URL of the series page, ending in a slash.
+ * @property {string} file Path of the HTML file, relative to the site's output directory.
+ * @property {string} name Name shown for the series.
+ * @property {number} count Number of parts.
+ * @property {string[]} posts Site-relative URLs of the parts, in reading order.
+ */
+
+/**
  * The build manifest of one site. `feeds` and `images` are filled by later
  * features; checks read this file instead of guessing what the build wrote.
  *
@@ -126,6 +147,7 @@ export class BuildError extends Error {
  * @property {ManifestPage[]} pages
  * @property {ManifestPost[]} posts
  * @property {ManifestTag[]} tags Every tag page, with the posts it lists.
+ * @property {ManifestSeries[]} series Every series page, with its parts in order.
  * @property {ManifestRedirect[]} redirects Permanent redirects from old post addresses.
  * @property {unknown[]} feeds
  * @property {unknown[]} images
@@ -195,6 +217,19 @@ function fileForUrl(url) {
 }
 
 /**
+ * The place of a post in its series, as templates see it.
+ *
+ * @typedef {object} SeriesView
+ * @property {string} slug
+ * @property {string} name
+ * @property {string} url Address of the series page.
+ * @property {number} number The "n" of "part n of m".
+ * @property {number} count The "m" of "part n of m".
+ * @property {{ title: string, url: string } | null} previous
+ * @property {{ title: string, url: string } | null} next
+ */
+
+/**
  * The part of a post that templates see.
  *
  * @param {Post} post
@@ -202,8 +237,9 @@ function fileForUrl(url) {
  * @param {number} readingMinutes
  * @param {boolean} unpublished True when the post is only built because of preview mode.
  * @param {{ path: string, name: string, url: string }[]} [tagLinks] The post's tags with their names and page addresses.
+ * @param {SeriesView | null} [series] The post's place in its series.
  */
-function postView(post, url, readingMinutes, unpublished, tagLinks = []) {
+function postView(post, url, readingMinutes, unpublished, tagLinks = [], series = null) {
   return {
     slug: post.slug,
     url,
@@ -215,6 +251,7 @@ function postView(post, url, readingMinutes, unpublished, tagLinks = []) {
     draft: post.draft,
     unpublished,
     readingMinutes,
+    series,
   };
 }
 
@@ -298,6 +335,8 @@ async function buildSite(config, site, options, outRoot, version) {
   const manifestPosts = [];
   /** @type {ManifestTag[]} */
   const manifestTags = [];
+  /** @type {ManifestSeries[]} */
+  const manifestSeries = [];
   /** @type {{ url: string, aliasUrls: string[], source: string }[]} */
   const aliasing = [];
   /**
@@ -333,6 +372,40 @@ async function buildSite(config, site, options, outRoot, version) {
     /** @param {string} path */
     const urlOf = (path) => tagUrl(blogBase, site.urls.tags, path);
 
+    const seriesMeta = loadSeriesMeta(blog.dir);
+    const seriesList = buildSeries(selected, seriesMeta.meta);
+    if (seriesMeta.file !== null) {
+      const shown = posix(relative(config.dir, seriesMeta.file));
+      for (const warning of [
+        ...seriesMeta.warnings,
+        ...unusedSeriesWarnings(seriesMeta.file, seriesMeta.meta, seriesList),
+      ]) {
+        warnings.push(warning.replace(seriesMeta.file, shown));
+      }
+    }
+    warnings.push(
+      ...duplicatePositionWarnings(seriesList, (file) => posix(relative(config.dir, file))),
+    );
+    /** @param {string} slug */
+    const seriesPageUrl = (slug) => seriesUrl(blogBase, site.urls.series, slug);
+    /** @type {Map<Post, SeriesView>} */
+    const seriesOf = new Map();
+    for (const entry of seriesList) {
+      for (const part of entry.parts) {
+        seriesOf.set(part.post, {
+          slug: entry.slug,
+          name: entry.name,
+          url: seriesPageUrl(entry.slug),
+          number: part.number,
+          count: entry.count,
+          previous: part.previous
+            ? { title: part.previous.title, url: postUrl(blog, part.previous.slug) }
+            : null,
+          next: part.next ? { title: part.next.title, url: postUrl(blog, part.next.slug) } : null,
+        });
+      }
+    }
+
     /** @type {{ post: Post, url: string, readingMinutes: number, unpublished: boolean }[]} */
     const entries = [];
     for (const post of selected) {
@@ -357,12 +430,14 @@ async function buildSite(config, site, options, outRoot, version) {
         rendered.readingMinutes,
         unpublished,
         post.tags.map((path) => ({ path, name: nameOf(path), url: urlOf(path) })),
+        seriesOf.get(post) ?? null,
       );
       const html = templates.render('post.njk', {
         site,
         nav,
         blog,
         post: view,
+        series: view.series,
         toc: rendered.toc,
         page: {
           title: post.title,
@@ -385,6 +460,9 @@ async function buildSite(config, site, options, outRoot, version) {
         draft: post.draft,
         published: !unpublished,
         readingMinutes: rendered.readingMinutes,
+        series: view.series
+          ? { slug: view.series.slug, number: view.series.number, count: view.series.count }
+          : null,
       });
     }
 
@@ -476,6 +554,40 @@ async function buildSite(config, site, options, outRoot, version) {
         posts: tagPostUrls,
       });
     }
+
+    for (const entry of seriesList) {
+      const url = seriesPageUrl(entry.slug);
+      const parts = entry.parts.flatMap((part) => {
+        const view = viewByUrl.get(postUrl(blog, part.post.slug));
+        return view ? [{ ...view, part: part.number }] : [];
+      });
+      const html = templates.render('series.njk', {
+        site,
+        nav,
+        blog,
+        posts: parts,
+        series: {
+          slug: entry.slug,
+          name: entry.name,
+          description: entry.description ?? '',
+          url,
+          count: entry.count,
+        },
+        page: { title: entry.name, description: entry.description ?? '', content: '' },
+      });
+      const file = fileForUrl(url);
+      writeOutput(outDir, file, html);
+      pages.push({ url, file, type: 'series', title: entry.name });
+      manifestSeries.push({
+        blog: blog.id,
+        slug: entry.slug,
+        url,
+        file,
+        name: entry.name,
+        count: entry.count,
+        posts: entry.parts.map((part) => postUrl(blog, part.post.slug)),
+      });
+    }
   }
 
   // The home page lives at "/". A blog at the site root has that address.
@@ -548,6 +660,7 @@ async function buildSite(config, site, options, outRoot, version) {
   pages.sort((a, b) => (a.url < b.url ? -1 : a.url > b.url ? 1 : 0));
   manifestPosts.sort((a, b) => (a.url < b.url ? -1 : a.url > b.url ? 1 : 0));
   manifestTags.sort((a, b) => (a.url < b.url ? -1 : a.url > b.url ? 1 : 0));
+  manifestSeries.sort((a, b) => (a.url < b.url ? -1 : a.url > b.url ? 1 : 0));
 
   /** @type {Manifest} */
   const manifest = {
@@ -559,6 +672,7 @@ async function buildSite(config, site, options, outRoot, version) {
     pages,
     posts: manifestPosts,
     tags: manifestTags,
+    series: manifestSeries,
     redirects: redirects.map(({ from, to, status }) => ({ from, to, status })),
     feeds: [],
     images: [],
@@ -582,6 +696,9 @@ async function buildSite(config, site, options, outRoot, version) {
  *   the tag or any tag below it, newest first;
  * - for every `aliases` entry of a published post, a redirect page at the old
  *   address and a rule in `_redirects`;
+ * - for every series, a page at `{blogPrefix}/{series}/{slug}/` listing its
+ *   parts in order, and on every part a navigation block (series name, "part
+ *   n of m", previous and next) at the top and at the end;
  * - the assets of the default theme, then of the site's theme, in `assets/`;
  * - the build manifest `.coffer-manifest.json`.
  *
@@ -594,6 +711,7 @@ async function buildSite(config, site, options, outRoot, version) {
  * @throws {import('./content/posts.js').PostError} When posts are invalid.
  * @throws {import('./content/home.js').HomeError} When the home page file is invalid.
  * @throws {import('./content/tags.js').TagsError} When a blog's `tags.yaml` is invalid.
+ * @throws {import('./content/series.js').SeriesError} When a blog's `series.yaml` is invalid.
  * @throws {import('./markdown/render.js').MarkdownError} When a post's Markdown is invalid.
  */
 export async function buildSites(config, options = {}) {

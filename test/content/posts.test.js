@@ -268,7 +268,7 @@ test('every front matter field is read', () => {
   assert.deepEqual(post.tags, ['hiking/alps', 'woodworking']);
   assert.equal(post.summary, 'Short.');
   assert.equal(post.cover, 'cover.jpg');
-  assert.equal(post.series, 'Alps');
+  assert.equal(post.series, 'alps');
   assert.equal(post.seriesPosition, 2);
   assert.equal(post.draft, true);
   assert.deepEqual(post.aliases, ['old-name', 'older']);
@@ -327,6 +327,7 @@ test('other field mistakes name the file and the field', () => {
     ['summary: 5', /^x\.md: summary: must be a non-empty string$/],
     ['cover: ""', /^x\.md: cover: /],
     ['series: [a]', /^x\.md: series: /],
+    ['series: Alps trip', /^x\.md: series: "Alps trip" must be a slug/],
     ['draft: yes', /^x\.md: draft: must be true or false$/],
     ['map: 1', /^x\.md: map: must be true or false$/],
     ['location: 3', /^x\.md: location: /],

@@ -1,0 +1,16 @@
+{% extends "blog-index.njk" %}
+
+{% block heading %}
+{% block breadcrumbs %}
+<p class="series-kicker">{{ 'nav.series' | t }}</p>
+{% endblock %}
+<h1>{{ page.title }}</h1>
+{% if series.description %}<p class="series-description">{{ series.description }}</p>
+{% endif %}
+<p class="series-count">{{ 'series.parts' | t({ count: series.count }) }}</p>
+{% endblock %}
+
+{% block item %}
+<p class="series-part">{{ 'post.series_part' | t({ n: post.part, m: series.count }) }}</p>
+{{ super() }}
+{% endblock %}

@@ -1,4 +1,5 @@
 {% extends "base.njk" %}
+{% from "series-nav.njk" import seriesNav %}
 
 {% block main %}
 <article class="post">
@@ -20,6 +21,9 @@
 </ul>
 {% endif %}
 {% endblock %}
+{% block series_top %}
+{% if series %}{{ seriesNav(series, 'top') }}{% endif %}
+{% endblock %}
 {% if post.unpublished %}<p class="preview-note">{{ 'post.unpublished' | t }}</p>
 {% endif %}
 </header>
@@ -40,5 +44,8 @@
 {% block body %}{{ page.content | safe }}{% endblock %}
 </div>
 </div>
+{% block series_bottom %}
+{% if series %}{{ seriesNav(series, 'bottom') }}{% endif %}
+{% endblock %}
 </article>
 {% endblock %}

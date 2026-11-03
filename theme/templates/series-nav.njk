@@ -1,0 +1,16 @@
+{# The series block of a post: name, "part n of m", previous and next. post.njk uses it at the top and at the end. #}
+{% macro seriesNav(series, where) %}
+<nav class="series-nav series-nav-{{ where }}" aria-label="{{ 'series.navigation' | t({ name: series.name }) }}">
+<p class="series-title"><a href="{{ series.url | url }}">{{ series.name }}</a> <span class="series-part">{{ 'post.series_part' | t({ n: series.number, m: series.count }) }}</span></p>
+{% if series.previous or series.next %}
+<ul class="series-links">
+{% if series.previous %}
+<li class="series-previous"><a rel="prev" href="{{ series.previous.url | url }}"><span class="series-label">{{ 'post.series_previous' | t }}</span> {{ series.previous.title }}</a></li>
+{% endif %}
+{% if series.next %}
+<li class="series-next"><a rel="next" href="{{ series.next.url | url }}"><span class="series-label">{{ 'post.series_next' | t }}</span> {{ series.next.title }}</a></li>
+{% endif %}
+</ul>
+{% endif %}
+</nav>
+{% endmacro %}

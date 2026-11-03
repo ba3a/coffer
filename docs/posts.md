@@ -30,7 +30,7 @@ title: A walk in the hills
 date: 2024-05-01
 tags: [hiking/alps, photography]
 summary: Two days, one tent.
-series: Alps
+series: alps
 seriesPosition: 1
 ---
 
@@ -44,8 +44,8 @@ The text of the post.
 | `tags`           | no       | List of tags. A tag is a slash path such as `woodworking/boxes`. Stored lowercase, without duplicates.      |
 | `summary`        | no       | Short text for lists, feeds and link previews.                                                              |
 | `cover`          | no       | Cover image: a path beside the post, or a URL.                                                              |
-| `series`         | no       | Name of the series the post belongs to.                                                                     |
-| `seriesPosition` | no       | Whole number that fixes the post's place in its series. Needs `series`.                                     |
+| `series`         | no       | Slug of the series the post belongs to, such as `alps`; stored lowercase. See [Series](series.md).          |
+| `seriesPosition` | no       | Whole number that puts the post ahead of the unnumbered ones, by value. Needs `series`; see [Series](series.md). |
 | `draft`          | no       | `true` keeps the post out of the published site. Default `false`.                                           |
 | `aliases`        | no       | List of old slugs that redirect permanently to this post; see [URLs](urls.md).                              |
 | `location`       | no       | Image location policy for this post, overriding the site and tag settings. Checked when the policy is applied. |

@@ -1,0 +1,5 @@
+# Names and descriptions for the series of this blog. A series without an entry
+# is shown by its slug (the value of `series` in the posts).
+boxes-by-hand:
+  name: Boxes by hand
+  description: Learning to make small boxes with hand tools, one joint at a time.
