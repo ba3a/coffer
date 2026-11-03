@@ -113,6 +113,8 @@ export {
   checkSourceLinks,
   listProjectSlugs,
 } from './check/source-links.js';
+export { checkOutput, checkSite } from './check/index.js';
+export { W3C_VALIDATOR_URL, parseW3cResponse, validateFeedsOnline } from './check/w3c.js';
 export {
   REPORT_DIR_NAME,
   REPORT_FILE_NAME,

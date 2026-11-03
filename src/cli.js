@@ -3,6 +3,7 @@ import { resolve } from 'node:path';
 
 import { BuildError, buildSites, DEFAULT_OUT_DIR } from './build.js';
 import { CardError } from './cards.js';
+import { checkOutput } from './check/index.js';
 import { ConfigError, loadConfig } from './config.js';
 import { HomeError } from './content/home.js';
 import { PostError } from './content/posts.js';
@@ -26,6 +27,10 @@ Commands:
   serve [dir]     Serve one built site directory the way Cloudflare Pages does
                   (--port <number> [default: ${DEFAULT_PORT}], --host <address>;
                   dir defaults to the working directory)
+  check           Check a finished build: links, anchors, preview metadata,
+                  feeds and the sitemap; exits 1 on any failure
+                  (--config <path>, --out <dir> [default: ${DEFAULT_OUT_DIR}],
+                  --w3c to also validate feeds at validator.w3.org)
   config          Check coffer.yaml and list the configured sites
                   (--config <path> selects another file)
   help            Show this help text
@@ -41,10 +46,17 @@ Run "coffer help" to see this message again.
  */
 
 /**
+ * Things a command reaches outside the process through; tests replace them.
+ *
+ * @typedef {object} Services
+ * @property {import('./check/w3c.js').W3cOptions} [w3c] Replaces the network and the clock of `check --w3c`.
+ */
+
+/**
  * A command receives its arguments (without the command name) and the output
  * channels, and resolves to a process exit code.
  *
- * @typedef {(args: string[], io: Io) => number | Promise<number>} Command
+ * @typedef {(args: string[], io: Io, services: Services) => number | Promise<number>} Command
  */
 
 /**
@@ -89,6 +101,35 @@ export function parseBuildArgs(args) {
     const arg = args[i];
     if (arg === '--drafts') {
       options.drafts = true;
+      continue;
+    }
+    const [flag, inline] = arg.startsWith('--') && arg.includes('=')
+      ? [arg.slice(0, arg.indexOf('=')), arg.slice(arg.indexOf('=') + 1)]
+      : [arg, undefined];
+    if (!Object.hasOwn(valued, flag)) return { error: `unexpected argument "${arg}"` };
+    const value = inline ?? args[i + 1];
+    if (value === undefined || value === '') return { error: `${flag} needs a value` };
+    if (inline === undefined) i += 1;
+    options[valued[flag]] = value;
+  }
+  return options;
+}
+
+/**
+ * Reads the options of `coffer check`.
+ *
+ * @param {string[]} args
+ * @returns {{ configPath?: string, out?: string, w3c: boolean } | { error: string }}
+ */
+export function parseCheckArgs(args) {
+  /** @type {{ configPath?: string, out?: string, w3c: boolean }} */
+  const options = { w3c: false };
+  /** @type {Record<string, 'configPath' | 'out'>} */
+  const valued = { '--config': 'configPath', '--out': 'out' };
+  for (let i = 0; i < args.length; i += 1) {
+    const arg = args[i];
+    if (arg === '--w3c') {
+      options.w3c = true;
       continue;
     }
     const [flag, inline] = arg.startsWith('--') && arg.includes('=')
@@ -219,6 +260,43 @@ const commands = {
       throw error;
     }
   },
+  check: async (args, io, services) => {
+    const parsed = parseCheckArgs(args);
+    if ('error' in parsed) {
+      io.err(`coffer: ${parsed.error}\n`);
+      return 1;
+    }
+    try {
+      const config = loadConfig({ configPath: parsed.configPath });
+      const out = parsed.out ?? DEFAULT_OUT_DIR;
+      const result = await checkOutput(config, { out, w3c: parsed.w3c, w3cOptions: services.w3c });
+      const label = out.replace(/[\\/]+$/, '');
+      for (const warning of result.warnings) {
+        io.err(`warning: ${label}/${warning.site}/${warning.file}: ${warning.message}\n`);
+      }
+      for (const failure of result.failures) {
+        io.err(`${label}/${failure.site}/${failure.file}: ${failure.message}\n`);
+      }
+      for (const site of result.sites) {
+        const problems = site.failures.length;
+        io.out(
+          `${site.site}: ${site.checked.pages} page(s), ${site.checked.feeds} feed(s) checked, ` +
+            `${problems === 0 ? 'no failures' : `${problems} failure(s)`}\n`,
+        );
+      }
+      if (result.failures.length > 0) {
+        io.err(`coffer check: ${result.failures.length} failure(s)\n`);
+        return 1;
+      }
+      return 0;
+    } catch (error) {
+      if (error instanceof ConfigError) {
+        io.err(`${error.errors.join('\n')}\n`);
+        return 1;
+      }
+      throw error;
+    }
+  },
   config: (args, io) => {
     const parsed = parseConfigArgs(args);
     if ('error' in parsed) {
@@ -265,9 +343,10 @@ const commands = {
  *
  * @param {string[]} argv Arguments after the program name.
  * @param {Io} io Output channels.
+ * @param {Services} [services] Outside services, replaced in tests.
  * @returns {Promise<number>} Process exit code.
  */
-export async function run(argv, io) {
+export async function run(argv, io, services = {}) {
   const [name, ...args] = argv;
   if (name === undefined) {
     io.err(USAGE);
@@ -278,5 +357,5 @@ export async function run(argv, io) {
     io.err(`coffer: unknown command "${name}"\n\n${USAGE}`);
     return 1;
   }
-  return command(args, io);
+  return command(args, io, services);
 }

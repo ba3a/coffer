@@ -48,6 +48,7 @@ For a site `workshop` with a blog whose `prefix` is `journal`:
 - **Page metadata**: every page has a title, a description, a canonical address and the Open Graph and Twitter card tags for link previews, and `<html lang>` is the site's language. The build also writes `sitemap.xml` and `robots.txt`, and a title card for every page that has no image of its own (cached in `.cache/cards/`). See [SEO and link previews](seo.md).
 - **Links and images** in every post are resolved before anything is written: a broken link, a missing image or an unknown `project:` reference fails the build with `file:line:column`, and relative links between posts become canonical URLs. The errors, warnings and notes of the build are also written to `.coffer/report.json`, outside the output. See [Links, images and the build report](links.md).
 - **Assets** are the files of the default theme's `assets/` folder, followed by the `assets/` folder of the site's theme, which wins on equal names. The default stylesheet is `assets/coffer.css`.
+- **Checking the result**: `coffer check` inspects the finished output for broken links and anchors, missing preview metadata, invalid feeds and a sitemap that differs from the manifest. See [Checking a finished build](checks.md).
 - An earlier build of the same site is removed first, so a post that is no longer published disappears from the output.
 
 ## Drafts and future posts
