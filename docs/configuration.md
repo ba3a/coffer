@@ -64,6 +64,7 @@ Unknown keys are errors everywhere in the file, so a misspelled key never passes
 | `contentDir`     | no       | `content`    | Directory with the site's content: the home page (`home.md`, see [Home](home.md)) and pages.                                                                |
 | `theme`          | no       | default theme | Directory of the site's theme. When absent, the engine's default theme is used and the value is `null` in the loaded configuration.                       |
 | `contentLicense` | no       | empty        | Text shown in the footer to state the license of the site's content, for example `All rights reserved`. The engine's own license does not cover content.    |
+| `defaultImage`   | no       | `/assets/social-default.png` | Preview image of pages that have none (see [SEO and link previews](seo.md)): a path starting with `/` or an absolute `http(s)` URL. |
 | `author`         | no       | the site title | Author named in feeds: a name, or a mapping with `name`, `email` and `url` (see [Feeds](feeds.md)).                                                        |
 | `feeds`          | no       | see below    | Settings of the Atom feeds.                                                                                                                                  |
 | `links`          | no       | `[]`         | List of links, see below.                                                                                                                                    |

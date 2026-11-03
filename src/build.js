@@ -8,6 +8,7 @@ import {
   FEED_FILE_NAME,
   absoluteUrl,
   createFeedEntry,
+  excerptOf,
   feedUrlFor,
   renderFeed,
   selectEntries,
@@ -27,6 +28,7 @@ import {
   seriesUrl,
   unusedSeriesWarnings,
 } from './content/series.js';
+import { buildMeta } from './meta.js';
 import { renderMarkdown } from './markdown/render.js';
 import {
   REDIRECTS_FILE_NAME,
@@ -36,6 +38,7 @@ import {
   renderRedirectsFile,
 } from './redirects.js';
 import { createTemplates } from './render/templates.js';
+import { ROBOTS_FILE_NAME, SITEMAP_FILE_NAME, renderRobots, renderSitemap } from './sitemap.js';
 import { readVersion } from './version.js';
 
 /** Directory holding the static assets of the default theme. */
@@ -174,6 +177,7 @@ export class BuildError extends Error {
  * @property {ManifestSeries[]} series Every series page, with its parts in order.
  * @property {ManifestRedirect[]} redirects Permanent redirects from old post addresses.
  * @property {ManifestFeed[]} feeds Every Atom feed, with the page it belongs to.
+ * @property {string[]} sitemap Site-relative URLs listed in `sitemap.xml`, sorted.
  * @property {unknown[]} images
  */
 
@@ -380,9 +384,21 @@ async function buildSite(config, site, options, outRoot, version) {
     return [...(own ? [own] : []), ...specific, ...others];
   };
 
+  /**
+   * The `meta` object of a page (see `meta.js`).
+   *
+   * @param {import('./meta.js').MetaPage} page
+   */
+  const metaFor = (page) => buildMeta(site, page);
+
   rmSync(outDir, { recursive: true, force: true });
   mkdirSync(outDir, { recursive: true });
   copyAssets(site, outDir);
+  if (site.defaultImage.startsWith('/') && !existsSync(join(outDir, ...site.defaultImage.split('/').filter(Boolean)))) {
+    warnings.push(
+      `defaultImage: "${site.defaultImage}" is not in the output; put the file in the "assets" folder of the theme`,
+    );
+  }
 
   /** @type {ManifestPage[]} */
   const pages = [];
@@ -542,6 +558,14 @@ async function buildSite(config, site, options, outRoot, version) {
           ...post.tags.map(tagFeedLink),
           ...(view.series ? [seriesFeedLink(view.series.slug)] : []),
         ]),
+        meta: metaFor({
+          title: post.title,
+          description: post.summary || excerptOf(rendered.html),
+          url,
+          type: 'article',
+          published: post.date,
+          tags: view.tagLinks.map((tag) => tag.name),
+        }),
         post: view,
         series: view.series,
         toc: rendered.toc,
@@ -584,6 +608,7 @@ async function buildSite(config, site, options, outRoot, version) {
       nav,
       blog,
       feedLinks: feedLinksFor(blog),
+      meta: metaFor({ title: blog.title, description: site.description, url: indexUrl }),
       pageFeed: blogFeedLink,
       posts: views,
       tagsUrl: tagUrl(blogBase, site.urls.tags),
@@ -626,6 +651,7 @@ async function buildSite(config, site, options, outRoot, version) {
       nav,
       blog,
       feedLinks: feedLinksFor(blog),
+      meta: metaFor({ title: tagsTitle, description: site.description, url: tagsIndexUrl }),
       tagsUrl: tagsIndexUrl,
       tree: tagTree.roots.map(treeView),
       page: { title: tagsTitle, description: '', content: '' },
@@ -643,6 +669,7 @@ async function buildSite(config, site, options, outRoot, version) {
         nav,
         blog,
         feedLinks: feedLinksFor(blog, [tagFeed]),
+        meta: metaFor({ title: view.name, description: view.description, url: view.url }),
         pageFeed: tagFeed,
         tagsUrl: tagsIndexUrl,
         tag: view,
@@ -679,6 +706,7 @@ async function buildSite(config, site, options, outRoot, version) {
         nav,
         blog,
         feedLinks: feedLinksFor(blog, [seriesFeed]),
+        meta: metaFor({ title: entry.name, description: entry.description ?? '', url }),
         pageFeed: seriesFeed,
         posts: parts,
         series: {
@@ -805,6 +833,7 @@ async function buildSite(config, site, options, outRoot, version) {
       nav,
       blog: firstBlog,
       feedLinks: feedLinksFor(null),
+      meta: metaFor({ title, description: site.description, url: '/' }),
       blogUrl: firstBlog ? blogUrl(firstBlog) : null,
       posts: latest,
       secondaryLinks: home?.secondaryLinks ?? [],
@@ -826,6 +855,7 @@ async function buildSite(config, site, options, outRoot, version) {
       site,
       nav,
       feedLinks: feedLinksFor(null),
+      meta: metaFor({ title: notFoundTitle, description: site.description, url: NOT_FOUND_URL }),
       page: { title: notFoundTitle, description: '', content: '' },
     }),
   );
@@ -853,6 +883,24 @@ async function buildSite(config, site, options, outRoot, version) {
   const redirectRules = renderRedirectsFile(redirects);
   if (redirectRules !== '') writeOutput(outDir, REDIRECTS_FILE_NAME, redirectRules);
 
+  // The sitemap lists the canonical pages a visitor can reach. The 404 page, the
+  // redirect stubs and, in a preview build, posts that are not published yet
+  // (and tag or series pages with nothing else on them) stay out.
+  const publishedUrls = new Set(manifestPosts.filter((entry) => entry.published).map((entry) => entry.url));
+  const hasPublished = (/** @type {string[]} */ urls) => urls.some((url) => publishedUrls.has(url));
+  const hiddenUrls = new Set([
+    NOT_FOUND_URL,
+    ...manifestPosts.filter((entry) => !entry.published).map((entry) => entry.url),
+    ...manifestTags.filter((entry) => !hasPublished(entry.posts)).map((entry) => entry.url),
+    ...manifestSeries.filter((entry) => !hasPublished(entry.posts)).map((entry) => entry.url),
+  ]);
+  const postDates = new Map(manifestPosts.map((entry) => [entry.url, new Date(entry.date)]));
+  const sitemapEntries = pages
+    .filter((entry) => !hiddenUrls.has(entry.url))
+    .map((entry) => ({ url: entry.url, lastModified: postDates.get(entry.url) ?? null }));
+  writeOutput(outDir, SITEMAP_FILE_NAME, renderSitemap(site.baseUrl, sitemapEntries));
+  writeOutput(outDir, ROBOTS_FILE_NAME, renderRobots(site.baseUrl));
+
   pages.sort((a, b) => (a.url < b.url ? -1 : a.url > b.url ? 1 : 0));
   manifestPosts.sort((a, b) => (a.url < b.url ? -1 : a.url > b.url ? 1 : 0));
   manifestTags.sort((a, b) => (a.url < b.url ? -1 : a.url > b.url ? 1 : 0));
@@ -872,6 +920,7 @@ async function buildSite(config, site, options, outRoot, version) {
     series: manifestSeries,
     redirects: redirects.map(({ from, to, status }) => ({ from, to, status })),
     feeds: manifestFeeds,
+    sitemap: sitemapEntries.map((entry) => entry.url).sort(),
     images: [],
   };
   writeFileSync(join(outDir, MANIFEST_FILE_NAME), `${JSON.stringify(manifest, null, 2)}\n`);
@@ -898,6 +947,8 @@ async function buildSite(config, site, options, outRoot, version) {
  *   n of m", previous and next) at the top and at the end;
  * - for the blog, every tag and every series, a full-content Atom feed named
  *   `feed.xml` under the page's address, newest first (see `docs/feeds.md`);
+ * - `sitemap.xml` (published canonical pages only) and `robots.txt` (see `docs/seo.md`),
+ *   and `title`, description, canonical, Open Graph and Twitter card tags on every page;
  * - the assets of the default theme, then of the site's theme, in `assets/`;
  * - the build manifest `.coffer-manifest.json`.
  *

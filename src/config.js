@@ -79,6 +79,7 @@ export const CONFIG_FILE_NAME = 'coffer.yaml';
  * @property {string} contentDir Absolute path of the content directory.
  * @property {string | null} theme Absolute path of the theme directory, or null for the default theme.
  * @property {string} contentLicense Content license text shown in the footer; may be empty.
+ * @property {string} defaultImage Preview image of pages that have none: a site-relative path starting with `/` or an absolute http(s) URL.
  * @property {AuthorConfig} author Author named in feeds.
  * @property {FeedsConfig} feeds Settings of the Atom feeds.
  * @property {LinkConfig[]} links Links of the site.
@@ -122,6 +123,9 @@ export const DEFAULT_URLS = Object.freeze({
   series: 'series',
 });
 
+/** Preview image used by pages without one, unless the site says otherwise. It ships with the default theme. */
+export const DEFAULT_IMAGE = '/assets/social-default.png';
+
 /** Number of entries in a blog or tag feed unless the site says otherwise. */
 export const DEFAULT_FEED_LIMIT = 20;
 
@@ -137,6 +141,7 @@ const SITE_KEYS = [
   'contentDir',
   'theme',
   'contentLicense',
+  'defaultImage',
   'author',
   'feeds',
   'links',
@@ -725,6 +730,18 @@ function normalizeSite(raw, index, baseDir, problems) {
     fallback: null,
   });
   const contentLicense = readText(raw, 'contentLicense', path, problems);
+  const defaultImage = readString(raw, 'defaultImage', path, problems, {
+    fallback: DEFAULT_IMAGE,
+  });
+  if (
+    defaultImage !== undefined &&
+    (defaultImage.startsWith('mailto:') || !isValidLinkUrl(defaultImage))
+  ) {
+    problems.add(
+      `${path}.defaultImage`,
+      'must be an http(s) URL or a path starting with "/"',
+    );
+  }
   const author = normalizeAuthor(raw.author, `${path}.author`, title ?? '', problems);
   const feeds = normalizeFeeds(
     readMapping(raw, 'feeds', path, problems),
@@ -782,6 +799,7 @@ function normalizeSite(raw, index, baseDir, problems) {
     timezone === undefined ||
     title === undefined ||
     typeof contentDir !== 'string' ||
+    defaultImage === undefined ||
     theme === undefined
   ) {
     return undefined;
@@ -796,6 +814,7 @@ function normalizeSite(raw, index, baseDir, problems) {
     contentDir,
     theme,
     contentLicense,
+    defaultImage,
     author,
     feeds,
     links,

@@ -12,6 +12,7 @@ export {
 export {
   CONFIG_FILE_NAME,
   ConfigError,
+  DEFAULT_IMAGE,
   DEFAULT_URLS,
   findConfigFile,
   loadConfig,
@@ -94,3 +95,5 @@ export {
   resolveRequest,
   startServer,
 } from './serve.js';
+export { buildMeta, openGraphLocale } from './meta.js';
+export { renderRobots, renderSitemap } from './sitemap.js';
