@@ -1,0 +1,28 @@
+{
+  "name": "coffer",
+  "version": "0.0.0",
+  "description": "A static site engine for a person who makes things and writes about them.",
+  "type": "module",
+  "bin": {
+    "coffer": "bin/coffer.js"
+  },
+  "exports": {
+    ".": "./src/index.js",
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "bin",
+    "src"
+  ],
+  "engines": {
+    "node": ">=24"
+  },
+  "scripts": {
+    "test": "node --test \"test/**/*.test.js\" && npm run typecheck",
+    "typecheck": "tsc -p jsconfig.json"
+  },
+  "devDependencies": {
+    "@types/node": "^24.0.0",
+    "typescript": "^5.9.0"
+  }
+}
