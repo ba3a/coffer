@@ -22,3 +22,17 @@ export {
   MarkdownError,
   renderMarkdown,
 } from './markdown/render.js';
+export {
+  DATE_STYLES,
+  I18nError,
+  Translator,
+  formatDate,
+  loadStrings,
+} from './render/i18n.js';
+export {
+  ENGINE_PREFIX,
+  TemplateEngine,
+  ThemeLoader,
+  createTemplates,
+  siteUrl,
+} from './render/templates.js';

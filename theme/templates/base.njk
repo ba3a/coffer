@@ -1,0 +1,40 @@
+<!doctype html>
+<html lang="{{ lang }}">
+<head>
+{% block head %}
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{% if page.title and page.title != site.title %}{{ page.title }} | {% endif %}{{ site.title }}</title>
+{% if page.description %}<meta name="description" content="{{ page.description }}">
+{% endif %}
+{% endblock %}
+</head>
+<body>
+<a class="skip-link" href="#main">{{ 'nav.skip' | t }}</a>
+<header class="site-header">
+{% block header %}
+<a class="site-title" href="{{ '/' | url }}">{{ site.title }}</a>
+{% block nav %}
+<nav aria-label="{{ 'nav.label' | t }}">
+<ul>
+{% for item in nav or [{ key: 'nav.home', url: '/' }] %}
+<li><a href="{{ item.url | url }}">{{ item.label or (item.key | t) }}</a></li>
+{% endfor %}
+</ul>
+</nav>
+{% endblock %}
+{% endblock %}
+</header>
+<main id="main">
+{% block main %}{% endblock %}
+</main>
+<footer class="site-footer">
+{% block footer %}
+{% if site.contentLicense %}<p class="license">{{ 'footer.license' | t({ license: site.contentLicense }) }}</p>
+{% endif %}
+<p class="credit">{{ 'footer.credit' | t }}</p>
+{% endblock %}
+</footer>
+{% block scripts %}{% endblock %}
+</body>
+</html>

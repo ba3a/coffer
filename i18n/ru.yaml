@@ -1,0 +1,39 @@
+# Строки интерфейса темы по умолчанию, русский. Ключи ищутся как `группа.имя`.
+# Значение: строка или, для слов, которые меняются вместе с числом, словарь
+# падежных форм (zero, one, two, few, many, other).
+nav:
+  skip: Перейти к содержимому
+  label: Основная навигация
+  home: Главная
+  projects: Проекты
+  blog: Блог
+  tags: Теги
+  series: Серии
+  search: Поиск
+  feeds: Ленты
+post:
+  published: "Опубликовано {date}"
+  updated: "Обновлено {date}"
+  series_part: "Часть {n} из {m}"
+  series_previous: Предыдущая часть
+  series_next: Следующая часть
+  reading_time:
+    one: "{count} минута"
+    few: "{count} минуты"
+    many: "{count} минут"
+    other: "{count} минуты"
+  contents: Содержание
+feeds:
+  title: Ленты
+  subscribe: Подписаться
+  blog: "Лента: {title}"
+  tag: "Лента тега {tag}"
+  project: "Лента: {title}"
+  series: "Лента серии {title}"
+not_found:
+  title: Страница не найдена
+  text: Такой страницы нет, или она переехала.
+  home: На главную
+footer:
+  license: "Материалы: {license}"
+  credit: Сделано на coffer

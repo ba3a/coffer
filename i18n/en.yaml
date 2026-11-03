@@ -1,0 +1,38 @@
+# UI strings of the default theme, English. Keys are looked up as `group.name`.
+# A value is a string or, for words that change with a number, a mapping of
+# plural categories (zero, one, two, few, many, other) to strings.
+# `{name}` is replaced by a parameter; `{count}` selects the plural form.
+nav:
+  skip: Skip to content
+  label: Main navigation
+  home: Home
+  projects: Projects
+  blog: Blog
+  tags: Tags
+  series: Series
+  search: Search
+  feeds: Feeds
+post:
+  published: "Published {date}"
+  updated: "Updated {date}"
+  series_part: "Part {n} of {m}"
+  series_previous: Previous part
+  series_next: Next part
+  reading_time:
+    one: "{count} minute"
+    other: "{count} minutes"
+  contents: Contents
+feeds:
+  title: Feeds
+  subscribe: Subscribe
+  blog: "Feed of {title}"
+  tag: "Feed of the tag {tag}"
+  project: "Feed of {title}"
+  series: "Feed of the series {title}"
+not_found:
+  title: Page not found
+  text: The page you are looking for does not exist or has moved.
+  home: Back to the home page
+footer:
+  license: "Content: {license}"
+  credit: Built with coffer

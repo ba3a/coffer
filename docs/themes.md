@@ -1,0 +1,131 @@
+# Themes and UI strings
+
+Pages are rendered with [Nunjucks](https://mozilla.github.io/nunjucks/) templates. coffer ships a default theme; a site's own theme only has to contain what it changes.
+
+```js
+import { createTemplates } from 'coffer';
+
+const templates = createTemplates({
+  lang: site.lang,
+  theme: site.theme, // absolute path of the theme directory, or null
+  baseUrl: site.baseUrl,
+  timezone: site.timezone,
+  onMissing: (message) => console.warn(message),
+});
+
+const html = templates.render('page.njk', { site, page: { title: 'Hello', content: '<p>Hi</p>' } });
+```
+
+`theme` is the `theme` of the site in [`coffer.yaml`](configuration.md).
+
+## Theme layout
+
+```
+my-theme/
+  templates/        templates that replace or extend the engine's
+    base.njk
+    post.njk
+  i18n/             UI strings, one file per language
+    en.yaml
+    de.yaml
+```
+
+Both folders are optional.
+
+## Search order
+
+For a template name such as `page.njk`, coffer looks in this order and uses the first match:
+
+1. `templates/` of the site's theme;
+2. the engine's default theme (`theme/templates/` in coffer).
+
+A template the theme does not have is therefore taken from the engine, so a theme can start with a single file.
+
+A name with the prefix `coffer:` skips the theme and always means the engine's copy: `coffer:page.njk`. This is what lets a theme file extend the engine template it replaces.
+
+Templates in the engine refer to each other by plain names (`{% extends "base.njk" %}`), so a theme `base.njk` also restyles every engine page that extends it.
+
+## Overriding one block
+
+`base.njk` defines these blocks:
+
+| Block    | Contents                                                              |
+| -------- | --------------------------------------------------------------------- |
+| `head`   | `<meta>` tags and `<title>`; add stylesheets and feed links here      |
+| `header` | the site title and the navigation (inside `<header>`)                 |
+| `nav`    | the navigation list; nested in `header`, so it can be replaced alone  |
+| `main`   | the page itself (inside `<main id="main">`)                           |
+| `footer` | the content license and the credit line (inside `<footer>`)           |
+| `scripts`| scripts at the end of `<body>`; empty by default                      |
+
+To change only the footer, create `templates/page.njk` in the theme:
+
+```njk
+{% extends "coffer:page.njk" %}
+
+{% block footer %}
+  <p>{{ site.contentLicense }}</p>
+  <p>{{ 'footer.credit' | t }}</p>
+{% endblock %}
+```
+
+Everything outside the `footer` block is rendered exactly as before. Use `{{ super() }}` inside a block to keep the engine's content and add to it:
+
+```njk
+{% block head %}
+  {{ super() }}
+  <link rel="stylesheet" href="{{ '/theme.css' | url }}">
+{% endblock %}
+```
+
+To change a block on every page at once, override it in `templates/base.njk`:
+
+```njk
+{% extends "coffer:base.njk" %}
+
+{% block footer %}...{% endblock %}
+```
+
+## Variables
+
+The engine's pages receive `site` (title, content license, links, ...), `page` (title, description, content, ...) and, for the navigation, `nav`, a list of `{ label, url }` or `{ key, url }` items (`key` is a UI string key). Without `nav`, the navigation holds a link to the home page. `lang` and `basePath` are available in every template.
+
+Values are escaped. Mark HTML you trust with `| safe`.
+
+## Filters
+
+- `t` returns a UI string: `{{ 'nav.home' | t }}`. Parameters are passed as an object: `{{ 'post.series_part' | t({ n: 2, m: 5 }) }}` gives "Part 2 of 5".
+- `date` formats a date or a moment in the site's language and time zone: `{{ post.date | date }}`. The format is `short`, `medium` (default), `long`, `full`, `iso` (`2024-05-01`, for `datetime` attributes) or an object of [`Intl.DateTimeFormat`](https://developer.mozilla.org/docs/Web/JavaScript/Reference/Global_Objects/Intl/DateTimeFormat) options: `{{ d | date({ month: 'long', year: 'numeric' }) }}`. A date without a time (`2024-05-01`) is never shifted by the time zone.
+- `url` turns a site path into a link that works on the published site: it adds the path of the site's `baseUrl` (for a site served below `/docs`) and a trailing slash, keeps any query and fragment, and leaves files (`/feed.xml`), absolute URLs (`https:`, `mailto:`), `#fragments` and relative paths alone. `{{ '/devlog' | url }}` gives `/devlog/`.
+
+## UI strings
+
+Words in the templates (navigation labels, "Part 2 of 5", reading time, feed titles, the 404 text) come from YAML files named after the language, for example `i18n/en.yaml` and `i18n/ru.yaml` in the engine. The language is the `lang` of the site. A regional tag such as `pt-BR` reads `pt.yaml` and then `pt-BR.yaml`.
+
+```yaml
+nav:
+  home: Home
+post:
+  series_part: "Part {n} of {m}"
+  reading_time:
+    one: "{count} minute"
+    other: "{count} minutes"
+```
+
+- Keys are nested: the first group above is the key `nav.home`.
+- `{name}` in a string is replaced by the parameter of that name.
+- A string with plural forms is a mapping of plural categories (`zero`, `one`, `two`, `few`, `many`, `other`) and needs a `count` parameter: `{{ 'post.reading_time' | t({ count: post.readingMinutes }) }}`. The category comes from [`Intl.PluralRules`](https://developer.mozilla.org/docs/Web/JavaScript/Reference/Global_Objects/Intl/PluralRules) for the site's language, so Russian has `one` (1, 21), `few` (2, 22), `many` (5, 11) and `other` (fractions).
+
+A theme overrides strings with its own `i18n/{lang}.yaml`. It lists only the keys it changes; the rest keep the engine's text.
+
+### Missing strings
+
+A key that has no string in the site's language is taken from English and reported once, for example `ru: missing string "nav.search"; using English`. A key that does not exist even in English is shown as the key itself and reported too. Pass `onMissing` to `createTemplates`, or read `templates.missingStrings()` after rendering, to collect the messages for the build report.
+
+## Adding a language
+
+1. Copy the engine's `i18n/en.yaml` into the theme as `i18n/{lang}.yaml`, for example `i18n/de.yaml`.
+2. Translate the values; keep the keys. For strings with plural forms, give the forms the language needs (see the CLDR plural rules); `other` is the form used when no other applies.
+3. Set `lang: de` for the site in `coffer.yaml`.
+
+Strings you leave out fall back to English and show up in the missing-strings report, so a translation can grow one string at a time. To add a language to the engine itself, put the same file in the engine's `i18n/` folder.
