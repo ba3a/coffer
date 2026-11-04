@@ -43,7 +43,7 @@ The text of the post.
 | `date`           | yes      | `YYYY-MM-DD`, or `YYYY-MM-DD` and a time, see below.                                                         |
 | `tags`           | no       | List of tags. A tag is a slash path such as `woodworking/boxes`. Stored lowercase, without duplicates.      |
 | `summary`        | no       | Short text for lists, feeds and link previews.                                                              |
-| `cover`          | no       | Cover image: a path beside the post (JPEG, PNG or WebP; it is resized like any image, see [Images](images.md)), or a URL. |
+| `cover`          | no       | Cover image: a path beside the post (JPEG, PNG, WebP or HEIC; it is resized like any image, see [Images](images.md)), or a URL. |
 | `series`         | no       | Slug of the series the post belongs to, such as `alps`; stored lowercase. See [Series](series.md).          |
 | `seriesPosition` | no       | Whole number that puts the post ahead of the unnumbered ones, by value. Needs `series`; see [Series](series.md). |
 | `draft`          | no       | `true` keeps the post out of the published site. Default `false`.                                           |

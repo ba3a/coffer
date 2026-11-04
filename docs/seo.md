@@ -43,7 +43,7 @@ The default image is the `defaultImage` key of the site (see [Configuration](con
 
 ### A post's cover
 
-`cover` in the front matter of a post is either an `http(s)` URL, which is used as it is, or the path of an image beside the post (`cover.jpg`, `./images/cover.png`; JPEG, PNG or WebP), which stays inside the content directory. The file goes through the image pipeline (see [Images](images.md)) and the 1200 pixel WebP variant, `img/{key}/{name}-1200.webp`, is the preview image; the original is never published. A cover that cannot be used (missing, outside the content directory, another file type, not decodable) is reported as a warning and the post gets a title card instead.
+`cover` in the front matter of a post is either an `http(s)` URL, which is used as it is, or the path of an image beside the post (`cover.jpg`, `./images/cover.png`; JPEG, PNG, WebP or HEIC), which stays inside the content directory. The file goes through the image pipeline (see [Images](images.md)) and the 1200 pixel WebP variant, `img/{key}/{name}-1200.webp`, is the preview image; the original is never published. A cover that cannot be used (missing, outside the content directory, another file type, not decodable) is reported as a warning and the post gets a title card instead.
 
 ### Title cards
 

@@ -21,4 +21,4 @@ export const DEFAULT_SIZES = '(min-width: 44rem) 41rem, calc(100vw - 2rem)';
 export const DEFAULT_IMAGE_WIDTH = 1200;
 
 /** File extensions of the images the pipeline reads, lower case. */
-export const IMAGE_EXTENSIONS = Object.freeze(['.jpg', '.jpeg', '.png', '.webp']);
+export const IMAGE_EXTENSIONS = Object.freeze(['.jpg', '.jpeg', '.png', '.webp', '.heic', '.heif']);

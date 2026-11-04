@@ -572,7 +572,7 @@ async function buildSite(config, site, options, outRoot, version, report) {
             file: shown,
             line,
             column,
-            message: `unsupported image format '${src}' (use JPEG, PNG or WebP)`,
+            message: `unsupported image format '${src}' (use JPEG, PNG, WebP or HEIC)`,
           });
           return null;
         }

@@ -4,6 +4,7 @@ import { availableParallelism } from 'node:os';
 import { basename, extname, join } from 'node:path';
 import sharp from 'sharp';
 
+import { HEIC_DECODER_VERSION, HEIC_EXTENSIONS, decodeHeic, isHeic } from './decode.js';
 import {
   DEFAULT_IMAGE_WIDTH,
   DEFAULT_JPEG_QUALITY,
@@ -26,6 +27,9 @@ export {
 
 /** Image formats (as sharp names them) the pipeline accepts, whatever the file is called. */
 const ACCEPTED_FORMATS = new Set(['jpeg', 'png', 'webp']);
+
+/** What to tell a person whose HEIC picture cannot be decoded. */
+const CONVERT_HINT = 'convert the file to JPEG or PNG (for example by exporting it from your photo app) and use that instead';
 
 /** Folder of the output (and address prefix) in which processed images are published. */
 export const IMAGES_OUT_DIR = 'img';
@@ -236,12 +240,14 @@ export function createImagePipeline(options) {
 
   /**
    * @param {string} source
+   * @param {Buffer} bytes The content of the original.
    * @param {string} sha256
    * @param {string} name
    * @param {string} key
+   * @param {boolean} heic Whether the original is a HEIC picture, which sharp cannot read.
    * @returns {Promise<ProcessedImage>}
    */
-  async function produce(source, sha256, name, key) {
+  async function produce(source, bytes, sha256, name, key, heic) {
     const folder = join(cacheDir, key);
     const found = readCached(folder);
     if (found) {
@@ -249,20 +255,43 @@ export function createImagePipeline(options) {
       return describe(source, sha256, name, key, folder, found, true);
     }
 
-    let metadata;
-    try {
-      metadata = await sharp(source).metadata();
-    } catch (error) {
-      throw new ImageError(`cannot read the image: ${error instanceof Error ? error.message : String(error)}`);
+    /** @type {() => import('sharp').Sharp} */
+    let open;
+    let width;
+    let height;
+    if (heic) {
+      /** @type {import('./decode.js').DecodedImage} */
+      let decoded;
+      try {
+        decoded = await decodeHeic(bytes);
+      } catch (error) {
+        throw new ImageError(`cannot decode the HEIC image "${basename(source)}": ${error instanceof Error ? error.message : String(error)}; ${CONVERT_HINT}`);
+      }
+      // The pixels are already upright, so there is no orientation left to apply.
+      const { data, channels } = decoded;
+      open = () => sharp(data, { raw: { width: decoded.width, height: decoded.height, channels } });
+      ({ width, height } = decoded);
+    } else {
+      let metadata;
+      try {
+        metadata = await sharp(source).metadata();
+      } catch (error) {
+        const reason = error instanceof Error ? error.message : String(error);
+        if (HEIC_EXTENSIONS.includes(extname(source).toLowerCase())) {
+          throw new ImageError(`cannot decode the HEIC image "${basename(source)}": the file is not a valid HEIC picture (${reason}); ${CONVERT_HINT}`);
+        }
+        throw new ImageError(`cannot read the image: ${reason}`);
+      }
+      if (!metadata.format || !ACCEPTED_FORMATS.has(metadata.format)) {
+        throw new ImageError(`unsupported image format "${metadata.format ?? 'unknown'}" (use JPEG, PNG, WebP or HEIC)`);
+      }
+      if (!metadata.width || !metadata.height) throw new ImageError('the image has no size');
+      // Orientations 5 to 8 turn the picture by a quarter.
+      const turned = (metadata.orientation ?? 1) >= 5;
+      width = turned ? metadata.height : metadata.width;
+      height = turned ? metadata.width : metadata.height;
+      open = () => sharp(source);
     }
-    if (!metadata.format || !ACCEPTED_FORMATS.has(metadata.format)) {
-      throw new ImageError(`unsupported image format "${metadata.format ?? 'unknown'}" (use JPEG, PNG or WebP)`);
-    }
-    if (!metadata.width || !metadata.height) throw new ImageError('the image has no size');
-    // Orientations 5 to 8 turn the picture by a quarter.
-    const turned = (metadata.orientation ?? 1) >= 5;
-    const width = turned ? metadata.height : metadata.width;
-    const height = turned ? metadata.width : metadata.height;
 
     const work = join(cacheDir, `${key}.${process.pid}.${Math.random().toString(36).slice(2, 8)}.tmp`);
     rmSync(work, { recursive: true, force: true });
@@ -272,7 +301,7 @@ export function createImagePipeline(options) {
       const variants = [];
       for (const target of variantWidths(widths, width)) {
         const file = `${name}-${target}.webp`;
-        const info = await sharp(source)
+        const info = await open()
           .autoOrient()
           .resize({ width: target, withoutEnlargement: true })
           .webp({ quality: webpQuality })
@@ -280,7 +309,7 @@ export function createImagePipeline(options) {
         variants.push({ file, width: info.width, height: info.height, bytes: info.size });
       }
       const viewerFile = `${name}-full.jpg`;
-      const viewerInfo = await sharp(source)
+      const viewerInfo = await open()
         .autoOrient()
         .flatten({ background: '#ffffff' })
         .resize({ width: viewerMaxEdge, height: viewerMaxEdge, fit: 'inside', withoutEnlargement: true })
@@ -336,7 +365,7 @@ export function createImagePipeline(options) {
      * Processes an original, or finds its files in the cache. An original is
      * processed once per pipeline, however often it is asked for.
      *
-     * @param {string} source Absolute path of a JPEG, PNG or WebP file.
+     * @param {string} source Absolute path of a JPEG, PNG, WebP or HEIC file.
      * @returns {Promise<ProcessedImage>}
      * @throws {ImageError} When the file is not an image of an accepted format or cannot be decoded.
      */
@@ -345,7 +374,7 @@ export function createImagePipeline(options) {
       if (!pending) {
         pending = limit(async () => {
           if (!IMAGE_EXTENSIONS.includes(extname(source).toLowerCase())) {
-            throw new ImageError(`unsupported image format "${extname(source) || source}" (use JPEG, PNG or WebP)`);
+            throw new ImageError(`unsupported image format "${extname(source) || source}" (use JPEG, PNG, WebP or HEIC)`);
           }
           let bytes;
           try {
@@ -354,6 +383,7 @@ export function createImagePipeline(options) {
             throw new ImageError(`cannot read the image: ${error instanceof Error ? error.message : String(error)}`);
           }
           const sha256 = createHash('sha256').update(bytes).digest('hex');
+          const heic = isHeic(bytes);
           const name = baseNameOf(source);
           const key = createHash('sha256')
             .update(
@@ -362,6 +392,7 @@ export function createImagePipeline(options) {
                 sharp: sharp.versions.sharp,
                 vips: sharp.versions.vips,
                 sha256,
+                ...(heic ? { heic: HEIC_DECODER_VERSION } : {}),
                 name,
                 widths,
                 viewerMaxEdge,
@@ -371,7 +402,7 @@ export function createImagePipeline(options) {
             )
             .digest('hex')
             .slice(0, 16);
-          return produce(source, sha256, name, key);
+          return produce(source, bytes, sha256, name, key, heic);
         });
         processing.set(source, pending);
       }

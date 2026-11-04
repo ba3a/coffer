@@ -18,8 +18,9 @@ import {
   pickVariant,
   variantWidths,
 } from '../src/images/pipeline.js';
+import { isHeic, orientPixels } from '../src/images/decode.js';
 import { renderMarkdown } from '../src/markdown/render.js';
-import { noisyImage, sidewaysPhoto, solidImage } from './helpers/images.js';
+import { TINY_JPEG, TINY_PNG, noisyImage, sidewaysPhoto, solidImage } from './helpers/images.js';
 
 const exampleDir = fileURLToPath(new URL('../example/', import.meta.url));
 
@@ -653,7 +654,7 @@ test('an image that cannot be used fails the build with the file, line and colum
   await withExampleCopy(
     async (root) => {
       assert.deepEqual(await buildErrors(root), [
-        "content/journal/bad/index.md:8:1 unsupported image format 'spin.gif' (use JPEG, PNG or WebP)",
+        "content/journal/bad/index.md:8:1 unsupported image format 'spin.gif' (use JPEG, PNG, WebP or HEIC)",
         "content/journal/bad/index.md:10:1 image 'broken.jpg': cannot read the image: Input file contains unsupported image format",
         "content/journal/bad/index.md:12:1 missing image 'nowhere.jpg'",
       ]);
@@ -693,4 +694,203 @@ test('feeds carry the 1200 pixel variant as a plain image with absolute links', 
     assert.ok(!feed.includes('&lt;picture'), 'feeds have no picture element');
     assert.ok(!feed.includes('srcset'));
   });
+});
+
+/**
+ * Small HEIC pictures made by `test/helpers/make-heic-fixture.js`: 64 by 48
+ * pixels as stored, shown upright as 48 by 64 with the red corner at the top
+ * right. `sideways.heic` says so with an `irot` property, `exif-sideways.heic`
+ * with an Exif orientation only.
+ */
+const HEIC_FIXTURES = ['sideways.heic', 'exif-sideways.heic'];
+
+/**
+ * @param {string} name
+ * @returns {Buffer}
+ */
+function heicFixture(name) {
+  return readFileSync(new URL(`./fixtures/${name}`, import.meta.url));
+}
+
+/**
+ * @param {string} path
+ * @returns {Promise<{ width: number, height: number, at: (x: number, y: number) => number[] }>}
+ */
+async function pixelsOf(path) {
+  const { data, info } = await sharp(path).raw().toBuffer({ resolveWithObject: true });
+  return {
+    width: info.width,
+    height: info.height,
+    at: (x, y) => Array.from(data.subarray((y * info.width + x) * info.channels, (y * info.width + x) * info.channels + 3)),
+  };
+}
+
+/**
+ * @param {number[]} pixel
+ * @param {'red' | 'blue'} colour
+ */
+function assertColour(pixel, colour) {
+  const [red = 0, green = 0, blue = 0] = pixel;
+  if (colour === 'red') assert.ok(red > 200 && green < 60 && blue < 60, `red expected, got ${pixel}`);
+  else assert.ok(blue > 130 && red < 110 && green < 140, `blue expected, got ${pixel}`);
+}
+
+test('isHeic judges by the brand in the file, not by its name', () => {
+  for (const name of HEIC_FIXTURES) assert.equal(isHeic(heicFixture(name)), true, name);
+  const box = (/** @type {string} */ major, /** @type {string[]} */ compatible) => {
+    const body = Buffer.concat([Buffer.from(major), Buffer.alloc(4), ...compatible.map((brand) => Buffer.from(brand))]);
+    const head = Buffer.alloc(8);
+    head.writeUInt32BE(8 + body.length, 0);
+    head.write('ftyp', 4);
+    return Buffer.concat([head, body]);
+  };
+  assert.equal(isHeic(box('heix', [])), true);
+  assert.equal(isHeic(box('mif1', ['miaf', 'heic'])), true);
+  assert.equal(isHeic(box('mif1', ['miaf', 'avif'])), false, 'a generic HEIF file without HEVC may be AVIF');
+  assert.equal(isHeic(box('avif', ['mif1'])), false);
+  assert.equal(isHeic(TINY_JPEG), false);
+  assert.equal(isHeic(TINY_PNG), false);
+  assert.equal(isHeic(Buffer.alloc(0)), false);
+  assert.equal(isHeic(Buffer.from('ftyp')), false);
+});
+
+test('orientPixels turns pixels like each of the eight Exif orientations', () => {
+  // A 3 by 2 picture, one byte per pixel: 1 2 3 / 4 5 6.
+  const data = Buffer.from([1, 2, 3, 4, 5, 6]);
+  /** @type {Record<number, [number, number, number[]]>} */
+  const expected = {
+    1: [3, 2, [1, 2, 3, 4, 5, 6]],
+    2: [3, 2, [3, 2, 1, 6, 5, 4]],
+    3: [3, 2, [6, 5, 4, 3, 2, 1]],
+    4: [3, 2, [4, 5, 6, 1, 2, 3]],
+    5: [2, 3, [1, 4, 2, 5, 3, 6]],
+    6: [2, 3, [4, 1, 5, 2, 6, 3]],
+    7: [2, 3, [6, 3, 5, 2, 4, 1]],
+    8: [2, 3, [3, 6, 2, 5, 1, 4]],
+  };
+  for (const [orientation, [width, height, pixels]] of Object.entries(expected)) {
+    const turned = orientPixels(data, 3, 2, 1, Number(orientation));
+    assert.deepEqual([turned.width, turned.height, Array.from(turned.data)], [width, height, pixels], `orientation ${orientation}`);
+  }
+});
+
+for (const fixture of HEIC_FIXTURES) {
+  test(`a HEIC photo (${fixture}) is published as upright WebP and JPEG files without metadata`, async () => {
+    await inTemp(async (root) => {
+      addFiles(root, { 'IMG_0042.HEIC': heicFixture(fixture) });
+      const pipeline = createImagePipeline({ cacheDir: join(root, 'cache') });
+      const image = await pipeline.process(join(root, 'IMG_0042.HEIC'));
+      assert.deepEqual([image.width, image.height], [48, 64]);
+      assert.equal(image.name, 'img-0042');
+      assert.deepEqual(
+        image.variants.map((variant) => [variant.file, variant.width, variant.height]),
+        [['img-0042-48.webp', 48, 64]],
+      );
+      assert.deepEqual([image.viewer.file, image.viewer.width, image.viewer.height], ['img-0042-full.jpg', 48, 64]);
+
+      for (const file of [...image.variants, image.viewer]) {
+        const path = join(image.dir, file.file);
+        const metadata = await sharp(path).metadata();
+        assert.equal(metadata.format, file.file.endsWith('.webp') ? 'webp' : 'jpeg');
+        assert.equal(metadata.exif, undefined, `${file.file} carries no EXIF data`);
+        assert.equal(metadata.hasAlpha, false, `${file.file} has no empty alpha channel`);
+        const pixels = await pixelsOf(path);
+        assert.deepEqual([pixels.width, pixels.height], [48, 64], file.file);
+        assertColour(pixels.at(47, 0), 'red');
+        assertColour(pixels.at(0, 0), 'blue');
+        assertColour(pixels.at(0, 63), 'blue');
+        assertColour(pixels.at(47, 63), 'blue');
+      }
+
+      // The second run finds the files in the cache.
+      const again = await createImagePipeline({ cacheDir: join(root, 'cache') }).process(join(root, 'IMG_0042.HEIC'));
+      assert.equal(again.cached, true);
+      assert.equal(again.key, image.key);
+    });
+  });
+}
+
+test('a HEIC photo in a post is published at several sizes, never as the original', async () => {
+  await withExampleCopy(
+    async (root) => {
+      const result = await build(root);
+      const html = pageHtml(result, '/journal/phone/');
+      const [tag] = imgTags(html);
+      assert.match(attribute(/** @type {string} */ (tag), 'src') ?? '', /^\/img\/[0-9a-f]{16}\/camera-roll-48\.webp$/);
+      assert.equal(attribute(/** @type {string} */ (tag), 'width'), '48');
+      assert.equal(attribute(/** @type {string} */ (tag), 'height'), '64');
+      const entry = result.manifest.images.find((image) => image.source.endsWith('phone/Camera Roll.HEIC'));
+      assert.ok(entry);
+      assert.deepEqual([entry.width, entry.height], [48, 64]);
+      assert.deepEqual(entry.outputs.map((output) => output.type), ['image/webp', 'image/jpeg']);
+      const published = listFiles(result.outDir);
+      assert.ok(published.some((name) => name.endsWith('/camera-roll-48.webp')));
+      assert.ok(published.some((name) => name.endsWith('/camera-roll-full.jpg')));
+      assert.ok(!published.some((name) => /\.hei[cf]$/i.test(name)), 'the original is not published');
+    },
+    {
+      'content/journal/phone/index.md': '---\ntitle: Phone\ndate: 2025-05-02\n---\n\nText.\n\n![A sideways photo.](<Camera Roll.HEIC>)\n',
+      'content/journal/phone/Camera Roll.HEIC': heicFixture('sideways.heic'),
+    },
+  );
+});
+
+test('a HEIC cover is processed like any other cover', async () => {
+  await withExampleCopy(
+    async (root) => {
+      const result = await build(root);
+      assert.deepEqual(result.warnings.filter((warning) => warning.includes('cover')), []);
+      const entry = result.manifest.images.find((image) => image.use === 'cover' && image.source.endsWith('cover.heic'));
+      assert.ok(entry);
+      assert.equal(entry.outputs[0]?.type, 'image/webp');
+    },
+    {
+      'content/journal/covered/index.md': '---\ntitle: Covered\ndate: 2025-05-02\ncover: cover.heic\n---\n\nText.\n',
+      'content/journal/covered/cover.heic': heicFixture('sideways.heic'),
+    },
+  );
+});
+
+test('a HEIC file that cannot be decoded is an ImageError that names the file and says what to do', async () => {
+  await inTemp(async (root) => {
+    const good = heicFixture('sideways.heic');
+    addFiles(root, {
+      'truncated.heic': good.subarray(0, 120),
+      'scrambled.heic': Buffer.concat([good.subarray(0, 40), Buffer.alloc(good.length - 40, 0x5a)]),
+      'only-header.heic': Buffer.concat([good.subarray(0, 24), Buffer.alloc(40)]),
+      'not-a-picture.heic': 'this is not a picture',
+      'renamed.jpg': good.subarray(0, 120),
+    });
+    const pipeline = createImagePipeline({ cacheDir: join(root, 'cache') });
+    for (const name of ['truncated.heic', 'scrambled.heic', 'only-header.heic', 'not-a-picture.heic', 'renamed.jpg']) {
+      await assert.rejects(
+        pipeline.process(join(root, name)),
+        (error) =>
+          error instanceof ImageError &&
+          error.message.includes(`"${name}"`) &&
+          /cannot decode the HEIC image/.test(error.message) &&
+          /convert the file to JPEG or PNG/.test(error.message),
+        name,
+      );
+    }
+    assert.deepEqual(pipeline.stats, { generated: 0, reused: 0 });
+    assert.deepEqual(existsSync(join(root, 'cache')) ? readdirSync(join(root, 'cache')) : [], [], 'nothing is left in the cache');
+  });
+});
+
+test('a corrupt HEIC image fails the build and names the file', async () => {
+  await withExampleCopy(
+    async (root) => {
+      const errors = await buildErrors(root);
+      assert.equal(errors.length, 1);
+      assert.match(
+        errors[0] ?? '',
+        /^content\/journal\/bad-heic\/index\.md:8:1 image 'IMG_1\.heic': cannot decode the HEIC image "IMG_1\.heic": .+; convert the file to JPEG or PNG/,
+      );
+    },
+    {
+      'content/journal/bad-heic/index.md': '---\ntitle: Bad\ndate: 2025-05-02\n---\n\nText.\n\n![Broken](IMG_1.heic)\n',
+      'content/journal/bad-heic/IMG_1.heic': heicFixture('sideways.heic').subarray(0, 200),
+    },
+  );
 });
