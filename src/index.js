@@ -105,6 +105,22 @@ export {
   layoutTitle,
   loadCardColours,
 } from './cards.js';
+export {
+  DEFAULT_IMAGE_WIDTH,
+  DEFAULT_JPEG_QUALITY,
+  DEFAULT_SIZES,
+  DEFAULT_VIEWER_MAX_EDGE,
+  DEFAULT_WEBP_QUALITY,
+  DEFAULT_WIDTHS,
+  IMAGE_EXTENSIONS,
+  IMAGES_CACHE_DIR,
+  IMAGES_OUT_DIR,
+  ImageError,
+  createImagePipeline,
+  imageFileUrl,
+  pickVariant,
+  variantWidths,
+} from './images/pipeline.js';
 export { FontError, readFontMetrics } from './font-metrics.js';
 export { renderRobots, renderSitemap } from './sitemap.js';
 export {

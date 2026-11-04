@@ -2,7 +2,7 @@ import { cpSync, existsSync, mkdirSync, rmSync, statSync, writeFileSync } from '
 import { dirname, extname, isAbsolute, join, relative, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-import { CARDS_CACHE_DIR, COVER_EXTENSIONS, copyCover, createCardMaker } from './cards.js';
+import { CARDS_CACHE_DIR, createCardMaker } from './cards.js';
 import { DEFAULT_LATEST_POSTS, loadHome } from './content/home.js';
 import { discoverPosts, isPublished, resolveNow } from './content/posts.js';
 import {
@@ -30,6 +30,8 @@ import {
   unusedSeriesWarnings,
 } from './content/series.js';
 import { applyLinkRewrites, checkSourceLinks, listProjectSlugs } from './check/source-links.js';
+import { IMAGE_EXTENSIONS } from './images/defaults.js';
+import { IMAGES_CACHE_DIR, ImageError, createImagePipeline, imageFileUrl, pickVariant } from './images/pipeline.js';
 import { buildMeta } from './meta.js';
 import { renderMarkdown } from './markdown/render.js';
 import {
@@ -167,8 +169,34 @@ export class BuildError extends Error {
  */
 
 /**
- * The build manifest of one site. `images` is filled by a later feature;
- * checks read this file instead of guessing what the build wrote.
+ * One file made from an image.
+ *
+ * @typedef {object} ManifestImageOutput
+ * @property {'variant' | 'viewer'} role A WebP variant for `srcset`, or the full-size JPEG for the viewer.
+ * @property {string} url Site-relative address.
+ * @property {string} file Path of the file, relative to the site's output directory.
+ * @property {string} type Media type.
+ * @property {number} width
+ * @property {number} height
+ */
+
+/**
+ * One image used by a page, as listed in the manifest. The original is never
+ * published; `outputs` are the files made from it.
+ *
+ * @typedef {object} ManifestImage
+ * @property {string} source Path of the original, relative to the configuration file.
+ * @property {string} post Site-relative URL of the page that uses the image (`/` for the home page).
+ * @property {'body' | 'cover'} use A Markdown image in the text, or the cover of the post.
+ * @property {string} sha256 Hash of the original.
+ * @property {number} width Upright width of the original.
+ * @property {number} height Upright height of the original.
+ * @property {ManifestImageOutput[]} outputs The variants, narrowest first, then the viewer image.
+ */
+
+/**
+ * The build manifest of one site. Checks read this file instead of guessing
+ * what the build wrote.
  *
  * @typedef {object} Manifest
  * @property {number} manifestVersion
@@ -183,7 +211,7 @@ export class BuildError extends Error {
  * @property {ManifestRedirect[]} redirects Permanent redirects from old post addresses.
  * @property {ManifestFeed[]} feeds Every Atom feed, with the page it belongs to.
  * @property {string[]} sitemap Site-relative URLs listed in `sitemap.xml`, sorted.
- * @property {unknown[]} images
+ * @property {ManifestImage[]} images Every image used by a page, with the files made from it; sorted by page, then original.
  */
 
 /**
@@ -204,6 +232,7 @@ export class BuildError extends Error {
  * @property {Manifest} manifest
  * @property {string[]} warnings
  * @property {{ generated: number, reused: number }} cards Title cards drawn by this build, and cards found in the cache.
+ * @property {{ generated: number, reused: number }} images Images processed by this build, and images found in the cache.
  */
 
 /**
@@ -432,22 +461,149 @@ async function buildSite(config, site, options, outRoot, version, report) {
 
   // Pages that have no picture of their own are shown in link previews with a
   // card that carries the site title and the page title.
+  const cacheRoot = resolve(options.cacheDir ?? join(config.dir, '.cache'));
   const cards = createCardMaker({
     themeDir: site.theme,
-    cacheDir: join(resolve(options.cacheDir ?? join(config.dir, '.cache')), CARDS_CACHE_DIR),
+    cacheDir: join(cacheRoot, CARDS_CACHE_DIR),
     siteTitle: site.title,
   });
   /** @param {string} title */
   const cardFor = (title) => cards.makeAndPublish(title, outDir);
+
+  // Every image a page uses is resized once, kept in the cache by the hash of the
+  // original and the options, and published as WebP variants plus a full-size
+  // JPEG. The original itself never reaches the output.
+  const images = createImagePipeline({
+    cacheDir: join(cacheRoot, IMAGES_CACHE_DIR),
+    widths: site.images.widths,
+    viewerMaxEdge: site.images.viewerMaxEdge,
+    webpQuality: site.images.webpQuality,
+    jpegQuality: site.images.jpegQuality,
+  });
+  /** @type {ManifestImage[]} */
+  const manifestImages = [];
+  /** @type {Set<string>} */
+  const recordedImages = new Set();
+
+  /**
+   * Publishes a processed image and lists it in the manifest.
+   *
+   * @param {import('./images/pipeline.js').ProcessedImage} processed
+   * @param {string} pageUrl Site-relative URL of the page that uses the image.
+   * @param {'body' | 'cover'} use
+   * @returns {import('./images/pipeline.js').ImageFile} The variant that stands in for the picture where no `srcset` is understood.
+   */
+  const publishImage = (processed, pageUrl, use) => {
+    images.publish(processed, outDir);
+    const id = `${processed.source}\n${pageUrl}\n${use}`;
+    if (!recordedImages.has(id)) {
+      recordedImages.add(id);
+      /**
+       * @param {import('./images/pipeline.js').ImageFile} entry
+       * @param {'variant' | 'viewer'} role
+       * @param {string} type
+       * @returns {ManifestImageOutput}
+       */
+      const output = (entry, role, type) => {
+        const url = imageFileUrl(processed, entry);
+        return { role, url, file: url.slice(1), type, width: entry.width, height: entry.height };
+      };
+      manifestImages.push({
+        source: posix(relative(config.dir, processed.source)),
+        post: pageUrl,
+        use,
+        sha256: processed.sha256,
+        width: processed.width,
+        height: processed.height,
+        outputs: [
+          ...processed.variants.map((entry) => output(entry, 'variant', 'image/webp')),
+          output(processed.viewer, 'viewer', 'image/jpeg'),
+        ],
+      });
+    }
+    return pickVariant(processed.variants);
+  };
+
+  /**
+   * The file an image address names, when it is a file inside the content
+   * directory. Remote addresses and addresses that start with "/" are not
+   * source files; a name that matches nothing is for the link check to report.
+   *
+   * @param {string} sourceFile Markdown file that holds the address.
+   * @param {string} address
+   * @returns {string | null}
+   */
+  const localImageFile = (sourceFile, address) => {
+    if (/^[a-z][a-z0-9+.-]*:/i.test(address) || address.startsWith('/')) return null;
+    const cut = address.search(/[?#]/);
+    const raw = cut < 0 ? address : address.slice(0, cut);
+    let path = raw;
+    try {
+      path = decodeURIComponent(raw);
+    } catch {
+      // Keep the address as written.
+    }
+    if (path === '') return null;
+    const target = resolve(dirname(sourceFile), path);
+    const inside = relative(site.contentDir, target);
+    if (inside.startsWith('..') || isAbsolute(inside)) return null;
+    return existsSync(target) && statSync(target).isFile() ? target : null;
+  };
+
+  /**
+   * How the Markdown renderer turns the images of a text into responsive
+   * pictures. Problems are reported with the file, line and column of the image.
+   *
+   * @param {string} sourceFile Markdown file of the text.
+   * @param {string} pageUrl Site-relative URL of the page the text appears on.
+   * @returns {import('./markdown/render.js').ImageOptions}
+   */
+  const imageOptionsFor = (sourceFile, pageUrl) => {
+    const shown = posix(relative(config.dir, sourceFile));
+    return {
+      sizes: site.images.sizes,
+      resolve: async ({ src, alt, line, column }) => {
+        if (alt.trim() === '') warnings.push(`${shown}:${line}:${column}: the image "${src}" has no alt text`);
+        const file = localImageFile(sourceFile, src);
+        if (file === null) return null;
+        if (!IMAGE_EXTENSIONS.includes(extname(file).toLowerCase())) {
+          report.addError({
+            site: site.id,
+            file: shown,
+            line,
+            column,
+            message: `unsupported image format '${src}' (use JPEG, PNG or WebP)`,
+          });
+          return null;
+        }
+        try {
+          const processed = await images.process(file);
+          const standIn = publishImage(processed, pageUrl, 'body');
+          return {
+            src: imageFileUrl(processed, standIn),
+            width: standIn.width,
+            height: standIn.height,
+            srcset: processed.variants.map((entry) => ({ url: imageFileUrl(processed, entry), width: entry.width })),
+          };
+        } catch (error) {
+          if (!(error instanceof ImageError)) throw error;
+          report.addError({ site: site.id, file: shown, line, column, message: `image '${src}': ${error.message}` });
+          return null;
+        }
+      },
+    };
+  };
+
   /**
    * The preview image of a post: its cover, else a card with its title. A cover
    * that is a URL is used as it is; a cover that is a file beside the post is
-   * copied to the output (the image pipeline replaces the copy later).
+   * resized like any other image and the 1200 pixel variant is used.
    *
    * @param {Post} post
-   * @returns {string}
+   * @param {string} url Site-relative URL of the post.
+   * @returns {Promise<string>}
    */
-  const previewImageOf = (post) => {
+  const previewImageOf = async (post, url) => {
     const shown = posix(relative(config.dir, post.file));
     const cover = post.cover;
     if (cover === null) return cardFor(post.title);
@@ -456,12 +612,18 @@ async function buildSite(config, site, options, outRoot, version, report) {
     const inside = relative(site.contentDir, source);
     if (inside.startsWith('..') || isAbsolute(inside)) {
       warnings.push(`${shown}: cover: "${cover}" is outside the content directory; using a generated card`);
-    } else if (!COVER_EXTENSIONS.includes(extname(source).toLowerCase())) {
-      warnings.push(`${shown}: cover: "${cover}" must be one of ${COVER_EXTENSIONS.join(', ')}; using a generated card`);
+    } else if (!IMAGE_EXTENSIONS.includes(extname(source).toLowerCase())) {
+      warnings.push(`${shown}: cover: "${cover}" must be one of ${IMAGE_EXTENSIONS.join(', ')}; using a generated card`);
     } else if (!existsSync(source) || !statSync(source).isFile()) {
       warnings.push(`${shown}: cover: "${cover}" does not exist; using a generated card`);
     } else {
-      return copyCover(source, outDir);
+      try {
+        const processed = await images.process(source);
+        return imageFileUrl(processed, publishImage(processed, url, 'cover'));
+      } catch (error) {
+        if (!(error instanceof ImageError)) throw error;
+        warnings.push(`${shown}: cover: "${cover}": ${error.message}; using a generated card`);
+      }
     }
     return cardFor(post.title);
   };
@@ -496,7 +658,14 @@ async function buildSite(config, site, options, outRoot, version, report) {
     /** @type {Map<Post, RenderedPost>} */
     const rendered = new Map();
     for (const post of selected) {
-      rendered.set(post, await renderMarkdown(post.body, { file: post.file, startLine: post.bodyLine }));
+      rendered.set(
+        post,
+        await renderMarkdown(post.body, {
+          file: post.file,
+          startLine: post.bodyLine,
+          images: imageOptionsFor(post.file, postUrl(blog, post.slug)),
+        }),
+      );
     }
     prepared.set(blog.id, { selected, rendered });
     for (const post of found) {
@@ -647,6 +816,7 @@ async function buildSite(config, site, options, outRoot, version, report) {
         post.tags.map((path) => ({ path, name: nameOf(path), url: urlOf(path) })),
         seriesOf.get(post) ?? null,
       );
+      const previewImage = await previewImageOf(post, url);
       const html = templates.render('post.njk', {
         site,
         nav,
@@ -659,7 +829,7 @@ async function buildSite(config, site, options, outRoot, version, report) {
           title: post.title,
           description: post.summary || excerptOf(rendered.html),
           url,
-          image: previewImageOf(post),
+          image: previewImage,
           type: 'article',
           published: post.date,
           tags: view.tagLinks.map((tag) => tag.name),
@@ -921,7 +1091,11 @@ async function buildSite(config, site, options, outRoot, version, report) {
     }
   } else {
     const rendered = home
-      ? await renderMarkdown(home.body, { file: home.file, startLine: home.bodyLine })
+      ? await renderMarkdown(home.body, {
+          file: home.file,
+          startLine: home.bodyLine,
+          images: imageOptionsFor(home.file, '/'),
+        })
       : null;
     const firstBlog = site.blogs[0];
     const latest = firstBlogPosts.slice(0, home?.latestPosts ?? DEFAULT_LATEST_POSTS);
@@ -1009,6 +1183,12 @@ async function buildSite(config, site, options, outRoot, version, report) {
   manifestTags.sort((a, b) => (a.url < b.url ? -1 : a.url > b.url ? 1 : 0));
   manifestSeries.sort((a, b) => (a.url < b.url ? -1 : a.url > b.url ? 1 : 0));
   manifestFeeds.sort((a, b) => (a.url < b.url ? -1 : a.url > b.url ? 1 : 0));
+  manifestImages.sort(
+    (a, b) =>
+      (a.post < b.post ? -1 : a.post > b.post ? 1 : 0) ||
+      (a.source < b.source ? -1 : a.source > b.source ? 1 : 0) ||
+      (a.use < b.use ? -1 : a.use > b.use ? 1 : 0),
+  );
 
   /** @type {Manifest} */
   const manifest = {
@@ -1024,11 +1204,11 @@ async function buildSite(config, site, options, outRoot, version, report) {
     redirects: redirects.map(({ from, to, status }) => ({ from, to, status })),
     feeds: manifestFeeds,
     sitemap: sitemapEntries.map((entry) => entry.url).sort(),
-    images: [],
+    images: manifestImages,
   };
   writeFileSync(join(outDir, MANIFEST_FILE_NAME), `${JSON.stringify(manifest, null, 2)}\n`);
 
-  return { id: site.id, outDir, manifest, warnings, cards: { ...cards.stats } };
+  return { id: site.id, outDir, manifest, warnings, cards: { ...cards.stats }, images: { ...images.stats } };
 }
 
 /**

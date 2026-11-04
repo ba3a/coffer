@@ -139,7 +139,14 @@ test('the manifest is written and lists the pages and the posts', async () => {
         '/journal/tags/workshop/feed.xml',
       ],
     );
-    assert.deepEqual(manifest.images, []);
+    assert.deepEqual(
+      manifest.images.map((image) => [image.source, image.post, image.use]),
+      [
+        ['content/journal/first-dovetail/dovetail-joint.jpg', '/journal/first-dovetail/', 'body'],
+        ['content/journal/first-dovetail/marking-gauge.jpg', '/journal/first-dovetail/', 'body'],
+        ['content/journal/photos/ridge.jpg', '/journal/mountain-weekend/', 'body'],
+      ],
+    );
     assert.equal(manifest.site.id, 'workshop');
     assert.equal(manifest.now, NOW.toISOString());
     assert.equal(manifest.posts[0].source, 'content/journal/first-dovetail/index.md');

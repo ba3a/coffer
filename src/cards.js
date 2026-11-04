@@ -1,7 +1,7 @@
 import { createHash } from 'node:crypto';
 import { copyFileSync, existsSync, mkdirSync, readFileSync, readdirSync, renameSync, statSync, writeFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
-import { basename, dirname, extname, join } from 'node:path';
+import { dirname, extname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { Resvg } from '@resvg/resvg-js';
 import nunjucks from 'nunjucks';
@@ -465,26 +465,3 @@ export function createCardMaker(options) {
     makeAndPublish: (title, outDir) => publish(make(title), outDir),
   };
 }
-
-/**
- * The cover of a post that is a file beside it, made ready to publish. Until the
- * image pipeline exists the file is copied as it is, under a name that comes
- * from its content.
- *
- * @param {string} source Absolute path of the image.
- * @param {string} outDir Output directory of the site.
- * @returns {string} Site-relative address of the copy.
- */
-export function copyCover(source, outDir) {
-  const hash = createHash('sha256').update(readFileSync(source)).digest('hex').slice(0, 16);
-  const name = `${hash}${extname(basename(source)).toLowerCase()}`;
-  const target = join(outDir, 'covers', name);
-  if (!existsSync(target)) {
-    mkdirSync(dirname(target), { recursive: true });
-    copyFileSync(source, target);
-  }
-  return `/covers/${name}`;
-}
-
-/** Extensions a cover can have. */
-export const COVER_EXTENSIONS = Object.freeze(['.jpg', '.jpeg', '.png', '.webp', '.gif', '.avif']);

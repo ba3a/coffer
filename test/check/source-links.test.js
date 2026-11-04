@@ -9,6 +9,7 @@ import { applyLinkRewrites, checkSourceLinks, listProjectSlugs } from '../../src
 import { run } from '../../src/cli.js';
 import { loadConfig } from '../../src/config.js';
 import { ReportError } from '../../src/report.js';
+import { TINY_JPEG, TINY_PNG } from '../helpers/images.js';
 
 const NOW = new Date('2026-06-01T12:00:00Z');
 
@@ -28,7 +29,7 @@ const CONFIG = [
 /**
  * Writes a tree of files, runs `body` with its root, and removes the tree.
  *
- * @param {Record<string, string>} files Relative path (forward slashes) to content.
+ * @param {Record<string, string | Buffer>} files Relative path (forward slashes) to content.
  * @param {(root: string) => Promise<void>} body
  */
 async function inTree(files, body) {
@@ -204,7 +205,7 @@ test('a missing image fails the build and points at the post file', async () => 
   await inTree(
     {
       'content/journal/foo/index.md': post('Text.\n\n![A hill](hill.jpg "caption") and ![ok](here.png)'),
-      'content/journal/foo/here.png': 'x',
+      'content/journal/foo/here.png': TINY_PNG,
     },
     async (root) => {
       assert.deepEqual(await buildErrors(root), [
@@ -218,9 +219,9 @@ test('an image beside the post, in a shared folder or with a space in its name p
   await inTree(
     {
       'content/journal/foo/index.md': post('![a](hill.jpg) ![b](../shared/bench.jpg) ![c](<my photo.jpg>) ![d](https://x.example/p.png)'),
-      'content/journal/foo/hill.jpg': 'x',
-      'content/journal/foo/my photo.jpg': 'x',
-      'content/journal/shared/bench.jpg': 'x',
+      'content/journal/foo/hill.jpg': TINY_JPEG,
+      'content/journal/foo/my photo.jpg': TINY_JPEG,
+      'content/journal/shared/bench.jpg': TINY_JPEG,
       'content/journal/shared/index.md': post('Shared.'),
     },
     async (root) => {
@@ -233,7 +234,7 @@ test('an image outside the content directory is an error', async () => {
   await inTree(
     {
       'content/journal/foo/index.md': post('![escape](../../../secret.png)'),
-      'secret.png': 'x',
+      'secret.png': TINY_PNG,
     },
     async (root) => {
       assert.deepEqual(await buildErrors(root), [

@@ -70,6 +70,7 @@ Unknown keys are errors everywhere in the file, so a misspelled key never passes
 | `links`          | no       | `[]`         | List of links, see below.                                                                                                                                    |
 | `blogs`          | no       | `[]`         | List of blogs, see below.                                                                                                                                    |
 | `urls`           | no       | see below    | URL prefixes of generated sections.                                                                                                                          |
+| `images`         | no       | see below    | Widths, sizes and quality of the published images (see [Images](images.md)).                                                                                 |
 | `location`       | no       | see below    | Image metadata policy.                                                                                                                                       |
 | `projects`       | no       | none         | Where the site's projects live. Without it the site has no projects.                                                                                         |
 
@@ -114,6 +115,29 @@ Prefixes of generated sections. All four are optional.
 | `series`   | `series`  | Segment under a blog that holds the series pages.                |
 
 Values are single or nested path segments without a slash at either end. `tags` and `series` must differ, and `projects` must not equal the prefix of a blog.
+
+## `images`
+
+How published images are made (see [Images](images.md)). Every key is optional.
+
+```yaml
+images:
+  widths: [480, 800, 1200, 1600, 2400]
+  viewerMaxEdge: 3200
+  webpQuality: 80
+  jpegQuality: 85
+  sizes: "(min-width: 44rem) 41rem, calc(100vw - 2rem)"
+```
+
+| Key             | Default                                         | Description                                                                                                                       |
+| --------------- | ----------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------- |
+| `widths`        | `[480, 800, 1200, 1600, 2400]`                  | Widths in pixels of the WebP variants, integers from 16 to 20000. An image is never enlarged: only widths below its own width are made, plus its own width when it is not wider than the widest one. |
+| `viewerMaxEdge` | `3200`                                          | Longest edge in pixels of the full-size JPEG kept for the viewer and for downloads (64 to 30000). Smaller images keep their size.   |
+| `webpQuality`   | `80`                                            | WebP quality of the variants, 1 to 100.                                                                                           |
+| `jpegQuality`   | `85`                                            | JPEG quality of the full-size image, 1 to 100.                                                                                    |
+| `sizes`         | `(min-width: 44rem) 41rem, calc(100vw - 2rem)`  | The `sizes` attribute of the pictures: how wide the image is shown at each screen width. Match it to the text column of your theme. |
+
+Changing a value makes the next build process the images again; the cache is keyed by the settings.
 
 ## `location`
 

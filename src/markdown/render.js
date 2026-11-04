@@ -28,6 +28,35 @@ export const DEFAULT_CODE_THEMES = Object.freeze({
  * @property {number} [tocMinHeadings] Minimum number of h2/h3 headings for a table of contents (default 4).
  * @property {number} [wordsPerMinute] Reading speed (default 200).
  * @property {{ light: string, dark: string }} [codeThemes] Shiki theme names for the light and the dark scheme.
+ * @property {ImageOptions} [images] Turns images into responsive figures; without it an image stays a plain `<img>`.
+ */
+
+/**
+ * A picture ready to be shown: what the renderer needs to write `<picture>`.
+ *
+ * @typedef {object} ResponsiveImage
+ * @property {string} src Address of the variant used where no `srcset` is understood.
+ * @property {number} width Width of that variant in pixels.
+ * @property {number} height Height of that variant in pixels.
+ * @property {{ url: string, width: number }[]} srcset The variants to choose from, narrowest first.
+ * @property {string} [type] Media type of the variants (default `image/webp`).
+ */
+
+/**
+ * An image as written in the text.
+ *
+ * @typedef {object} ImageRequest
+ * @property {string} src The address exactly as written (percent escapes are not decoded).
+ * @property {string} alt Alternative text; empty when none was given.
+ * @property {string} title The title of the image, which is shown as its caption; empty when none was given.
+ * @property {number} line 1-based line of the file.
+ * @property {number} column 1-based column of the image on that line.
+ */
+
+/**
+ * @typedef {object} ImageOptions
+ * @property {(request: ImageRequest) => Promise<ResponsiveImage | null>} resolve Finds the responsive variants of an image, or null to leave the image as it is (a remote image, a missing file). Called once per image, all at the same time.
+ * @property {string} sizes The `sizes` attribute of the pictures.
  */
 
 /**
@@ -255,6 +284,133 @@ function collect({ lineOffset, onResult }) {
   };
 }
 
+/**
+ * @param {string} tagName
+ * @param {Record<string, string | number | undefined>} properties Properties with undefined values are left out.
+ * @param {import('hast').ElementContent[]} [children]
+ * @returns {import('hast').Element}
+ */
+function element(tagName, properties, children = []) {
+  /** @type {Record<string, string | number>} */
+  const kept = {};
+  for (const [name, value] of Object.entries(properties)) {
+    if (value !== undefined) kept[name] = value;
+  }
+  return { type: 'element', tagName, properties: kept, children };
+}
+
+/**
+ * Rehype plugin: turns every image into a `<picture>` with a `srcset`, and an
+ * image that stands alone in a paragraph into a `<figure>`, with its title as
+ * the `<figcaption>`. Every `<img>` gets `width` and `height` (so the page
+ * does not jump while it loads), and every one but the first of the page gets
+ * `loading="lazy"` and `decoding="async"`.
+ *
+ * @param {{ images: ImageOptions | null, lineOffset: number }} options
+ * @returns {(tree: import('hast').Root) => Promise<void>}
+ */
+function responsiveImages({ images, lineOffset }) {
+  return async (tree) => {
+    if (images === null) return;
+    /** @type {import('hast').Element[]} */
+    const found = [];
+    visit(tree, 'element', (node) => {
+      if (node.tagName === 'pre' || node.tagName === 'script' || node.tagName === 'style') return SKIP;
+      if (node.tagName === 'img' && typeof node.properties.src === 'string') found.push(node);
+      return undefined;
+    });
+    if (found.length === 0) return;
+
+    /** @type {Map<import('hast').Element, ResponsiveImage>} */
+    const resolved = new Map();
+    await Promise.all(
+      found.map(async (node) => {
+        const result = await images.resolve({
+          src: String(node.properties.src),
+          alt: typeof node.properties.alt === 'string' ? node.properties.alt : '',
+          title: typeof node.properties.title === 'string' ? node.properties.title : '',
+          line: (node.position?.start.line ?? 1) + lineOffset,
+          column: node.position?.start.column ?? 1,
+        });
+        if (result) resolved.set(node, result);
+      }),
+    );
+
+    const first = found[0];
+    /**
+     * @param {import('hast').Element} node
+     * @param {boolean} keepTitle
+     * @returns {import('hast').Element | null}
+     */
+    const picture = (node, keepTitle) => {
+      const image = resolved.get(node);
+      if (!image) return null;
+      const lazy = node !== first;
+      const source = element('source', {
+        type: image.type ?? 'image/webp',
+        srcSet: image.srcset.map((entry) => `${entry.url} ${entry.width}w`).join(', '),
+        sizes: images.sizes,
+      });
+      const img = element('img', {
+        src: image.src,
+        alt: typeof node.properties.alt === 'string' ? node.properties.alt : '',
+        title: keepTitle && typeof node.properties.title === 'string' ? node.properties.title : undefined,
+        width: image.width,
+        height: image.height,
+        loading: lazy ? 'lazy' : undefined,
+        decoding: lazy ? 'async' : undefined,
+      });
+      return element('picture', {}, [source, img]);
+    };
+
+    /**
+     * An image on its own, with an optional caption.
+     *
+     * @param {import('hast').Element} node
+     * @returns {import('hast').Element | null}
+     */
+    const figure = (node) => {
+      const inner = picture(node, false);
+      if (!inner) return null;
+      const caption = typeof node.properties.title === 'string' ? node.properties.title.trim() : '';
+      return element('figure', {}, [
+        inner,
+        ...(caption === '' ? [] : [element('figcaption', {}, [{ type: 'text', value: caption }])]),
+      ]);
+    };
+
+    visit(tree, 'element', (node, index, parent) => {
+      if (node.tagName === 'pre' || node.tagName === 'script' || node.tagName === 'style') return SKIP;
+      if (!parent || index === undefined) return undefined;
+      if (node.tagName === 'p') {
+        const pictures = node.children.filter((child) => child.type === 'element' && child.tagName === 'img');
+        const alone =
+          pictures.length > 0 &&
+          node.children.every(
+            (child) =>
+              (child.type === 'element' && child.tagName === 'img') ||
+              (child.type === 'text' && child.value.trim() === ''),
+          );
+        if (alone && pictures.some((image) => resolved.has(/** @type {import('hast').Element} */ (image)))) {
+          // An image the resolver left alone, such as a remote one, keeps a paragraph of its own.
+          const replacement = node.children.flatMap((child) =>
+            child.type === 'element' ? [figure(child) ?? element('p', {}, [child])] : [],
+          );
+          parent.children.splice(index, 1, ...replacement);
+          return [SKIP, index + replacement.length];
+        }
+        return undefined;
+      }
+      if (node.tagName === 'img') {
+        const inline = picture(node, true);
+        if (inline) parent.children[index] = inline;
+        return SKIP;
+      }
+      return undefined;
+    });
+  };
+}
+
 const INLINE_TAGS = new Set(['a', 'em', 'strong', 'code', 'del', 'span', 'sup', 'sub']);
 
 /**
@@ -338,6 +494,7 @@ export async function renderMarkdown(source, options = {}) {
         collected = found;
       },
     })
+    .use(responsiveImages, { images: options.images ?? null, lineOffset })
     .use(highlightCode, { themes })
     .use(rehypeStringify, { allowDangerousHtml: true });
 

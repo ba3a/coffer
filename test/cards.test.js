@@ -18,6 +18,7 @@ import {
 } from '../src/cards.js';
 import { loadConfig } from '../src/config.js';
 import { readFontMetrics } from '../src/font-metrics.js';
+import { solidImage } from './helpers/images.js';
 
 const exampleDir = fileURLToPath(new URL('../example/', import.meta.url));
 const fontsDir = join(ENGINE_THEME_DIR, 'fonts');
@@ -355,13 +356,20 @@ test('a changed title is drawn again and the other cards stay cached', async () 
 });
 
 test('a post with a cover uses the cover, not a generated card', async () => {
-  const cover = Buffer.from('89504e470d0a1a0a', 'hex');
+  const cover = await solidImage(1200, 630, 'png');
   await withExampleCopy(
     async (root) => {
       const result = await build(root);
       const withFile = ogImage(result.outDir, 'journal/with-cover/index.html');
-      assert.match(withFile, /^https:\/\/tove-marlowe\.example\/covers\/[0-9a-f]{16}\.png$/);
-      assert.deepEqual(readFileSync(join(result.outDir, 'covers', withFile.split('/').pop() ?? '')), cover);
+      // The cover is resized like any other image: the 1200 pixel WebP variant is the preview image,
+      // and the original is not copied anywhere.
+      assert.match(withFile, /^https:\/\/tove-marlowe\.example\/img\/[0-9a-f]{16}\/cover-1200\.webp$/);
+      assert.ok(existsSync(join(result.outDir, ...withFile.slice('https://tove-marlowe.example/'.length).split('/'))));
+      assert.ok(!existsSync(join(result.outDir, 'covers')), 'the original cover is not published');
+      assert.deepEqual(
+        result.manifest.images.filter((image) => image.use === 'cover').map((image) => [image.source, image.post]),
+        [['content/journal/with-cover/cover.png', '/journal/with-cover/']],
+      );
 
       assert.equal(ogImage(result.outDir, 'journal/with-url/index.html'), 'https://images.example/cover.jpg');
 
@@ -372,12 +380,19 @@ test('a post with a cover uses the cover, not a generated card', async () => {
         `warns about the missing cover: ${result.warnings.join(' | ')}`,
       );
       assert.ok(!result.warnings.some((warning) => warning.includes('with-cover')));
+      assert.match(ogImage(result.outDir, 'journal/gif-cover/index.html'), /\/cards\/[0-9a-f]{16}\.png$/);
+      assert.ok(
+        result.warnings.some((warning) => warning.includes('gif-cover.md') && warning.includes('spin.gif')),
+        `warns about the unsupported cover: ${result.warnings.join(' | ')}`,
+      );
     },
     {
       'content/journal/with-cover/index.md': '---\ntitle: With cover\ndate: 2025-05-02\ncover: cover.png\n---\n\nText.\n',
       'content/journal/with-cover/cover.png': cover,
       'content/journal/with-url.md': '---\ntitle: With url\ndate: 2025-05-03\ncover: https://images.example/cover.jpg\n---\n\nText.\n',
       'content/journal/missing-cover.md': '---\ntitle: Missing cover\ndate: 2025-05-04\ncover: nowhere.png\n---\n\nText.\n',
+      'content/journal/gif-cover.md': '---\ntitle: Gif cover\ndate: 2025-05-05\ncover: spin.gif\n---\n\nText.\n',
+      'content/journal/spin.gif': 'GIF89a',
     },
   );
 });

@@ -198,6 +198,13 @@ test('defaults are applied to a minimal site', () => {
     blogs: [],
     urls: { projects: 'made', docs: 'docs', tags: 'tags', series: 'series' },
     location: { default: 'strip', camera: 'strip' },
+    images: {
+      widths: [480, 800, 1200, 1600, 2400],
+      viewerMaxEdge: 3200,
+      webpQuality: 80,
+      jpegQuality: 85,
+      sizes: '(min-width: 44rem) 41rem, calc(100vw - 2rem)',
+    },
     projects: null,
   });
 });
@@ -660,10 +667,54 @@ test('docs/configuration.md documents every configuration key', () => {
     'location',
     'default',
     'camera',
+    'images',
+    'widths',
+    'viewerMaxEdge',
+    'webpQuality',
+    'jpegQuality',
+    'sizes',
   ];
   for (const key of keys) {
     assert.ok(page.includes(`\`${key}\``), `configuration.md misses \`${key}\``);
   }
+});
+
+test('images set the widths, the viewer size, the qualities and the sizes attribute', () => {
+  const images = normalize(
+    oneSite({
+      images: { widths: [1000, 400, 400, 2000], viewerMaxEdge: 2500, webpQuality: 70, jpegQuality: 90, sizes: '100vw' },
+    }),
+  ).sites[0].images;
+  assert.deepEqual(images, {
+    widths: [400, 1000, 2000],
+    viewerMaxEdge: 2500,
+    webpQuality: 70,
+    jpegQuality: 90,
+    sizes: '100vw',
+  });
+  assert.deepEqual(normalize(oneSite({ images: { widths: [640] } })).sites[0].images.widths, [640]);
+});
+
+test('invalid image settings are reported with their keys', () => {
+  assert.deepEqual(
+    normalizeErrors(
+      oneSite({ images: { widths: [], viewerMaxEdge: 10, webpQuality: 0, jpegQuality: 101, sizes: '', quality: 5 } }),
+    ),
+    [
+      'coffer.yaml: sites[0].images.quality: unknown key (expected one of: widths, viewerMaxEdge, webpQuality, jpegQuality, sizes)',
+      'coffer.yaml: sites[0].images.widths: must be a non-empty list of integers from 16 to 20000',
+      'coffer.yaml: sites[0].images.viewerMaxEdge: must be an integer from 64 to 30000',
+      'coffer.yaml: sites[0].images.webpQuality: must be an integer from 1 to 100',
+      'coffer.yaml: sites[0].images.jpegQuality: must be an integer from 1 to 100',
+      'coffer.yaml: sites[0].images.sizes: must be a non-empty string',
+    ],
+  );
+  assert.deepEqual(normalizeErrors(oneSite({ images: { widths: [480, 'wide'] } })), [
+    'coffer.yaml: sites[0].images.widths: must be a non-empty list of integers from 16 to 20000',
+  ]);
+  assert.deepEqual(normalizeErrors(oneSite({ images: 'big' })), [
+    'coffer.yaml: sites[0].images: must be a mapping',
+  ]);
 });
 
 test('author is a name or a mapping, and defaults to the site title', () => {

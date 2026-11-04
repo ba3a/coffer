@@ -2,6 +2,14 @@ import { existsSync, readFileSync, statSync } from 'node:fs';
 import { dirname, isAbsolute, join, relative, resolve, sep } from 'node:path';
 import { LineCounter, parseDocument } from 'yaml';
 
+import {
+  DEFAULT_JPEG_QUALITY,
+  DEFAULT_SIZES,
+  DEFAULT_VIEWER_MAX_EDGE,
+  DEFAULT_WEBP_QUALITY,
+  DEFAULT_WIDTHS as DEFAULT_IMAGE_WIDTHS,
+} from './images/defaults.js';
+
 /**
  * The file name coffer looks for when no `--config` path is given.
  */
@@ -41,6 +49,17 @@ export const CONFIG_FILE_NAME = 'coffer.yaml';
  * @typedef {object} LocationConfig
  * @property {'strip' | 'coarse' | 'keep'} default Site-wide location policy.
  * @property {'strip' | 'keep'} camera Site-wide camera metadata policy.
+ */
+
+/**
+ * How published images are made.
+ *
+ * @typedef {object} ImagesConfig
+ * @property {number[]} widths Widths in pixels of the WebP variants, ascending. A variant is never wider than the original.
+ * @property {number} viewerMaxEdge Longest edge in pixels of the full-size JPEG kept for the viewer and for downloads.
+ * @property {number} webpQuality WebP quality, 1 to 100.
+ * @property {number} jpegQuality JPEG quality of the full-size image, 1 to 100.
+ * @property {string} sizes The `sizes` attribute of the pictures: how wide the image is shown at each screen width.
  */
 
 /**
@@ -86,6 +105,7 @@ export const CONFIG_FILE_NAME = 'coffer.yaml';
  * @property {BlogConfig[]} blogs Blogs of the site.
  * @property {UrlsConfig} urls URL prefixes of the generated sections.
  * @property {LocationConfig} location Image metadata policy.
+ * @property {ImagesConfig} images How published images are made.
  * @property {ProjectsConfig | null} projects Projects location, or null when the site has no projects.
  */
 
@@ -129,6 +149,7 @@ export const DEFAULT_IMAGE = '/assets/social-default.png';
 /** Number of entries in a blog or tag feed unless the site says otherwise. */
 export const DEFAULT_FEED_LIMIT = 20;
 
+const IMAGE_KEYS = ['widths', 'viewerMaxEdge', 'webpQuality', 'jpegQuality', 'sizes'];
 const LOCATION_POLICIES = ['strip', 'coarse', 'keep'];
 const CAMERA_POLICIES = ['strip', 'keep'];
 const SITE_KEYS = [
@@ -148,6 +169,7 @@ const SITE_KEYS = [
   'blogs',
   'urls',
   'location',
+  'images',
   'projects',
 ];
 const ID_RE = /^[a-z0-9][a-z0-9._-]*$/i;
@@ -599,6 +621,61 @@ function normalizeLocation(raw, path, problems) {
 }
 
 /**
+ * @param {Record<string, unknown>} raw
+ * @param {string} key
+ * @param {string} path
+ * @param {Problems} problems
+ * @param {number} min
+ * @param {number} max
+ * @param {number} fallback
+ * @returns {number}
+ */
+function readBoundedInteger(raw, key, path, problems, min, max, fallback) {
+  const value = raw[key];
+  if (value === undefined || value === null) return fallback;
+  if (typeof value === 'number' && Number.isInteger(value) && value >= min && value <= max) return value;
+  problems.add(`${path}.${key}`, `must be an integer from ${min} to ${max}`);
+  return fallback;
+}
+
+/**
+ * @param {Record<string, unknown> | undefined} raw
+ * @param {string} path
+ * @param {Problems} problems
+ * @returns {ImagesConfig}
+ */
+function normalizeImages(raw, path, problems) {
+  /** @type {ImagesConfig} */
+  const images = {
+    widths: [...DEFAULT_IMAGE_WIDTHS],
+    viewerMaxEdge: DEFAULT_VIEWER_MAX_EDGE,
+    webpQuality: DEFAULT_WEBP_QUALITY,
+    jpegQuality: DEFAULT_JPEG_QUALITY,
+    sizes: DEFAULT_SIZES,
+  };
+  if (raw === undefined) return images;
+  rejectUnknownKeys(raw, IMAGE_KEYS, path, problems);
+  const widths = raw.widths;
+  if (widths !== undefined && widths !== null) {
+    if (
+      Array.isArray(widths) &&
+      widths.length > 0 &&
+      widths.every((width) => typeof width === 'number' && Number.isInteger(width) && width >= 16 && width <= 20000)
+    ) {
+      images.widths = [...new Set(/** @type {number[]} */ (widths))].sort((a, b) => a - b);
+    } else {
+      problems.add(`${path}.widths`, 'must be a non-empty list of integers from 16 to 20000');
+    }
+  }
+  images.viewerMaxEdge = readBoundedInteger(raw, 'viewerMaxEdge', path, problems, 64, 30000, images.viewerMaxEdge);
+  images.webpQuality = readBoundedInteger(raw, 'webpQuality', path, problems, 1, 100, images.webpQuality);
+  images.jpegQuality = readBoundedInteger(raw, 'jpegQuality', path, problems, 1, 100, images.jpegQuality);
+  const sizes = readString(raw, 'sizes', path, problems);
+  if (sizes !== undefined) images.sizes = sizes;
+  return images;
+}
+
+/**
  * Reads the `author` key: a name, or a mapping with `name`, `email` and `url`.
  *
  * @param {unknown} raw
@@ -770,6 +847,11 @@ function normalizeSite(raw, index, baseDir, problems) {
     `${path}.location`,
     problems,
   );
+  const images = normalizeImages(
+    readMapping(raw, 'images', path, problems),
+    `${path}.images`,
+    problems,
+  );
 
   /** @type {ProjectsConfig | null} */
   let projects = null;
@@ -821,6 +903,7 @@ function normalizeSite(raw, index, baseDir, problems) {
     blogs,
     urls,
     location,
+    images,
     projects,
   };
 }

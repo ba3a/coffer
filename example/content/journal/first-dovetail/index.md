@@ -17,6 +17,8 @@ A dovetail is a row of wedge-shaped pins and tails that lock two boards
 together. The wedge shape means the joint cannot be pulled apart, even before
 any glue goes in.
 
+![A marking gauge and a knife line scribed across a pale board.](marking-gauge.jpg)
+
 I picked a board of soft maple, because it forgives a wandering saw, and set
 a few rules for myself:
 
@@ -56,6 +58,8 @@ middle, so the edge never blew out.
 The first four joints were loose. The fifth was tight on one side. The sixth
 slid together with a soft knock and stayed there. I did not glue it; it is
 sitting on the bench so I can look at it.
+
+![Two boards joined by three dovetails, resting on the bench.](dovetail-joint.jpg "The sixth attempt, unglued, on the bench.")
 
 ## What I would change
 

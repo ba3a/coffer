@@ -43,6 +43,8 @@ A feed reader shows the HTML far from the site, so every relative URL in the con
 
 Only published posts are in a feed. A draft, and a post whose date is after the build's `now`, never appear, not even in a preview build (`--drafts`) that renders them. A future-dated post enters the feeds on the first build after its date, like it enters the pages. See [Posts](posts.md).
 
+Images in feed content are plain `<img>` elements with the 1200 pixel variant as an absolute address (and their `width` and `height`); the `<picture>`, `srcset`, `loading` and `decoding` that pages use are left out, because feed readers do not all understand them. See [Images](images.md).
+
 ## Finding the feeds
 
 Every page lists the feeds of the site's blogs in its `<head>` as `<link rel="alternate" type="application/atom+xml">`, so readers can discover them from any address. Beyond that:

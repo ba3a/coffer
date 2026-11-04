@@ -408,6 +408,21 @@ main > article > .post-layout {
   max-width: 100%;
 }
 
+.post-body figure {
+  margin: 1.5rem 0;
+}
+
+.post-body figure picture,
+.post-body figure img {
+  display: block;
+}
+
+.post-body figcaption {
+  margin-top: 0.4rem;
+  color: var(--coffer-muted);
+  font-size: 0.875rem;
+}
+
 .post-body pre {
   overflow-x: auto;
 }

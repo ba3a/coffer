@@ -9,6 +9,7 @@ import { buildSites } from '../src/build.js';
 import { validateFeed } from '../src/check/feed-validator.js';
 import { loadConfig } from '../src/config.js';
 import { parseXml } from '../src/xml.js';
+import { solidImage } from './helpers/images.js';
 
 const exampleDir = fileURLToPath(new URL('../example/', import.meta.url));
 
@@ -94,7 +95,7 @@ function entriesOf(xml) {
 /**
  * @param {string} root
  * @param {string} name Path under `content/journal`.
- * @param {string} text
+ * @param {string | Buffer} text
  */
 function addPost(root, name, text) {
   const file = join(root, 'content', 'journal', name);
@@ -226,7 +227,7 @@ test('feed content has absolute links, images and srcset URLs', async () => {
         '',
       ].join('\n'),
     );
-    addPost(root, 'links/bench.jpg', 'not really a picture');
+    addPost(root, 'links/bench.jpg', await solidImage(1400, 900));
     const result = await build(root);
     const xml = feedText(result, '/journal/feed.xml');
     const entry = entriesOf(xml).find((candidate) => candidate.title === 'Links and pictures');
@@ -235,7 +236,14 @@ test('feed content has absolute links, images and srcset URLs', async () => {
     assert.ok(entry.html.includes(`<a href="${SITE}/">home</a>`), entry.html);
     assert.ok(entry.html.includes(`<a href="${SITE}/journal/links/#below">a heading</a>`), entry.html);
     assert.match(entry.html, /<a href="https:\/\/other\.example\/a\?b=1&(?:amp|#x26);c=2">elsewhere<\/a>/);
-    assert.ok(entry.html.includes(`<img src="${SITE}/journal/links/bench.jpg" alt="A bench">`), entry.html);
+    // The picture is a plain img with the 1200 pixel variant, without srcset, loading or decoding.
+    assert.match(
+      entry.html,
+      new RegExp(`<figure><img src="${SITE}/img/[0-9a-f]{16}/bench-1200\\.webp" alt="A bench" width="1200" height="771"></figure>`),
+      entry.html,
+    );
+    assert.ok(!entry.html.includes('<picture'), entry.html);
+    assert.ok(!entry.html.includes('loading='), entry.html);
     assert.ok(
       entry.html.includes(`srcset="${SITE}/journal/links/small.jpg 480w, ${SITE}/media/large.jpg 960w"`),
       entry.html,

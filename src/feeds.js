@@ -83,6 +83,24 @@ export function absolutizeHtml(html, pageUrl, baseUrl) {
   });
 }
 
+/** The start tag of an element; quoted attribute values may hold ">". */
+const startTag = (/** @type {string} */ name) => String.raw`<${name}\b(?:"[^"]*"|'[^']*'|[^'">])*>`;
+const PICTURE_RE = new RegExp(String.raw`<picture>\s*${startTag('source')}\s*(${startTag('img')})\s*</picture>`, 'g');
+const LAZY_ATTRIBUTE_RE = /\s(?:loading|decoding)="[^"]*"/g;
+
+/**
+ * Simplifies the pictures the Markdown renderer writes for feed readers, which
+ * understand `<img>` and little else: each `<picture>` becomes its `<img>`,
+ * whose `src` is the 1200 pixel variant, without `srcset`, `loading` and
+ * `decoding`. The `width` and `height` stay.
+ *
+ * @param {string} html
+ * @returns {string}
+ */
+export function simplifyPictures(html) {
+  return html.replace(PICTURE_RE, (_whole, img) => String(img).replace(LAZY_ATTRIBUTE_RE, ''));
+}
+
 /**
  * A plain-text summary taken from the start of some HTML: code blocks,
  * scripts and tags are dropped and the text is cut at a word boundary.
@@ -133,7 +151,7 @@ export function rfc3339(date) {
  */
 export function createFeedEntry({ baseUrl, url, title, date, summary, html, tags, tagsIndexUrl }) {
   const permalink = absoluteUrl(baseUrl, url);
-  const full = absolutizeHtml(html, permalink, baseUrl);
+  const full = absolutizeHtml(simplifyPictures(html), permalink, baseUrl);
   return {
     url: permalink,
     title,

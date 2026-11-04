@@ -10,7 +10,7 @@
 | `[x](../other/#heading)` | The same, and the target post must have a heading (or any element, including raw HTML, with an `id` or `name`) of that name. | Rewritten to `/journal/other/#heading`. |
 | `[x](#heading)` | A heading or `id` of the same post. `#` and `#top` always work. | Kept. |
 | `[x](/journal/other/)`, `![x](/assets/pic.png)` | A page or file the built site serves, with or without the trailing slash. A link to a post may carry an anchor, which is checked. | Kept. |
-| `![alt](photo.jpg)` | A file inside the content directory, usually beside the post. | Kept (the image pipeline handles it later). |
+| `![alt](photo.jpg)` | A file inside the content directory, usually beside the post. | Resized and published by the image pipeline (see [Images](images.md)). |
 | `[x](project:slug)` | A registered project: a folder `{projects.dir}/{slug}/` holding a `project.yaml`. | Kept (project pages are linked by a later feature). |
 | `https:`, `mailto:`, `tel:`, `//host/...`, `data:` | Not checked. | Kept. |
 

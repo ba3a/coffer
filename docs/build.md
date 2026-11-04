@@ -31,7 +31,8 @@ For a site `workshop` with a blog whose `prefix` is `journal`:
   journal/{alias}/index.html          a redirect page for each old slug (see below)
   _redirects                          redirect rules for hosts that read them
   cards/{hash}.png                    generated 1200 by 630 title cards for link previews
-  covers/{hash}.{ext}                 covers of posts that are files beside the post
+  img/{key}/{name}-{width}.webp       resized WebP variants of every image a page uses
+  img/{key}/{name}-full.jpg           the full-size JPEG for the viewer (the originals are never published)
   sitemap.xml                         the published canonical pages
   robots.txt                          allows crawling and names the sitemap
   assets/                             the static files of the theme
@@ -46,6 +47,7 @@ For a site `workshop` with a blog whose `prefix` is `journal`:
 - **The blog index** lists the published posts, newest first, with the date, the summary and the reading time of each.
 - **A post page** shows the title, the date, the reading time, the table of contents and the body. The table of contents is built from the `h2` and `h3` headings of posts with enough of them (see [Markdown](markdown.md)). It comes before the body in the page. On a narrow screen it is a collapsible block; on a wide screen the stylesheet puts it beside the body.
 - **Page metadata**: every page has a title, a description, a canonical address and the Open Graph and Twitter card tags for link previews, and `<html lang>` is the site's language. The build also writes `sitemap.xml` and `robots.txt`, and a title card for every page that has no image of its own (cached in `.cache/cards/`). See [SEO and link previews](seo.md).
+- **Images**: every image a post uses (a Markdown image or the cover) is rotated upright, resized into WebP variants and one full-size JPEG, stripped of metadata and cached in `.cache/images/`; the page gets a `<figure>` with `<picture>`, `srcset`, `width` and `height`, lazy loading after the first image, and a caption when the image has a title. The originals are never copied. See [Images](images.md).
 - **Links and images** in every post are resolved before anything is written: a broken link, a missing image or an unknown `project:` reference fails the build with `file:line:column`, and relative links between posts become canonical URLs. The errors, warnings and notes of the build are also written to `.coffer/report.json`, outside the output. See [Links, images and the build report](links.md).
 - **Assets** are the files of the default theme's `assets/` folder, followed by the `assets/` folder of the site's theme, which wins on equal names. The default stylesheet is `assets/coffer.css`.
 - **Checking the result**: `coffer check` inspects the finished output for broken links and anchors, missing preview metadata, invalid feeds and a sitemap that differs from the manifest. See [Checking a finished build](checks.md).
@@ -76,7 +78,7 @@ Each site's output contains `.coffer-manifest.json`, which records what the buil
 | `redirects`        | Every alias redirect: `from`, `to` (site-relative URLs) and `status`.                                          |
 | `feeds`            | Every Atom feed: `type` (`blog`, `tag` or `series`), blog id, `url`, `selfUrl` (absolute), `file`, the `page` it belongs to, `title`, number of `entries`, and the `tag` path or `series` slug. See [Feeds](feeds.md). |
 | `sitemap`          | The site-relative URLs listed in `sitemap.xml`, sorted. See [SEO and link previews](seo.md). |
-| `images`           | An empty list for now; the image pipeline records its work here.                                               |
+| `images`           | Every image a page uses: the `source` file, the `post` (page) that uses it, `use` (`body` or `cover`), the hash and upright size of the original, and the `outputs` made from it. See [Images](images.md). |
 
 The manifest is for checks and not for visitors. It is excluded from deployment by its name, `.coffer-manifest.json` (exported as `MANIFEST_FILE_NAME`; `DEPLOY_EXCLUDES` lists every name a deployment must skip). Leave it out when uploading the output to a host.
 

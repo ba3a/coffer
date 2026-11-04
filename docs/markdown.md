@@ -16,6 +16,7 @@ const { html, toc, readingMinutes, firstImage, links } = await renderMarkdown(po
 ## What is supported
 
 - Headings, paragraphs, emphasis, lists, links, images and inline code.
+- **Images** become responsive figures when `renderMarkdown` is given an `images` option (`coffer build` always gives one; see [Images](images.md)): `![alt](photo.jpg "caption")`.
 - **Tables**, task lists, strikethrough and bare-URL links (GitHub-flavoured Markdown).
 - **Quotes**, written with `>`.
 - **Code blocks**, highlighted at build time.
