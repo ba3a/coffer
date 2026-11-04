@@ -67,6 +67,23 @@ viewer:
   next: Next image
   error: The image could not be loaded.
   show_on_map: Show on map
+map:
+  label: Map
+  zoom_in: Zoom in
+  zoom_out: Zoom out
+  tracks: Tracks
+  distance: Distance
+  gain: Climb
+  highest: Highest point
+  km: "{value} km"
+  m: "{value} m"
+  download: Download GPX
+  download_named: "Download GPX: {title}"
+  photo: "Photo {n}"
+  photos:
+    one: "{count} photo"
+    other: "{count} photos"
+  drawing: "Map of the route and the photos (a drawing without a background map)"
 theme:
   button: "Theme: {mode}"
   system: System

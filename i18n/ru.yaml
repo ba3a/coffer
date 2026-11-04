@@ -72,6 +72,25 @@ viewer:
   next: Следующее изображение
   error: Не удалось загрузить изображение.
   show_on_map: Показать на карте
+map:
+  label: Карта
+  zoom_in: Приблизить
+  zoom_out: Отдалить
+  tracks: Треки
+  distance: Расстояние
+  gain: Набор высоты
+  highest: Высшая точка
+  km: "{value} км"
+  m: "{value} м"
+  download: Скачать GPX
+  download_named: "Скачать GPX: {title}"
+  photo: "Фото {n}"
+  photos:
+    one: "{count} фото"
+    few: "{count} фото"
+    many: "{count} фото"
+    other: "{count} фото"
+  drawing: "Схема маршрута и фотографий (рисунок без подложки карты)"
 theme:
   button: "Тема: {mode}"
   system: Системная

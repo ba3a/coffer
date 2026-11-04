@@ -73,6 +73,7 @@ Unknown keys are errors everywhere in the file, so a misspelled key never passes
 | `images`         | no       | see below    | Widths, sizes and quality of the published images (see [Images](images.md)).                                                                                 |
 | `location`       | no       | see below    | Image metadata policy.                                                                                                                                       |
 | `tracks`         | no       | see below    | How GPX tracks are simplified and summarized (see [Maps and GPX tracks](maps.md)).                                                                           |
+| `map`            | no       | OpenStreetMap | The tile server of the maps of posts (see [Maps and GPX tracks](maps.md#the-map)).                                                                          |
 | `projects`       | no       | none         | Where the site's projects live. Without it the site has no projects.                                                                                         |
 
 ## `author` and `feeds`
@@ -167,6 +168,23 @@ tracks:
 | `elevationThreshold` | `3`     | Smoothing threshold of the elevation gain in metres (0 to 100): ups and downs smaller than this count as noise and add nothing to the climb. |
 
 The summary of a track (distance, elevation gain, highest point) is always computed from every recorded point; `tolerance` only changes the drawn geometry.
+
+## `map`
+
+The tiles of the maps of posts (see [Maps and GPX tracks](maps.md#the-map)). All keys are optional.
+
+```yaml
+map:
+  tileUrl: https://tiles.example/{z}/{x}/{y}.png
+  attribution: Tiles by <a href="https://tiles.example">Example</a>
+  maxZoom: 18
+```
+
+| Key           | Default                                          | Description |
+| ------------- | ------------------------------------------------ | ----------- |
+| `tileUrl`     | `https://tile.openstreetmap.org/{z}/{x}/{y}.png` | An `http(s)` address with `{z}`, `{x}` and `{y}` for the zoom level and the tile (`{s}` and `{r}` work as in Leaflet). It must not need a key. |
+| `attribution` | the credit of OpenStreetMap                      | The credit of the tile provider, shown in the corner of every map; may contain links. Required when `tileUrl` is set, because the default credit belongs to the default server. |
+| `maxZoom`     | `19`                                             | The deepest zoom level of the tile server, an integer from 1 to 24. |
 
 ## `projects`
 

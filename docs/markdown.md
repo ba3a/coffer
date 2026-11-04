@@ -114,7 +114,7 @@ The engine does not rewrite, check or sandbox raw HTML, and does not read links 
 
 ### Directives
 
-The syntax `::name`, `:::name` and `:name` is reserved for features of coffer. The only directive so far is the container `:::carousel` (see [Carousels](carousels.md)); maps are to follow. Any other name is an error that names the file and the line:
+The syntax `::name`, `:::name` and `:name` is reserved for features of coffer. The directives are the container `:::carousel` (see [Carousels](carousels.md)) and the leaf `::map` (see [Maps and GPX tracks](maps.md#where-the-map-goes)). Any other name is an error that names the file and the line:
 
 ```
 blog/hike/index.md:42:1: unknown directive "gallery" (a colon followed by a letter starts a directive; write \: for a plain colon)
@@ -152,6 +152,8 @@ A post gets a table of contents only when it has at least `tocMinHeadings` such 
 | `ids`            | Every id a link can point at: heading ids, ids of other elements and `id`/`name` attributes in raw HTML. |
 | `images`         | Every Markdown image as `{ src, alt, caption, carousel }`, carousel slides included, in document order: the list the image viewer walks through. `src` is as written. |
 | `carousels`      | Number of carousels in the text. A page with any loads the carousel script.                    |
+| `viewerSources`  | The address of each image of `viewerImages` as written in the text, in the same order. |
+| `maps`           | The `::map` directives of the text, in document order, as `{ index, tracks, photos, line, column }`, where `tracks` and `photos` are `{ mode: 'all' }`, `{ mode: 'none' }` or `{ mode: 'list', names }`. Each one is an empty `<div data-coffer-map="index"></div>` in `html` for the caller to replace with a map; `coffer build` does. |
 | `viewerImages`   | The images the viewer opens, as `{ src, width, height, alt, caption, latitude?, longitude?, precision? }` in document order: every image with a full-size file that is not already inside a link. Each one is wrapped in a link to its full-size file with `data-viewer` set to its place in this list (see [The image viewer](viewer.md)). Empty without an image resolver. |
 
 ## Options

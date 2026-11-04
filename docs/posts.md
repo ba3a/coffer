@@ -52,7 +52,7 @@ The text of the post.
 | `camera`         | no       | Camera metadata policy for this post (`strip` or `keep`). See [Location and camera metadata](location-policy.md). |
 | `tracks`         | no       | The GPX files of this post, as a list of file names beside the post, each either a name or `{ file, title }`. Without it every `*.gpx` file in a post folder is a track. `tracks: []` publishes none. See [Maps and GPX tracks](maps.md). |
 | `images`         | no       | Mapping of image paths to `{ location, camera }` overrides for single images, for example `images: { IMG_1.jpg: { location: strip } }`. See [Location and camera metadata](location-policy.md). |
-| `map`            | no       | `true` or `false` to force or suppress the map. Without it, a map appears when there is something to show. |
+| `map`            | no       | `false` suppresses the map of the post, `::map` directives included. Without it, a map appears when the post has a track or a photo with a published position, at the end of the text or where a `::map` directive stands. `true` changes nothing: a map is never made from nothing. See [Maps and GPX tracks](maps.md#the-map). |
 
 Keys that coffer does not know are kept in the post's `frontMatter` and otherwise ignored.
 

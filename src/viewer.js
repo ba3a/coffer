@@ -32,15 +32,25 @@ export const VIEWER_DATA_ID = 'coffer-viewer';
 const UNSAFE_CHARACTERS = ['<', String.fromCharCode(0x2028), String.fromCharCode(0x2029)];
 
 /**
- * Turns the data of the viewer into JSON that is safe inside a `<script>`
- * element: `<` and the two line separators that JavaScript treats as line
- * ends are written as `\uXXXX` escapes, which JSON reads back as the same
- * characters, so the text can neither close the element nor start a comment.
+ * The JSON of the viewer's list of images (see {@link jsonForScript}).
  *
  * @param {{ labels: ViewerLabels, images: import('./markdown/render.js').ViewerImage[] }} data
  * @returns {string}
  */
 export function viewerJson(data) {
+  return jsonForScript(data);
+}
+
+/**
+ * Turns data into JSON that is safe inside a `<script>` element: `<` and the
+ * two line separators that JavaScript treats as line ends are written as
+ * `\uXXXX` escapes, which JSON reads back as the same characters, so the text
+ * can neither close the element nor start a comment.
+ *
+ * @param {unknown} data
+ * @returns {string}
+ */
+export function jsonForScript(data) {
   const backslash = String.fromCharCode(92);
   let json = JSON.stringify(data);
   for (const character of UNSAFE_CHARACTERS) {

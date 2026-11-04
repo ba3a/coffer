@@ -462,7 +462,7 @@ test('example: a photo without a position publishes none, and no variant ever ca
 test('example: the build report lists the posts that publish exact locations', () => {
   assert.deepEqual(example.exactLocations, [
     { site: 'workshop', file: 'content/journal/mountain-weekend.md', images: 1 },
-    { site: 'workshop', file: 'content/journal/ridge-walk/index.md', images: 0, tracks: 1 },
+    { site: 'workshop', file: 'content/journal/ridge-walk/index.md', images: 1, tracks: 1 },
   ]);
   const report = JSON.parse(readFileSync(join(pristine, 'report', 'report.json'), 'utf8'));
   assert.deepEqual(report.exactLocations, example.exactLocations);
@@ -485,7 +485,7 @@ test('coffer build prints the posts that publish exact locations after every bui
     assert.equal(first.code, 0, first.err);
     assert.match(
       first.out,
-      /^Posts publishing exact locations \(2\)\n {2}content\/journal\/mountain-weekend\.md: 1 image\(s\)\n {2}content\/journal\/ridge-walk\/index\.md: 1 track\(s\)$/m,
+      /^Posts publishing exact locations \(2\)\n {2}content\/journal\/mountain-weekend\.md: 1 image\(s\)\n {2}content\/journal\/ridge-walk\/index\.md: 1 image\(s\), 1 track\(s\)$/m,
     );
 
     rewrite(root, 'content/journal/tags.yaml', (text) => text.replace('location: keep', 'location: coarse'));
@@ -524,7 +524,7 @@ test('an entry in the images map of a post overrides the tag for one image', asy
     assert.equal(ridge.gps, null);
     assert.equal(await gpsOf(viewerPath(result.outDir, ridge)), null);
     assert.deepEqual(result.exactLocations, [
-      { site: 'workshop', file: 'content/journal/ridge-walk/index.md', images: 0, tracks: 1 },
+      { site: 'workshop', file: 'content/journal/ridge-walk/index.md', images: 1, tracks: 1 },
     ]);
     assert.deepEqual(result.warnings.filter((warning) => /images:/.test(warning)), []);
   });
@@ -571,6 +571,7 @@ test('the same photo in two posts is published once per policy', async () => {
         ['/journal/mountain-weekend/', 'keep'],
         ['/journal/photo-notes/', 'strip'],
         ['/journal/ridge-again/', 'strip'],
+        ['/journal/ridge-walk/', 'keep'],
       ]);
       const [kept, , stripped] = entries;
       assert.notEqual(kept?.outputs[0]?.file.split('/')[1], stripped?.outputs[0]?.file.split('/')[1], 'different folders');
@@ -658,7 +659,7 @@ async function assertFinding(out, pattern) {
 test('coffer check reads every published image back and passes on a build that follows its policies', async () => {
   const result = await checkOutput(loadConfig({ configPath: exampleConfig }), { out: join(pristine, 'dist') });
   assert.deepEqual(result.failures, []);
-  assert.equal(result.sites[0]?.checked.images, 6);
+  assert.equal(result.sites[0]?.checked.images, 7);
 });
 
 test('coffer check fails when a coarse image publishes the exact position', async () => {
@@ -804,7 +805,7 @@ test('the check command exits 1 and names the image that does not match its poli
       });
       assert.equal(code, 1);
       assert.match(err, /workshop\/img\/[0-9a-f]{16}\/dovetail-joint-full\.jpg: its position is not the original position rounded to two decimals/);
-      assert.match(stdout, /^workshop: \d+ page\(s\), 7 feed\(s\), 6 image\(s\) checked, 1 failure\(s\)$/m);
+      assert.match(stdout, /^workshop: \d+ page\(s\), 7 feed\(s\), 7 image\(s\) checked, 1 failure\(s\)$/m);
     },
   );
 });

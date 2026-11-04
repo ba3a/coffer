@@ -51,7 +51,7 @@ A page that has at least one such image loads the viewer; a page without images 
 
 ## Show on map
 
-For an image with a position the viewer has a **Show on map** button in its top bar. It is hidden for images without a position, and it is hidden on pages that have no map, that is no element with the attribute `data-map`. Maps themselves come in a later release; the button is only reserved here. When it is pressed the viewer closes and the document gets a `coffer:show-on-map` event for the map script to answer, with `detail` of `{ index, latitude, longitude, src }`:
+For an image with a position the viewer has a **Show on map** button in its top bar. It is hidden for images without a position, and it is hidden on pages that have no map, that is no element with the attribute `data-map`. When it is pressed the viewer closes and the document gets a `coffer:show-on-map` event, with `detail` of `{ index, latitude, longitude, src }`. The map script of the default theme (see [Maps and GPX tracks](maps.md#the-map)) answers it: it scrolls to the map that shows the photo, centres the map on the photo's marker and opens the marker. A theme with a map of its own listens for the event itself:
 
 ```js
 document.addEventListener('coffer:show-on-map', (event) => {

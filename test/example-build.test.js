@@ -150,6 +150,7 @@ test('the manifest is written and lists the pages and the posts', async () => {
         ['content/journal/first-dovetail/dovetail-joint.jpg', '/journal/photo-notes/', 'body'],
         ['content/journal/first-dovetail/marking-gauge.jpg', '/journal/photo-notes/', 'body'],
         ['content/journal/photos/ridge.jpg', '/journal/photo-notes/', 'body'],
+        ['content/journal/photos/ridge.jpg', '/journal/ridge-walk/', 'body'],
       ],
     );
     assert.equal(manifest.site.id, 'workshop');

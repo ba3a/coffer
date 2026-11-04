@@ -9,6 +9,7 @@ import { toString } from 'hast-util-to-string';
 import { visit, SKIP } from 'unist-util-visit';
 import { bundledLanguages, createHighlighter } from 'shiki';
 import { CarouselSyntaxError, remarkCarousels } from './directives/carousel.js';
+import { MapSyntaxError, remarkMaps } from './directives/map.js';
 
 /** Number of h2/h3 headings from which a post gets a table of contents. */
 export const DEFAULT_TOC_MIN_HEADINGS = 4;
@@ -146,6 +147,8 @@ export const DEFAULT_CAROUSEL_LABELS = Object.freeze({
  * @property {TextImage[]} images Every Markdown image of the text, carousel slides included, in document order.
  * @property {number} carousels Number of carousels in the text; a page with any needs the carousel script.
  * @property {ViewerImage[]} viewerImages The images the viewer opens, in document order: every image that has a full-size file and is not already a link to something else. Each one is wrapped in a link with `data-viewer` set to its index in this list. Empty without an image resolver.
+ * @property {string[]} viewerSources The address of each image of `viewerImages` as written in the text, in the same order.
+ * @property {import('./directives/map.js').MapDirective[]} maps The `::map` directives of the text, in document order. Each one is an empty `<div data-coffer-map="n"></div>` in `html`, n being its `index`, for the caller to fill in.
  * @property {FoundLink[]} links Every Markdown link and image written in the text (links the renderer makes up, such as footnote back references, are left out).
  * @property {string[]} ids Every `id` a link can point at: heading ids, ids of other elements and ids and names set by raw HTML, without duplicates.
  */
@@ -277,7 +280,32 @@ function carousels({ file, lineOffset, labels }) {
 }
 
 /**
- * Remark plugin: apart from the ones that are defined (see `carousels`),
+ * Remark plugin: the `::map` leaf directive, with its mistakes reported as
+ * errors that name the file and the line.
+ *
+ * @param {{ file?: string, lineOffset: number, onFound: (maps: import('./directives/map.js').MapDirective[]) => void }} options
+ * @returns {(tree: import('mdast').Root) => void}
+ */
+function maps({ file, lineOffset, onFound }) {
+  const transform = remarkMaps({
+    onFound: (found) => onFound(found.map((entry) => ({ ...entry, line: entry.line === undefined ? undefined : entry.line + lineOffset }))),
+  });
+  return (tree) => {
+    try {
+      transform(tree);
+    } catch (error) {
+      if (!(error instanceof MapSyntaxError)) throw error;
+      throw new MarkdownError(error.message, {
+        file,
+        line: error.line === undefined ? undefined : error.line + lineOffset,
+        column: error.column,
+      });
+    }
+  };
+}
+
+/**
+ * Remark plugin: apart from the ones that are defined (see `carousels` and `maps`),
  * directives are reserved syntax, so each one is an error that names the file
  * and the line.
  *
@@ -423,7 +451,7 @@ function element(tagName, properties, children = []) {
  * that link. The wrapped images are listed in document order; the link of the
  * n-th has `data-viewer="n"`.
  *
- * @param {{ images: ImageOptions | null, lineOffset: number, onViewerImages: (list: ViewerImage[]) => void }} options
+ * @param {{ images: ImageOptions | null, lineOffset: number, onViewerImages: (list: ViewerImage[], sources: string[]) => void }} options
  * @returns {(tree: import('hast').Root) => Promise<void>}
  */
 function responsiveImages({ images, lineOffset, onViewerImages }) {
@@ -468,6 +496,8 @@ function responsiveImages({ images, lineOffset, onViewerImages }) {
     // The images the viewer opens, in document order, and the place of each in that list.
     /** @type {ViewerImage[]} */
     const viewerImages = [];
+    /** @type {string[]} */
+    const viewerSources = [];
     /** @type {Map<import('hast').Element, number>} */
     const viewerIndex = new Map();
     for (const node of found) {
@@ -476,6 +506,7 @@ function responsiveImages({ images, lineOffset, onViewerImages }) {
       const alt = typeof node.properties.alt === 'string' ? node.properties.alt : '';
       const caption = typeof node.properties.title === 'string' ? node.properties.title.trim() : '';
       viewerIndex.set(node, viewerImages.length);
+      viewerSources.push(String(node.properties.src));
       viewerImages.push({
         src: image.viewer.src,
         width: image.viewer.width,
@@ -487,7 +518,7 @@ function responsiveImages({ images, lineOffset, onViewerImages }) {
           : {}),
       });
     }
-    onViewerImages(viewerImages);
+    onViewerImages(viewerImages, viewerSources);
     // The images that are slides of a carousel.
     /** @type {Set<import('hast').Element>} */
     const slides = new Set();
@@ -658,6 +689,10 @@ export async function renderMarkdown(source, options = {}) {
   let collected;
   /** @type {ViewerImage[]} */
   let viewerImages = [];
+  /** @type {string[]} */
+  let viewerSources = [];
+  /** @type {import('./directives/map.js').MapDirective[]} */
+  let mapDirectives = [];
 
   const processor = unified()
     .use(remarkParse)
@@ -665,6 +700,13 @@ export async function renderMarkdown(source, options = {}) {
     .use(remarkDirective)
     .use(restoreColons, { source })
     .use(carousels, { file: options.file, lineOffset, labels })
+    .use(maps, {
+      file: options.file,
+      lineOffset,
+      onFound: (found) => {
+        mapDirectives = found;
+      },
+    })
     .use(rejectDirectives, { file: options.file, lineOffset })
     .use(remarkRehype, { allowDangerousHtml: true })
     .use(rehypeSlug)
@@ -677,8 +719,9 @@ export async function renderMarkdown(source, options = {}) {
     .use(responsiveImages, {
       images: options.images ?? null,
       lineOffset,
-      onViewerImages: (list) => {
+      onViewerImages: (list, sources) => {
         viewerImages = list;
+        viewerSources = sources;
       },
     })
     .use(highlightCode, { themes })
@@ -697,6 +740,8 @@ export async function renderMarkdown(source, options = {}) {
     images: collected.images,
     carousels: collected.carousels,
     viewerImages,
+    viewerSources,
+    maps: mapDirectives,
     links: collected.links,
     ids: [...collected.ids],
   };

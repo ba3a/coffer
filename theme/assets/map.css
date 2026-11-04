@@ -1,0 +1,187 @@
+/* Maps of the default theme of coffer (see map.js). Loaded on pages that have
+   a map, together with Leaflet's own style sheet. It styles the drawing that
+   is shown without JavaScript as well as the interactive map. Like the rest of
+   the theme, nothing here animates or transitions. */
+
+.coffer-map {
+  /* Colours for tracks that read on the light tiles and on the dark page. */
+  --map-track-0: #d9480f;
+  --map-track-1: #1971c2;
+  --map-track-2: #2f9e44;
+  --map-track-3: #9c36b5;
+  --map-point-fill: var(--coffer-bg);
+  --map-point-stroke: #1b1b1f;
+  margin: 1.5rem 0;
+}
+
+:root[data-theme="dark"] .coffer-map {
+  --map-track-0: #ff922b;
+  --map-track-1: #74c0fc;
+  --map-track-2: #69db7c;
+  --map-track-3: #e599f7;
+  --map-point-stroke: #e8e8ec;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) .coffer-map {
+    --map-track-0: #ff922b;
+    --map-track-1: #74c0fc;
+    --map-track-2: #69db7c;
+    --map-track-3: #e599f7;
+    --map-point-stroke: #e8e8ec;
+  }
+}
+
+/* The frame has the same size with and without the script, so nothing jumps
+   when the interactive map replaces the drawing. */
+.coffer-map .map-frame {
+  position: relative;
+  /* Keeps the stacking order of Leaflet's panes and controls inside the frame. */
+  isolation: isolate;
+  height: clamp(16rem, 60vh, 28rem);
+  overflow: hidden;
+  border: 1px solid var(--coffer-border);
+  background: var(--coffer-code-bg);
+}
+
+.coffer-map .map-static,
+.coffer-map .map-drawing {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+.coffer-map.map-live .map-static {
+  display: none;
+}
+
+.coffer-map .map-view {
+  position: absolute;
+  inset: 0;
+  font: inherit;
+}
+
+/* The drawing and the tracks of the interactive map. */
+.coffer-map .map-track-line {
+  fill: none;
+  stroke-width: 4;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  vector-effect: non-scaling-stroke;
+}
+
+.coffer-map .map-track-0 {
+  stroke: var(--map-track-0);
+}
+
+.coffer-map .map-track-1 {
+  stroke: var(--map-track-1);
+}
+
+.coffer-map .map-track-2 {
+  stroke: var(--map-track-2);
+}
+
+.coffer-map .map-track-3 {
+  stroke: var(--map-track-3);
+}
+
+.coffer-map .map-point {
+  fill: var(--map-point-fill);
+  stroke: var(--map-point-stroke);
+  stroke-width: 3;
+  vector-effect: non-scaling-stroke;
+}
+
+.coffer-map a:focus-visible .map-point {
+  stroke: var(--coffer-accent);
+  stroke-width: 5;
+}
+
+/* Leaflet's own style sheet transitions panes, tiles and popups, but only while
+   the map animates a zoom, a pan or a fade, which map.js turns off. This keeps
+   it so even if a script option is ever changed. */
+.coffer-map .map-view .leaflet-zoom-animated,
+.coffer-map .map-view .leaflet-tile,
+.coffer-map .map-view .leaflet-popup {
+  transition: none;
+}
+
+/* Markers of photos on the interactive map: a round button that needs no image. */
+.coffer-map .map-marker {
+  box-sizing: border-box;
+  border: 3px solid #1b1b1f;
+  border-radius: 50%;
+  background: #fff;
+  color: #1b1b1f;
+  font-size: 0.75rem;
+  font-weight: 600;
+  line-height: 16px;
+  text-align: center;
+  cursor: pointer;
+}
+
+.coffer-map .map-marker.is-selected {
+  background: #ffd43b;
+}
+
+.coffer-map .map-marker:focus-visible {
+  outline: 3px solid #1971c2;
+  outline-offset: 2px;
+}
+
+/* The summary under the map. */
+.coffer-map .map-tracks {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem 2rem;
+  margin: 0.75rem 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.coffer-map .map-track {
+  min-width: 12rem;
+  padding-inline-start: 0.75rem;
+  border-inline-start: 4px solid var(--map-track-0);
+}
+
+.coffer-map .map-color-1.map-track {
+  border-inline-start-color: var(--map-track-1);
+}
+
+.coffer-map .map-color-2.map-track {
+  border-inline-start-color: var(--map-track-2);
+}
+
+.coffer-map .map-color-3.map-track {
+  border-inline-start-color: var(--map-track-3);
+}
+
+.coffer-map .map-track-title {
+  display: block;
+  font-weight: 600;
+}
+
+.coffer-map .map-stats {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0 1.25rem;
+  margin: 0.25rem 0;
+  color: var(--coffer-muted);
+  font-size: 0.9375rem;
+}
+
+.coffer-map .map-stats div {
+  display: flex;
+  gap: 0.35rem;
+}
+
+.coffer-map .map-stats dt,
+.coffer-map .map-stats dd {
+  margin: 0;
+}
+
+.coffer-map .map-download {
+  font-size: 0.9375rem;
+}

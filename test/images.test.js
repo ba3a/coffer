@@ -578,6 +578,7 @@ test('the manifest records every image with its original, its page and its outpu
         ['content/journal/first-dovetail/dovetail-joint.jpg', '/journal/photo-notes/', 'body'],
         ['content/journal/first-dovetail/marking-gauge.jpg', '/journal/photo-notes/', 'body'],
         ['content/journal/photos/ridge.jpg', '/journal/photo-notes/', 'body'],
+        ['content/journal/photos/ridge.jpg', '/journal/ridge-walk/', 'body'],
       ],
     );
     const [joint] = result.manifest.images;

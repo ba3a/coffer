@@ -30,6 +30,8 @@ import {
   unusedSeriesWarnings,
 } from './content/series.js';
 import { loadTracks } from './geo/gpx.js';
+import { MAP_SCRIPTS, MAP_STYLES } from './geo/map.js';
+import { renderPostMaps, withoutMapPlaceholders } from './geo/post-maps.js';
 import { applyLinkRewrites, checkSourceLinks, listProjectSlugs } from './check/source-links.js';
 import { IMAGE_EXTENSIONS } from './images/defaults.js';
 import { IMAGES_CACHE_DIR, ImageError, createImagePipeline, imageFileUrl, pickVariant } from './images/pipeline.js';
@@ -128,6 +130,7 @@ export class BuildError extends Error {
  * @property {number} readingMinutes
  * @property {{ slug: string, number: number, count: number } | null} series The series the post belongs to, with its place in it ("part number of count"), or null.
  * @property {ManifestTrack[]} tracks The GPX tracks published with the post, in the order they are shown; empty when it has none.
+ * @property {import('./geo/post-maps.js').ManifestMap[]} maps The maps of the post in the order they appear; empty when the post has none.
  */
 
 /**
@@ -478,9 +481,10 @@ async function buildSite(config, site, options, outRoot, version, report) {
    * nothing of it.
    *
    * @param {{ carousels: number, viewerImages: import('./markdown/render.js').ViewerImage[] } | null} rendered
+   * @param {boolean} [withMap] Whether the page has a map, which needs Leaflet and the engine's map script (after the viewer's, so that a marker finds the viewer ready).
    * @returns {{ scripts: string[], styles: string[], viewerData: string }}
    */
-  const pageAssetsFor = (rendered) => {
+  const pageAssetsFor = (rendered, withMap = false) => {
     const scripts = rendered && rendered.carousels > 0 ? ['/assets/carousel.js'] : [];
     const styles = [];
     let viewerData = '';
@@ -488,6 +492,10 @@ async function buildSite(config, site, options, outRoot, version, report) {
       styles.push(...VIEWER_STYLES);
       scripts.push(...VIEWER_SCRIPTS);
       viewerData = viewerJson({ labels: viewerLabels, images: rendered.viewerImages });
+    }
+    if (withMap) {
+      styles.push(...MAP_STYLES);
+      scripts.push(...MAP_SCRIPTS);
     }
     return { scripts, styles, viewerData };
   };
@@ -1027,6 +1035,22 @@ async function buildSite(config, site, options, outRoot, version, report) {
       const url = postUrl(blog, post.slug);
       const unpublished = !isPublished(post, { now });
       entries.push({ post, url, readingMinutes: rendered.readingMinutes, unpublished });
+      const shownFile = posix(relative(config.dir, post.file));
+      const mapped = renderPostMaps({
+        lang: site.lang,
+        basePath: templates.basePath,
+        tiles: site.map,
+        templates,
+        rendered,
+        tracks: postTracks.get(post) ?? [],
+        url,
+        enabled: post.map !== false,
+      });
+      for (const problem of mapped.problems) {
+        report.addError({ site: site.id, file: shownFile, line: problem.line, column: problem.column, message: problem.message });
+      }
+      for (const warning of mapped.warnings) warnings.push(`${shownFile}: ${warning}`);
+
       if (!unpublished) {
         feedEntries.set(
           post,
@@ -1036,7 +1060,7 @@ async function buildSite(config, site, options, outRoot, version, report) {
             title: post.title,
             date: post.date,
             summary: post.summary,
-            html: rendered.html,
+            html: mapped.feedHtml,
             tags: post.tags.map((path) => ({ path, name: nameOf(path) })),
             tagsIndexUrl,
           }),
@@ -1070,7 +1094,7 @@ async function buildSite(config, site, options, outRoot, version, report) {
         ]),
         meta: metaFor({
           title: post.title,
-          description: post.summary || excerptOf(rendered.html),
+          description: post.summary || excerptOf(mapped.feedHtml),
           url,
           image: previewImage,
           type: 'article',
@@ -1080,11 +1104,11 @@ async function buildSite(config, site, options, outRoot, version, report) {
         post: view,
         series: view.series,
         toc: rendered.toc,
-        ...pageAssetsFor(rendered),
+        ...pageAssetsFor(rendered, mapped.maps.length > 0),
         page: {
           title: post.title,
           description: post.summary ?? '',
-          content: rendered.html,
+          content: mapped.html,
         },
       });
       const file = fileForUrl(url);
@@ -1136,6 +1160,7 @@ async function buildSite(config, site, options, outRoot, version, report) {
           ? { slug: view.series.slug, number: view.series.number, count: view.series.count }
           : null,
         tracks: manifestTracks,
+        maps: mapped.maps.map((map) => map.summary),
       });
     }
 
@@ -1378,6 +1403,12 @@ async function buildSite(config, site, options, outRoot, version, report) {
             carousel: carouselLabels,
           })
         : null;
+    // Only a post has tracks and located photos, so a map has nothing to show here.
+    if (home) {
+      for (const directive of rendered?.maps ?? []) {
+        warnings.push(`${posix(relative(config.dir, home.file))}:${directive.line ?? 1}: the ::map directive is only for posts and is left out`);
+      }
+    }
     const firstBlog = site.blogs[0];
     const latest = firstBlogPosts.slice(0, home?.latestPosts ?? DEFAULT_LATEST_POSTS);
     const title = home?.title ?? site.title;
@@ -1394,7 +1425,7 @@ async function buildSite(config, site, options, outRoot, version, report) {
       page: {
         title,
         description: site.description,
-        content: rendered?.html ?? '',
+        content: withoutMapPlaceholders(rendered?.html ?? ''),
       },
     });
     writeOutput(outDir, fileForUrl('/'), homeHtml);

@@ -12,6 +12,7 @@ import {
 } from './images/defaults.js';
 import { DEFAULT_ELEVATION_THRESHOLD_METERS, DEFAULT_TOLERANCE_METERS } from './geo/gpx.js';
 import { CAMERA_POLICIES, LOCATION_POLICIES } from './images/policy.js';
+import { DEFAULT_ATTRIBUTION, DEFAULT_MAX_ZOOM, DEFAULT_TILE_URL, isTileUrl } from './geo/map.js';
 
 /**
  * The file name coffer looks for when no `--config` path is given.
@@ -75,6 +76,15 @@ export const CONFIG_FILE_NAME = 'coffer.yaml';
  */
 
 /**
+ * The map tiles of a site.
+ *
+ * @typedef {object} MapConfig
+ * @property {string} tileUrl Address of the tiles with `{z}`, `{x}` and `{y}` in place of the zoom level and the tile (`{s}` and `{r}` work as in Leaflet). The default is OpenStreetMap's own server, which needs no key.
+ * @property {string} attribution The credit of the tile provider, shown in the corner of every map; may contain links.
+ * @property {number} maxZoom The deepest zoom level the tile server serves.
+ */
+
+/**
  * Where a site keeps its projects.
  *
  * @typedef {object} ProjectsConfig
@@ -119,6 +129,7 @@ export const CONFIG_FILE_NAME = 'coffer.yaml';
  * @property {LocationConfig} location Image metadata policy.
  * @property {ImagesConfig} images How published images are made.
  * @property {TracksConfig} tracks How GPX tracks are simplified and summarized.
+ * @property {MapConfig} map The tiles of the maps of posts.
  * @property {ProjectsConfig | null} projects Projects location, or null when the site has no projects.
  */
 
@@ -182,6 +193,7 @@ const SITE_KEYS = [
   'location',
   'images',
   'tracks',
+  'map',
   'projects',
 ];
 const ID_RE = /^[a-z0-9][a-z0-9._-]*$/i;
@@ -719,6 +731,32 @@ function normalizeTracks(raw, path, problems) {
 }
 
 /**
+ * @param {Record<string, unknown> | undefined} raw
+ * @param {string} path
+ * @param {Problems} problems
+ * @returns {MapConfig}
+ */
+function normalizeMap(raw, path, problems) {
+  /** @type {MapConfig} */
+  const map = { tileUrl: DEFAULT_TILE_URL, attribution: DEFAULT_ATTRIBUTION, maxZoom: DEFAULT_MAX_ZOOM };
+  if (raw === undefined) return map;
+  rejectUnknownKeys(raw, ['tileUrl', 'attribution', 'maxZoom'], path, problems);
+  const tileUrl = readString(raw, 'tileUrl', path, problems);
+  if (tileUrl !== undefined) {
+    if (isTileUrl(tileUrl)) map.tileUrl = tileUrl;
+    else problems.add(`${path}.tileUrl`, 'must be an http(s) address with {z}, {x} and {y} in it, such as https://tiles.example/{z}/{x}/{y}.png');
+    // The credit of the default server does not belong to another one.
+    if (raw.attribution === undefined || raw.attribution === null) {
+      problems.add(`${path}.attribution`, 'is required with tileUrl: it names the provider of the tiles');
+    }
+  }
+  const attribution = readString(raw, 'attribution', path, problems);
+  if (attribution !== undefined) map.attribution = attribution;
+  map.maxZoom = readBoundedInteger(raw, 'maxZoom', path, problems, 1, 24, map.maxZoom);
+  return map;
+}
+
+/**
  * Reads the `author` key: a name, or a mapping with `name`, `email` and `url`.
  *
  * @param {unknown} raw
@@ -900,6 +938,7 @@ function normalizeSite(raw, index, baseDir, problems) {
     `${path}.tracks`,
     problems,
   );
+  const map = normalizeMap(readMapping(raw, 'map', path, problems), `${path}.map`, problems);
 
   /** @type {ProjectsConfig | null} */
   let projects = null;
@@ -953,6 +992,7 @@ function normalizeSite(raw, index, baseDir, problems) {
     location,
     images,
     tracks,
+    map,
     projects,
   };
 }

@@ -1,0 +1,25 @@
+<div class="coffer-map" data-map role="group" aria-label="{{ 'map.label' | t }}">
+<div class="map-frame">
+<div class="map-static">{{ map.svg | safe }}</div>
+</div>
+{% if map.tracks.length %}
+<ul class="map-tracks" aria-label="{{ 'map.tracks' | t }}">
+{% for track in map.tracks %}
+<li class="map-track map-color-{{ track.color }}">
+<span class="map-track-title">{{ track.title }}</span>
+<dl class="map-stats">
+<div><dt>{{ 'map.distance' | t }}</dt><dd>{{ ('map.' + track.distance.unit) | t({ value: track.distance.value }) }}</dd></div>
+{% if track.gain %}
+<div><dt>{{ 'map.gain' | t }}</dt><dd>{{ 'map.m' | t({ value: track.gain }) }}</dd></div>
+{% endif %}
+{% if track.highest %}
+<div><dt>{{ 'map.highest' | t }}</dt><dd>{{ 'map.m' | t({ value: track.highest }) }}</dd></div>
+{% endif %}
+</dl>
+<a class="map-download" href="{{ track.gpx | url }}" download aria-label="{{ 'map.download_named' | t({ title: track.title }) }}">{{ 'map.download' | t }}</a>
+</li>
+{% endfor %}
+</ul>
+{% endif %}
+<script type="application/json" class="map-data">{{ map.data | safe }}</script>
+</div>

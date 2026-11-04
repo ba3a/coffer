@@ -10,3 +10,7 @@ Version 1.1. The license text is in theme/fonts/OFL.txt.
 This product includes PhotoSwipe, copyright 2014-2022 Dmitry Semenov
 (https://photoswipe.com), used under the MIT License. The license text is in
 theme/assets/vendor/photoswipe/LICENSE.
+
+This product includes Leaflet, copyright 2010-2023 Volodymyr Agafonkin and
+2010-2011 CloudMade, used under the BSD 2-Clause License. The license text is in
+theme/assets/vendor/leaflet/LICENSE.

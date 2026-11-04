@@ -207,6 +207,11 @@ test('defaults are applied to a minimal site', () => {
       carouselSizes: '(min-width: 44rem) 41rem, calc(100vw - 2rem)',
     },
     tracks: { tolerance: 10, elevationThreshold: 3 },
+    map: {
+      tileUrl: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+      attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
+      maxZoom: 19,
+    },
     projects: null,
   });
 });
