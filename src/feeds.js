@@ -87,18 +87,23 @@ export function absolutizeHtml(html, pageUrl, baseUrl) {
 const startTag = (/** @type {string} */ name) => String.raw`<${name}\b(?:"[^"]*"|'[^']*'|[^'">])*>`;
 const PICTURE_RE = new RegExp(String.raw`<picture>\s*${startTag('source')}\s*(${startTag('img')})\s*</picture>`, 'g');
 const LAZY_ATTRIBUTE_RE = /\s(?:loading|decoding)="[^"]*"/g;
+const VIEWER_LINK_RE = /(<a href="[^"]*")\s+class="viewer-link"\s+data-viewer="\d+"/g;
 
 /**
  * Simplifies the pictures the Markdown renderer writes for feed readers, which
  * understand `<img>` and little else: each `<picture>` becomes its `<img>`,
  * whose `src` is the 1200 pixel variant, without `srcset`, `loading` and
- * `decoding`. The `width` and `height` stay.
+ * `decoding`. The `width` and `height` stay. The link to the full-size file
+ * that wraps a picture stays a link, without the class and the number that
+ * only the viewer script of the site uses.
  *
  * @param {string} html
  * @returns {string}
  */
 export function simplifyPictures(html) {
-  return html.replace(PICTURE_RE, (_whole, img) => String(img).replace(LAZY_ATTRIBUTE_RE, ''));
+  return html
+    .replace(PICTURE_RE, (_whole, img) => String(img).replace(LAZY_ATTRIBUTE_RE, ''))
+    .replace(VIEWER_LINK_RE, '$1');
 }
 
 /**

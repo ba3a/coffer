@@ -51,6 +51,9 @@
 </script>
 {% endblock %}
 <link rel="stylesheet" href="{{ '/assets/coffer.css' | url }}">
+{% for href in styles or [] %}
+<link rel="stylesheet" href="{{ href | url }}">
+{% endfor %}
 {% block page_meta %}
 {% if meta %}
 <title>{{ meta.title }}</title>
@@ -116,6 +119,9 @@
 {% endblock %}
 </footer>
 {% block scripts %}
+{% if viewerData %}
+<script type="application/json" id="coffer-viewer">{{ viewerData | safe }}</script>
+{% endif %}
 {% for src in scripts or [] %}
 <script src="{{ src | url }}" defer></script>
 {% endfor %}

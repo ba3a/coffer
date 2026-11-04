@@ -51,7 +51,7 @@ Templates in the engine refer to each other by plain names (`{% extends "base.nj
 
 | Block    | Contents                                                              |
 | -------- | --------------------------------------------------------------------- |
-| `head`   | `<meta>` tags, the theme script, the stylesheet and `<title>`; add stylesheets and feed links here |
+| `head`   | `<meta>` tags, the theme script, the stylesheet, the stylesheets in the page's `styles` list (the viewer's, on pages with images) and `<title>`; add stylesheets and feed links here |
 | `theme_script` | the inline script that applies the saved colour scheme (nested in `head`) |
 | `feed_links` | the `<link rel="alternate">` elements that advertise feeds (nested in `head`) |
 | `header` | the site title and the navigation (inside `<header>`)                 |
@@ -59,7 +59,7 @@ Templates in the engine refer to each other by plain names (`{% extends "base.nj
 | `theme_switch` | the light/dark button; nested in `header`                       |
 | `main`   | the page itself (inside `<main id="main">`)                           |
 | `footer` | the content license and the credit line (inside `<footer>`)           |
-| `scripts`| scripts at the end of `<body>`; by default one `<script defer>` for each address in the page's `scripts` list, which holds the carousel script on pages with a carousel (see [Carousels](carousels.md)) |
+| `scripts`| scripts at the end of `<body>`; by default one `<script defer>` for each address in the page's `scripts` list, which holds the carousel script on pages with a carousel (see [Carousels](carousels.md)) and the scripts of the image viewer on pages with images (see [The image viewer](viewer.md)); before them, a `<script type="application/json" id="coffer-viewer">` element with the list of images when the page's `viewerData` is not empty |
 
 To change only the footer, create `templates/page.njk` in the theme:
 

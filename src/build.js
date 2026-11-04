@@ -46,6 +46,7 @@ import { createTemplates } from './render/templates.js';
 import { REPORT_DIR_NAME, REPORT_FILE_NAME, Report, ReportError, writeReport } from './report.js';
 import { ROBOTS_FILE_NAME, SITEMAP_FILE_NAME, renderRobots, renderSitemap } from './sitemap.js';
 import { readVersion } from './version.js';
+import { VIEWER_SCRIPTS, VIEWER_STYLES, viewerJson } from './viewer.js';
 
 /** Directory holding the static assets of the default theme. */
 export const ENGINE_ASSETS_DIR = fileURLToPath(new URL('../theme/assets/', import.meta.url));
@@ -441,14 +442,36 @@ async function buildSite(config, site, options, outRoot, version, report) {
     previous: templates.translator.t('carousel.previous'),
     next: templates.translator.t('carousel.next'),
   };
+  /** The words of the image viewer, in the language of the site. */
+  const viewerLabels = {
+    close: templates.translator.t('viewer.close'),
+    zoom: templates.translator.t('viewer.zoom'),
+    previous: templates.translator.t('viewer.previous'),
+    next: templates.translator.t('viewer.next'),
+    error: templates.translator.t('viewer.error'),
+    showOnMap: templates.translator.t('viewer.show_on_map'),
+  };
   /**
-   * The scripts a page needs, as site paths: the carousel script when the
-   * page has a carousel.
+   * What a page needs besides its HTML, as template variables: the carousel
+   * script when the page has a carousel and, when it has images the viewer can
+   * open, the viewer (PhotoSwipe, its styles, the engine's script and styles)
+   * and the list of those images as JSON for it. Pages without such images load
+   * nothing of it.
    *
-   * @param {{ carousels: number } | null} rendered
-   * @returns {string[]}
+   * @param {{ carousels: number, viewerImages: import('./markdown/render.js').ViewerImage[] } | null} rendered
+   * @returns {{ scripts: string[], styles: string[], viewerData: string }}
    */
-  const scriptsFor = (rendered) => (rendered && rendered.carousels > 0 ? ['/assets/carousel.js'] : []);
+  const pageAssetsFor = (rendered) => {
+    const scripts = rendered && rendered.carousels > 0 ? ['/assets/carousel.js'] : [];
+    const styles = [];
+    let viewerData = '';
+    if (rendered && rendered.viewerImages.length > 0) {
+      styles.push(...VIEWER_STYLES);
+      scripts.push(...VIEWER_SCRIPTS);
+      viewerData = viewerJson({ labels: viewerLabels, images: rendered.viewerImages });
+    }
+    return { scripts, styles, viewerData };
+  };
   /** @type {Map<string, FeedLink>} */
   const blogFeeds = new Map(
     site.blogs.map((blog) => [
@@ -752,6 +775,12 @@ async function buildSite(config, site, options, outRoot, version, report) {
             width: standIn.width,
             height: standIn.height,
             srcset: processed.variants.map((entry) => ({ url: imageFileUrl(processed, entry), width: entry.width })),
+            viewer: {
+              src: imageFileUrl(processed, processed.viewer),
+              width: processed.viewer.width,
+              height: processed.viewer.height,
+            },
+            location: processed.gps,
           };
         } catch (error) {
           if (!(error instanceof ImageError)) throw error;
@@ -1014,7 +1043,7 @@ async function buildSite(config, site, options, outRoot, version, report) {
         post: view,
         series: view.series,
         toc: rendered.toc,
-        scripts: scriptsFor(rendered),
+        ...pageAssetsFor(rendered),
         page: {
           title: post.title,
           description: post.summary ?? '',
@@ -1293,7 +1322,7 @@ async function buildSite(config, site, options, outRoot, version, report) {
       blogUrl: firstBlog ? blogUrl(firstBlog) : null,
       posts: latest,
       secondaryLinks: home?.secondaryLinks ?? [],
-      scripts: scriptsFor(rendered),
+      ...pageAssetsFor(rendered),
       page: {
         title,
         description: site.description,

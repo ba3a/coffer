@@ -60,6 +60,13 @@ carousel:
   label: Image carousel
   previous: Previous image
   next: Next image
+viewer:
+  close: Close (Esc)
+  zoom: Zoom in or out
+  previous: Previous image
+  next: Next image
+  error: The image could not be loaded.
+  show_on_map: Show on map
 theme:
   button: "Theme: {mode}"
   system: System

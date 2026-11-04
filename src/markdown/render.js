@@ -60,6 +60,17 @@ export const DEFAULT_CAROUSEL_LABELS = Object.freeze({
  * @property {number} height Height of that variant in pixels.
  * @property {{ url: string, width: number }[]} srcset The variants to choose from, narrowest first.
  * @property {string} [type] Media type of the variants (default `image/webp`).
+ * @property {ViewerFile} [viewer] The full-size file for the viewer. When given, the picture is a link to it, and the image joins the list of images of the text; without it the picture is not linked.
+ * @property {{ latitude: number, longitude: number, precision: 'exact' | 'coarse' } | null} [location] The position the full-size file publishes, which the viewer offers on a map; null or left out for none.
+ */
+
+/**
+ * The full-size file of an image, which the viewer shows and which a click opens when scripts are off.
+ *
+ * @typedef {object} ViewerFile
+ * @property {string} src Address of the file.
+ * @property {number} width Width in pixels.
+ * @property {number} height Height in pixels.
  */
 
 /**
@@ -110,6 +121,22 @@ export const DEFAULT_CAROUSEL_LABELS = Object.freeze({
  */
 
 /**
+ * An image as the viewer shows it: the full-size file with its caption and,
+ * when it is published, its position. The list of these, in document order,
+ * is what a page gives the viewer script.
+ *
+ * @typedef {object} ViewerImage
+ * @property {string} src Address of the full-size file.
+ * @property {number} width
+ * @property {number} height
+ * @property {string} alt Alternative text; empty when none was given.
+ * @property {string} caption The caption (the title of the image); empty when none was given.
+ * @property {number} [latitude] Published latitude, left out when the image publishes no position.
+ * @property {number} [longitude] Published longitude, left out when the image publishes no position.
+ * @property {'exact' | 'coarse'} [precision] Whether the position is exact or rounded to about a kilometre.
+ */
+
+/**
  * @typedef {object} RenderResult
  * @property {string} html Rendered body.
  * @property {TocEntry[]} toc Table of contents; empty when the text has fewer headings than the threshold.
@@ -118,6 +145,7 @@ export const DEFAULT_CAROUSEL_LABELS = Object.freeze({
  * @property {{ src: string, alt: string } | null} firstImage The first Markdown image, or null.
  * @property {TextImage[]} images Every Markdown image of the text, carousel slides included, in document order.
  * @property {number} carousels Number of carousels in the text; a page with any needs the carousel script.
+ * @property {ViewerImage[]} viewerImages The images the viewer opens, in document order: every image that has a full-size file and is not already a link to something else. Each one is wrapped in a link with `data-viewer` set to its index in this list. Empty without an image resolver.
  * @property {FoundLink[]} links Every Markdown link and image written in the text (links the renderer makes up, such as footnote back references, are left out).
  * @property {string[]} ids Every `id` a link can point at: heading ids, ids of other elements and ids and names set by raw HTML, without duplicates.
  */
@@ -389,10 +417,16 @@ function element(tagName, properties, children = []) {
  * sizes of carousels; its slides are images like the others, so the first
  * slide is eager only when it is the first image of the page.
  *
- * @param {{ images: ImageOptions | null, lineOffset: number }} options
+ * An image that has a full-size file (`viewer`) is wrapped in a link to that
+ * file, which is what a click opens when scripts are off and what the viewer
+ * script takes over otherwise. An image that is already inside a link keeps
+ * that link. The wrapped images are listed in document order; the link of the
+ * n-th has `data-viewer="n"`.
+ *
+ * @param {{ images: ImageOptions | null, lineOffset: number, onViewerImages: (list: ViewerImage[]) => void }} options
  * @returns {(tree: import('hast').Root) => Promise<void>}
  */
-function responsiveImages({ images, lineOffset }) {
+function responsiveImages({ images, lineOffset, onViewerImages }) {
   return async (tree) => {
     if (images === null) return;
     /** @type {import('hast').Element[]} */
@@ -420,6 +454,40 @@ function responsiveImages({ images, lineOffset }) {
     );
 
     const first = found[0];
+    // The images that are already inside a link, which stays what it is.
+    /** @type {Set<import('hast').Element>} */
+    const linked = new Set();
+    visit(tree, 'element', (node) => {
+      if (node.tagName === 'pre' || node.tagName === 'script' || node.tagName === 'style') return SKIP;
+      if (node.tagName !== 'a') return undefined;
+      visit(node, 'element', (inner) => {
+        if (inner.tagName === 'img') linked.add(inner);
+      });
+      return SKIP;
+    });
+    // The images the viewer opens, in document order, and the place of each in that list.
+    /** @type {ViewerImage[]} */
+    const viewerImages = [];
+    /** @type {Map<import('hast').Element, number>} */
+    const viewerIndex = new Map();
+    for (const node of found) {
+      const image = resolved.get(node);
+      if (!image?.viewer || linked.has(node)) continue;
+      const alt = typeof node.properties.alt === 'string' ? node.properties.alt : '';
+      const caption = typeof node.properties.title === 'string' ? node.properties.title.trim() : '';
+      viewerIndex.set(node, viewerImages.length);
+      viewerImages.push({
+        src: image.viewer.src,
+        width: image.viewer.width,
+        height: image.viewer.height,
+        alt,
+        caption,
+        ...(image.location
+          ? { latitude: image.location.latitude, longitude: image.location.longitude, precision: image.location.precision }
+          : {}),
+      });
+    }
+    onViewerImages(viewerImages);
     // The images that are slides of a carousel.
     /** @type {Set<import('hast').Element>} */
     const slides = new Set();
@@ -453,7 +521,22 @@ function responsiveImages({ images, lineOffset }) {
         loading: lazy ? 'lazy' : undefined,
         decoding: lazy ? 'async' : undefined,
       });
-      return element('picture', {}, [source, img]);
+      const inner = element('picture', {}, [source, img]);
+      const index = viewerIndex.get(node);
+      if (index === undefined || !image.viewer) return inner;
+      const caption = typeof node.properties.title === 'string' ? node.properties.title.trim() : '';
+      const alt = typeof node.properties.alt === 'string' ? node.properties.alt : '';
+      return element(
+        'a',
+        {
+          href: image.viewer.src,
+          className: 'viewer-link',
+          dataViewer: String(index),
+          // A link with a picture without alt text still needs a name.
+          ariaLabel: alt.trim() === '' && caption !== '' ? caption : undefined,
+        },
+        [inner],
+      );
     };
 
     /**
@@ -573,6 +656,8 @@ export async function renderMarkdown(source, options = {}) {
 
   /** @type {Collected | undefined} */
   let collected;
+  /** @type {ViewerImage[]} */
+  let viewerImages = [];
 
   const processor = unified()
     .use(remarkParse)
@@ -589,7 +674,13 @@ export async function renderMarkdown(source, options = {}) {
         collected = found;
       },
     })
-    .use(responsiveImages, { images: options.images ?? null, lineOffset })
+    .use(responsiveImages, {
+      images: options.images ?? null,
+      lineOffset,
+      onViewerImages: (list) => {
+        viewerImages = list;
+      },
+    })
     .use(highlightCode, { themes })
     .use(rehypeStringify, { allowDangerousHtml: true });
 
@@ -605,6 +696,7 @@ export async function renderMarkdown(source, options = {}) {
     firstImage: collected.firstImage,
     images: collected.images,
     carousels: collected.carousels,
+    viewerImages,
     links: collected.links,
     ids: [...collected.ids],
   };

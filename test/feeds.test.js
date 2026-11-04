@@ -244,7 +244,9 @@ test('feed content has absolute links, images and srcset URLs', async () => {
     // The picture is a plain img with the 1200 pixel variant, without srcset, loading or decoding.
     assert.match(
       entry.html,
-      new RegExp(`<figure><img src="${SITE}/img/[0-9a-f]{16}/bench-1200\\.webp" alt="A bench" width="1200" height="771"></figure>`),
+      new RegExp(
+        `<figure><a href="${SITE}/img/[0-9a-f]{16}/bench-full\\.jpg"><img src="${SITE}/img/[0-9a-f]{16}/bench-1200\\.webp" alt="A bench" width="1200" height="771"></a></figure>`,
+      ),
       entry.html,
     );
     assert.ok(!entry.html.includes('<picture'), entry.html);

@@ -1,0 +1,50 @@
+/* Additions of the default theme of coffer to PhotoSwipe (the fullscreen image
+   viewer, see viewer.js). Loaded only on pages that have images the viewer can
+   open. Like the rest of the theme, nothing here animates or transitions. */
+
+/* The viewer is always dark, whatever the colour scheme of the page. */
+.pswp {
+  --pswp-bg: #000;
+  --pswp-placeholder-bg: #111;
+  --pswp-icon-color: #fff;
+  --pswp-icon-color-secondary: #4f4f4f;
+  --pswp-icon-stroke-color: #4f4f4f;
+}
+
+/* The counter ("2 / 7") stays at the left of the bar; the buttons go to the right. */
+.pswp__counter {
+  margin-inline-end: auto;
+}
+
+.pswp__button[hidden],
+.pswp__coffer-caption[hidden] {
+  display: none;
+}
+
+/* A text button between the counter and the zoom button. */
+.pswp__button--show-on-map {
+  width: auto;
+  padding: 0 0.75rem;
+  color: var(--pswp-icon-color);
+  font: inherit;
+  font-size: 0.875rem;
+  text-shadow: 1px 1px 3px var(--pswp-icon-color-secondary);
+  white-space: nowrap;
+}
+
+/* The caption sits at the bottom, over a dark band so it can be read on any picture. */
+.pswp__coffer-caption {
+  position: absolute;
+  inset-inline: 0;
+  bottom: 0;
+  z-index: 10;
+  box-sizing: border-box;
+  max-height: 30%;
+  overflow-y: auto;
+  padding: 0.75rem 1rem calc(0.75rem + env(safe-area-inset-bottom, 0px));
+  background: rgba(0, 0, 0, 0.6);
+  color: #fff;
+  font-size: 0.9375rem;
+  line-height: 1.4;
+  text-align: center;
+}

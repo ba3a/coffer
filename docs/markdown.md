@@ -152,6 +152,7 @@ A post gets a table of contents only when it has at least `tocMinHeadings` such 
 | `ids`            | Every id a link can point at: heading ids, ids of other elements and `id`/`name` attributes in raw HTML. |
 | `images`         | Every Markdown image as `{ src, alt, caption, carousel }`, carousel slides included, in document order: the list the image viewer walks through. `src` is as written. |
 | `carousels`      | Number of carousels in the text. A page with any loads the carousel script.                    |
+| `viewerImages`   | The images the viewer opens, as `{ src, width, height, alt, caption, latitude?, longitude?, precision? }` in document order: every image with a full-size file that is not already inside a link. Each one is wrapped in a link to its full-size file with `data-viewer` set to its place in this list (see [The image viewer](viewer.md)). Empty without an image resolver. |
 
 ## Options
 

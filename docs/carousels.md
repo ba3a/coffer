@@ -81,7 +81,7 @@ The script has no special handling of right-to-left layouts: the arrow keys mean
 
 ## The image viewer
 
-The images of a carousel are images of the post, in document order: a carousel in the middle of a post is walked through between the image before it and the image after it. `renderMarkdown` returns the list as `images` (see [Markdown](markdown.md#result)), with `carousel: true` for slides. The fullscreen viewer that uses the list is added in a later release.
+The images of a carousel are images of the post, in document order: a carousel in the middle of a post is walked through between the image before it and the image after it. `renderMarkdown` returns the list as `images` (see [Markdown](markdown.md#result)), with `carousel: true` for slides. Clicking a slide opens the fullscreen viewer on that image and the viewer walks on through the rest of the post (see [The image viewer](viewer.md)); without scripts a slide links to its full-size file.
 
 ## Styling
 

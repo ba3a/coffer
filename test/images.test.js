@@ -544,7 +544,7 @@ test('a page serves figures with srcset; images after the first are lazy, every 
     assert.equal(attribute(tags[0], 'loading'), null, 'the first image is loaded at once');
     assert.equal(attribute(tags[1], 'loading'), 'lazy');
     assert.equal(attribute(tags[1], 'decoding'), 'async');
-    assert.match(html, /<figure><picture><source type="image\/webp" srcset="[^"]*\/marking-gauge-480\.webp 480w, [^"]*\/marking-gauge-800\.webp 800w, [^"]*\/marking-gauge-1200\.webp 1200w"/);
+    assert.match(html, /<figure><a href="[^"]*\/marking-gauge-full\.jpg" class="viewer-link" data-viewer="0"><picture><source type="image\/webp" srcset="[^"]*\/marking-gauge-480\.webp 480w, [^"]*\/marking-gauge-800\.webp 800w, [^"]*\/marking-gauge-1200\.webp 1200w"/);
     assert.match(html, /<picture><source [^>]*sizes="\(min-width: 44rem\) 41rem, calc\(100vw - 2rem\)"/);
     assert.match(html, /<figcaption>The sixth attempt, unglued, on the bench\.<\/figcaption>/);
     assert.equal(html.match(/<figcaption>/g)?.length, 1, 'only the image with a title has a caption');
@@ -681,7 +681,7 @@ test('the home page text can have pictures too', async () => {
       writeFileSync(join(root, 'content', 'home.md'), `${home.trimEnd()}\n\n![The workshop](workshop.jpg "Where it happens")\n`);
       const result = await build(root);
       const html = readFileSync(join(result.outDir, 'index.html'), 'utf8');
-      assert.match(html, /<figure><picture><source [^>]*><img src="\/img\/[0-9a-f]{16}\/workshop-1200\.webp" alt="The workshop" width="1200" height="800"><\/picture><figcaption>Where it happens<\/figcaption><\/figure>/);
+      assert.match(html, /<figure><a href="\/img\/[0-9a-f]{16}\/workshop-full\.jpg" class="viewer-link" data-viewer="0"><picture><source [^>]*><img src="\/img\/[0-9a-f]{16}\/workshop-1200\.webp" alt="The workshop" width="1200" height="800"><\/picture><\/a><figcaption>Where it happens<\/figcaption><\/figure>/);
       assert.ok(result.manifest.images.some((image) => image.post === '/' && image.source === 'content/workshop.jpg'));
     },
     { 'content/workshop.jpg': await solidImage(1500, 1000) },

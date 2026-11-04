@@ -94,6 +94,7 @@ The position is read from the Exif of the original with [exifr](https://github.c
 - **All images of a page but the first** have `loading="lazy"` and `decoding="async"`. The first image, which is likely to be on screen when the page opens, loads at once. "First" means the first `<img>` of the page's Markdown, whether or not coffer could process it.
 - An image inside a sentence, or inside a link, is a `<picture>` without a `<figure>`, and a title is kept as a tooltip.
 - Several images on lines of their own in one paragraph become one figure each.
+- Every image is a link to its full-size JPEG and opens in a fullscreen viewer when scripts are on: see [The image viewer](viewer.md).
 - Images can also be shown one at a time in a row that scrolls sideways: see [Carousels](carousels.md). Slides are lazy like any other image: only the first image of the page, which is the first slide when a page starts with a carousel, loads at once.
 - The `sizes` attribute says how wide the image is shown. The default fits the text column of the default theme; a theme with another layout sets [`images.sizes`](configuration.md#images).
 
