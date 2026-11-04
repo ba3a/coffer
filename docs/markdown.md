@@ -17,6 +17,7 @@ const { html, toc, readingMinutes, firstImage, links } = await renderMarkdown(po
 
 - Headings, paragraphs, emphasis, lists, links, images and inline code.
 - **Images** become responsive figures when `renderMarkdown` is given an `images` option (`coffer build` always gives one; see [Images](images.md)): `![alt](photo.jpg "caption")`.
+- **Carousels**, a row of images that scrolls sideways, written as a `:::carousel` block (see [Carousels](carousels.md)).
 - **Tables**, task lists, strikethrough and bare-URL links (GitHub-flavoured Markdown).
 - **Quotes**, written with `>`.
 - **Code blocks**, highlighted at build time.
@@ -111,12 +112,12 @@ Always give the iframe a `title`. A video file that sits next to the post works 
 
 The engine does not rewrite, check or sandbox raw HTML, and does not read links or images inside it, so they are not part of `links` or `firstImage`. Prefer Markdown syntax for images and links.
 
-### Directives (reserved)
+### Directives
 
-The syntax `::name`, `:::name` and `:name` is reserved for features that are added later, such as carousels and maps. No directive exists yet, so using one is an error that names the file and the line:
+The syntax `::name`, `:::name` and `:name` is reserved for features of coffer. The only directive so far is the container `:::carousel` (see [Carousels](carousels.md)); maps are to follow. Any other name is an error that names the file and the line:
 
 ```
-blog/hike/index.md:42:1: unknown directive "carousel" (a colon followed by a letter starts a directive; write \: for a plain colon)
+blog/hike/index.md:42:1: unknown directive "gallery" (a colon followed by a letter starts a directive; write \: for a plain colon)
 ```
 
 A colon followed by a letter, as in `:smile:`, is read as a directive. Escape it as `\:` to get a plain colon. Times such as `10:30`, URLs, a colon followed by a space and a colon directly after a letter or a digit (`note:this`) are ordinary text.
@@ -149,6 +150,8 @@ A post gets a table of contents only when it has at least `tocMinHeadings` such 
 | `firstImage`     | `{ src, alt }` of the first Markdown image, or `null`. `src` is as written, not yet resolved. |
 | `links`          | Every Markdown link and image as `{ url, kind: 'link' \| 'image', line, column }`; `coffer build` checks them (see [Links](links.md)). |
 | `ids`            | Every id a link can point at: heading ids, ids of other elements and `id`/`name` attributes in raw HTML. |
+| `images`         | Every Markdown image as `{ src, alt, caption, carousel }`, carousel slides included, in document order: the list the image viewer walks through. `src` is as written. |
+| `carousels`      | Number of carousels in the text. A page with any loads the carousel script.                    |
 
 ## Options
 
@@ -159,5 +162,6 @@ A post gets a table of contents only when it has at least `tocMinHeadings` such 
 | `tocMinHeadings` | `4`                           | Headings needed for a table of contents.                             |
 | `wordsPerMinute` | `200`                         | Reading speed.                                                       |
 | `codeThemes`     | `github-light`, `github-dark` | Shiki theme names, as `{ light, dark }`.                             |
+| `carousel`       | English words                 | The words carousels need, as `{ label, previous, next }`: the name of a carousel without one and the names of its two buttons. `coffer build` takes them from the UI strings of the site. |
 
 Invalid numbers are rejected with a `TypeError`.

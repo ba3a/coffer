@@ -435,6 +435,20 @@ async function buildSite(config, site, options, outRoot, version, report) {
 
   const t = (/** @type {string} */ key, /** @type {Record<string, unknown>} */ params) =>
     templates.translator.t(key, params);
+  /** The words of carousels, in the language of the site. */
+  const carouselLabels = {
+    label: templates.translator.t('carousel.label'),
+    previous: templates.translator.t('carousel.previous'),
+    next: templates.translator.t('carousel.next'),
+  };
+  /**
+   * The scripts a page needs, as site paths: the carousel script when the
+   * page has a carousel.
+   *
+   * @param {{ carousels: number } | null} rendered
+   * @returns {string[]}
+   */
+  const scriptsFor = (rendered) => (rendered && rendered.carousels > 0 ? ['/assets/carousel.js'] : []);
   /** @type {Map<string, FeedLink>} */
   const blogFeeds = new Map(
     site.blogs.map((blog) => [
@@ -714,6 +728,7 @@ async function buildSite(config, site, options, outRoot, version, report) {
     const shown = posix(relative(config.dir, sourceFile));
     return {
       sizes: site.images.sizes,
+      carouselSizes: site.images.carouselSizes,
       resolve: async ({ src, alt, line, column }) => {
         if (alt.trim() === '') warnings.push(`${shown}:${line}:${column}: the image "${src}" has no alt text`);
         const file = localImageFile(sourceFile, src);
@@ -825,6 +840,7 @@ async function buildSite(config, site, options, outRoot, version, report) {
           file: post.file,
           startLine: post.bodyLine,
           images: imageOptionsFor(post.file, postUrl(blog, post.slug), page),
+          carousel: carouselLabels,
         }),
       );
     }
@@ -998,6 +1014,7 @@ async function buildSite(config, site, options, outRoot, version, report) {
         post: view,
         series: view.series,
         toc: rendered.toc,
+        scripts: scriptsFor(rendered),
         page: {
           title: post.title,
           description: post.summary ?? '',
@@ -1261,6 +1278,7 @@ async function buildSite(config, site, options, outRoot, version, report) {
             file: home.file,
             startLine: home.bodyLine,
             images: imageOptionsFor(home.file, '/', homePage),
+            carousel: carouselLabels,
           })
         : null;
     const firstBlog = site.blogs[0];
@@ -1275,6 +1293,7 @@ async function buildSite(config, site, options, outRoot, version, report) {
       blogUrl: firstBlog ? blogUrl(firstBlog) : null,
       posts: latest,
       secondaryLinks: home?.secondaryLinks ?? [],
+      scripts: scriptsFor(rendered),
       page: {
         title,
         description: site.description,

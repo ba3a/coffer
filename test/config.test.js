@@ -204,6 +204,7 @@ test('defaults are applied to a minimal site', () => {
       webpQuality: 80,
       jpegQuality: 85,
       sizes: '(min-width: 44rem) 41rem, calc(100vw - 2rem)',
+      carouselSizes: '(min-width: 44rem) 41rem, calc(100vw - 2rem)',
     },
     projects: null,
   });
@@ -682,7 +683,7 @@ test('docs/configuration.md documents every configuration key', () => {
 test('images set the widths, the viewer size, the qualities and the sizes attribute', () => {
   const images = normalize(
     oneSite({
-      images: { widths: [1000, 400, 400, 2000], viewerMaxEdge: 2500, webpQuality: 70, jpegQuality: 90, sizes: '100vw' },
+      images: { widths: [1000, 400, 400, 2000], viewerMaxEdge: 2500, webpQuality: 70, jpegQuality: 90, sizes: '100vw', carouselSizes: '50vw' },
     }),
   ).sites[0].images;
   assert.deepEqual(images, {
@@ -691,6 +692,7 @@ test('images set the widths, the viewer size, the qualities and the sizes attrib
     webpQuality: 70,
     jpegQuality: 90,
     sizes: '100vw',
+    carouselSizes: '50vw',
   });
   assert.deepEqual(normalize(oneSite({ images: { widths: [640] } })).sites[0].images.widths, [640]);
 });
@@ -698,15 +700,16 @@ test('images set the widths, the viewer size, the qualities and the sizes attrib
 test('invalid image settings are reported with their keys', () => {
   assert.deepEqual(
     normalizeErrors(
-      oneSite({ images: { widths: [], viewerMaxEdge: 10, webpQuality: 0, jpegQuality: 101, sizes: '', quality: 5 } }),
+      oneSite({ images: { widths: [], viewerMaxEdge: 10, webpQuality: 0, jpegQuality: 101, sizes: '', carouselSizes: '', quality: 5 } }),
     ),
     [
-      'coffer.yaml: sites[0].images.quality: unknown key (expected one of: widths, viewerMaxEdge, webpQuality, jpegQuality, sizes)',
+      'coffer.yaml: sites[0].images.quality: unknown key (expected one of: widths, viewerMaxEdge, webpQuality, jpegQuality, sizes, carouselSizes)',
       'coffer.yaml: sites[0].images.widths: must be a non-empty list of integers from 16 to 20000',
       'coffer.yaml: sites[0].images.viewerMaxEdge: must be an integer from 64 to 30000',
       'coffer.yaml: sites[0].images.webpQuality: must be an integer from 1 to 100',
       'coffer.yaml: sites[0].images.jpegQuality: must be an integer from 1 to 100',
       'coffer.yaml: sites[0].images.sizes: must be a non-empty string',
+      'coffer.yaml: sites[0].images.carouselSizes: must be a non-empty string',
     ],
   );
   assert.deepEqual(normalizeErrors(oneSite({ images: { widths: [480, 'wide'] } })), [

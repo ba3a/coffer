@@ -94,6 +94,7 @@ The position is read from the Exif of the original with [exifr](https://github.c
 - **All images of a page but the first** have `loading="lazy"` and `decoding="async"`. The first image, which is likely to be on screen when the page opens, loads at once. "First" means the first `<img>` of the page's Markdown, whether or not coffer could process it.
 - An image inside a sentence, or inside a link, is a `<picture>` without a `<figure>`, and a title is kept as a tooltip.
 - Several images on lines of their own in one paragraph become one figure each.
+- Images can also be shown one at a time in a row that scrolls sideways: see [Carousels](carousels.md). Slides are lazy like any other image: only the first image of the page, which is the first slide when a page starts with a carousel, loads at once.
 - The `sizes` attribute says how wide the image is shown. The default fits the text column of the default theme; a theme with another layout sets [`images.sizes`](configuration.md#images).
 
 ## Feeds
@@ -147,6 +148,8 @@ Each entry also says what was published of the image's metadata, so that maps an
 ## The example photos
 
 The example site's photographs are made up and generated, so nothing copyrighted ships with coffer. `example/scripts/make-photos.js` draws them with [sharp](https://sharp.pixelplumbing.com/) and writes small JPEGs below `example/content/`; they are committed, so you only run the script (`node example/scripts/make-photos.js` in the coffer directory) to change them. One of them, `journal/photos/ridge.jpg`, is stored sideways with EXIF orientation 6 and carries a made-up GPS position and camera, to show what the pipeline does with a phone photo: its tag `trips/mountains` says `location: keep` and `camera: keep`, so its viewer JPEG carries both. `journal/first-dovetail/dovetail-joint.jpg` has a made-up position too, and its post says `location: coarse`, so only the rounded position is published.
+
+The post `journal/photo-notes` of the example site shows its three photos in a carousel (and again as a list). It reuses the photos of the other posts, which are therefore published once more under the settings of that post.
 
 ## From JavaScript
 

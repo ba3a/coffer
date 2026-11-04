@@ -575,6 +575,9 @@ test('the manifest records every image with its original, its page and its outpu
         ['content/journal/first-dovetail/dovetail-joint.jpg', '/journal/first-dovetail/', 'body'],
         ['content/journal/first-dovetail/marking-gauge.jpg', '/journal/first-dovetail/', 'body'],
         ['content/journal/photos/ridge.jpg', '/journal/mountain-weekend/', 'body'],
+        ['content/journal/first-dovetail/dovetail-joint.jpg', '/journal/photo-notes/', 'body'],
+        ['content/journal/first-dovetail/marking-gauge.jpg', '/journal/photo-notes/', 'body'],
+        ['content/journal/photos/ridge.jpg', '/journal/photo-notes/', 'body'],
       ],
     );
     const [joint] = result.manifest.images;
@@ -596,24 +599,25 @@ test('the manifest records every image with its original, its page and its outpu
 test('a second build reuses the cached images', async () => {
   await withExampleCopy(async (root) => {
     const first = await build(root);
-    assert.deepEqual(first.images, { generated: 3, reused: 0 });
+    // Three originals, each in the post that owns it and again in the carousel post, which has other settings.
+    assert.deepEqual(first.images, { generated: 6, reused: 0 });
     const cacheDir = join(root, '.cache', 'images');
     const cached = readdirSync(cacheDir).sort();
-    assert.equal(cached.length, 3);
+    assert.equal(cached.length, 6);
     const times = new Map(cached.map((name) => [name, statSync(join(cacheDir, name, 'info.json')).mtimeMs]));
     const published = listFiles(first.outDir).filter((name) => name.startsWith('img/'));
 
     const second = await build(root);
-    assert.deepEqual(second.images, { generated: 0, reused: 3 });
+    assert.deepEqual(second.images, { generated: 0, reused: 6 });
     assert.deepEqual(readdirSync(cacheDir).sort(), cached);
     for (const [name, time] of times) assert.equal(statSync(join(cacheDir, name, 'info.json')).mtimeMs, time, name);
     assert.deepEqual(listFiles(second.outDir).filter((name) => name.startsWith('img/')), published, 'the output is the same');
     assert.deepEqual(second.manifest.images, first.manifest.images);
 
-    // A replaced photo is processed again; the others stay cached.
+    // A replaced photo is processed again, once for each way it is published; the others stay cached.
     addFiles(root, { 'content/journal/first-dovetail/marking-gauge.jpg': await solidImage(1000, 600) });
     const third = await build(root);
-    assert.deepEqual(third.images, { generated: 1, reused: 2 });
+    assert.deepEqual(third.images, { generated: 2, reused: 4 });
   });
 });
 

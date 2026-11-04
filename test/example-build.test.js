@@ -58,7 +58,7 @@ test('the draft and the future-dated post are absent from a normal build', async
     assert.equal(existsSync(join(site, 'journal', 'spring-open-house')), false);
     assert.deepEqual(
       manifest.posts.map((post) => post.slug),
-      ['first-dovetail', 'mountain-weekend', 'walnut-box'],
+      ['first-dovetail', 'mountain-weekend', 'photo-notes', 'walnut-box'],
     );
     const index = page(site, '/journal/');
     assert.doesNotMatch(index, /planer-notes|Spring open house/);
@@ -117,6 +117,7 @@ test('the manifest is written and lists the pages and the posts', async () => {
         '/journal/',
         '/journal/first-dovetail/',
         '/journal/mountain-weekend/',
+        '/journal/photo-notes/',
         '/journal/series/boxes-by-hand/',
         '/journal/tags/',
         '/journal/tags/trips/',
@@ -145,6 +146,9 @@ test('the manifest is written and lists the pages and the posts', async () => {
         ['content/journal/first-dovetail/dovetail-joint.jpg', '/journal/first-dovetail/', 'body'],
         ['content/journal/first-dovetail/marking-gauge.jpg', '/journal/first-dovetail/', 'body'],
         ['content/journal/photos/ridge.jpg', '/journal/mountain-weekend/', 'body'],
+        ['content/journal/first-dovetail/dovetail-joint.jpg', '/journal/photo-notes/', 'body'],
+        ['content/journal/first-dovetail/marking-gauge.jpg', '/journal/photo-notes/', 'body'],
+        ['content/journal/photos/ridge.jpg', '/journal/photo-notes/', 'body'],
       ],
     );
     assert.equal(manifest.site.id, 'workshop');
@@ -175,7 +179,7 @@ test('coffer build with --out, --now and --drafts builds the example from the co
       { encoding: 'utf8', cwd: tmpdir() },
     );
     assert.equal(result.status, 0, result.stderr);
-    assert.match(result.stdout, /workshop: 3 post\(s\), 13 page\(s\)/);
+    assert.match(result.stdout, /workshop: 4 post\(s\), 14 page\(s\)/);
     assert.equal(existsSync(join(out, 'workshop', 'journal', 'spring-open-house')), false);
 
     const preview = spawnSync(
@@ -184,7 +188,7 @@ test('coffer build with --out, --now and --drafts builds the example from the co
       { encoding: 'utf8', cwd: tmpdir() },
     );
     assert.equal(preview.status, 0, preview.stderr);
-    assert.match(preview.stdout, /workshop: 5 post\(s\), 17 page\(s\)/);
+    assert.match(preview.stdout, /workshop: 6 post\(s\), 18 page\(s\)/);
     assert.ok(existsSync(join(out, 'workshop', 'journal', 'spring-open-house', 'index.html')));
   } finally {
     rmSync(out, { recursive: true, force: true });

@@ -127,6 +127,7 @@ images:
   webpQuality: 80
   jpegQuality: 85
   sizes: "(min-width: 44rem) 41rem, calc(100vw - 2rem)"
+  carouselSizes: "(min-width: 44rem) 41rem, calc(100vw - 2rem)"
 ```
 
 | Key             | Default                                         | Description                                                                                                                       |
@@ -136,6 +137,7 @@ images:
 | `webpQuality`   | `80`                                            | WebP quality of the variants, 1 to 100.                                                                                           |
 | `jpegQuality`   | `85`                                            | JPEG quality of the full-size image, 1 to 100.                                                                                    |
 | `sizes`         | `(min-width: 44rem) 41rem, calc(100vw - 2rem)`  | The `sizes` attribute of the pictures: how wide the image is shown at each screen width. Match it to the text column of your theme. |
+| `carouselSizes` | `(min-width: 44rem) 41rem, calc(100vw - 2rem)`  | The `sizes` attribute of the pictures in [carousels](carousels.md): how wide a slide is shown at each screen width. Match it to the width of the carousel in your theme. |
 
 Changing a value makes the next build process the images again; the cache is keyed by the settings.
 

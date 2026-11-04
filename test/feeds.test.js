@@ -110,13 +110,13 @@ test('the example site gets a blog feed, tag subtree feeds and a series feed, al
     assert.deepEqual(
       feeds.map((feed) => [feed.type, feed.url, feed.entries]),
       [
-        ['blog', '/journal/feed.xml', 3],
+        ['blog', '/journal/feed.xml', 4],
         ['series', '/journal/series/boxes-by-hand/feed.xml', 2],
         ['tag', '/journal/tags/trips/feed.xml', 1],
         ['tag', '/journal/tags/trips/mountains/feed.xml', 1],
         ['tag', '/journal/tags/workshop/boxes/dovetails/feed.xml', 1],
         ['tag', '/journal/tags/workshop/boxes/feed.xml', 2],
-        ['tag', '/journal/tags/workshop/feed.xml', 2],
+        ['tag', '/journal/tags/workshop/feed.xml', 3],
       ],
     );
     for (const feed of feeds) {
@@ -140,8 +140,13 @@ test('a tag feed covers the whole subtree, a series feed every part, newest firs
       `${base}/walnut-box/`,
       `${base}/first-dovetail/`,
       `${base}/mountain-weekend/`,
+      `${base}/photo-notes/`,
     ]);
-    assert.deepEqual(ids('/journal/tags/workshop/feed.xml'), [`${base}/walnut-box/`, `${base}/first-dovetail/`]);
+    assert.deepEqual(ids('/journal/tags/workshop/feed.xml'), [
+      `${base}/walnut-box/`,
+      `${base}/first-dovetail/`,
+      `${base}/photo-notes/`,
+    ]);
     assert.deepEqual(ids('/journal/tags/workshop/boxes/dovetails/feed.xml'), [`${base}/first-dovetail/`]);
     assert.deepEqual(ids('/journal/tags/trips/feed.xml'), [`${base}/mountain-weekend/`]);
     assert.deepEqual(ids('/journal/series/boxes-by-hand/feed.xml'), [`${base}/walnut-box/`, `${base}/first-dovetail/`]);

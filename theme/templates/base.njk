@@ -115,6 +115,10 @@
 <p class="credit">{{ 'footer.credit' | t }}</p>
 {% endblock %}
 </footer>
-{% block scripts %}{% endblock %}
+{% block scripts %}
+{% for src in scripts or [] %}
+<script src="{{ src | url }}" defer></script>
+{% endfor %}
+{% endblock %}
 </body>
 </html>

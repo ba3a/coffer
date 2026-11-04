@@ -56,6 +56,10 @@ not_found:
   title: Page not found
   text: The page you are looking for does not exist or has moved.
   home: Back to the home page
+carousel:
+  label: Image carousel
+  previous: Previous image
+  next: Next image
 theme:
   button: "Theme: {mode}"
   system: System

@@ -59,7 +59,7 @@ Templates in the engine refer to each other by plain names (`{% extends "base.nj
 | `theme_switch` | the light/dark button; nested in `header`                       |
 | `main`   | the page itself (inside `<main id="main">`)                           |
 | `footer` | the content license and the credit line (inside `<footer>`)           |
-| `scripts`| scripts at the end of `<body>`; empty by default                      |
+| `scripts`| scripts at the end of `<body>`; by default one `<script defer>` for each address in the page's `scripts` list, which holds the carousel script on pages with a carousel (see [Carousels](carousels.md)) |
 
 To change only the footer, create `templates/page.njk` in the theme:
 

@@ -8,6 +8,7 @@ import rehypeStringify from 'rehype-stringify';
 import { toString } from 'hast-util-to-string';
 import { visit, SKIP } from 'unist-util-visit';
 import { bundledLanguages, createHighlighter } from 'shiki';
+import { CarouselSyntaxError, remarkCarousels } from './directives/carousel.js';
 
 /** Number of h2/h3 headings from which a post gets a table of contents. */
 export const DEFAULT_TOC_MIN_HEADINGS = 4;
@@ -29,7 +30,26 @@ export const DEFAULT_CODE_THEMES = Object.freeze({
  * @property {number} [wordsPerMinute] Reading speed (default 200).
  * @property {{ light: string, dark: string }} [codeThemes] Shiki theme names for the light and the dark scheme.
  * @property {ImageOptions} [images] Turns images into responsive figures; without it an image stays a plain `<img>`.
+ * @property {Partial<CarouselLabels>} [carousel] The words the carousels need, in the language of the site (English when left out).
  */
+
+/**
+ * The words of a carousel. The label names the region for screen readers; the
+ * other two name the buttons that the carousel script adds. The position
+ * indicator ("2 / 7") needs no words.
+ *
+ * @typedef {object} CarouselLabels
+ * @property {string} label Name of a carousel that was given none.
+ * @property {string} previous Name of the button that shows the previous slide.
+ * @property {string} next Name of the button that shows the next slide.
+ */
+
+/** The words of a carousel when the site gives none. */
+export const DEFAULT_CAROUSEL_LABELS = Object.freeze({
+  label: 'Image carousel',
+  previous: 'Previous image',
+  next: 'Next image',
+});
 
 /**
  * A picture ready to be shown: what the renderer needs to write `<picture>`.
@@ -57,6 +77,7 @@ export const DEFAULT_CODE_THEMES = Object.freeze({
  * @typedef {object} ImageOptions
  * @property {(request: ImageRequest) => Promise<ResponsiveImage | null>} resolve Finds the responsive variants of an image, or null to leave the image as it is (a remote image, a missing file). Called once per image, all at the same time.
  * @property {string} sizes The `sizes` attribute of the pictures.
+ * @property {string} [carouselSizes] The `sizes` attribute of the pictures in carousels, where a slide is as wide as the carousel (default: `sizes`).
  */
 
 /**
@@ -79,12 +100,24 @@ export const DEFAULT_CODE_THEMES = Object.freeze({
  */
 
 /**
+ * An image of the text, as the viewer needs to know it.
+ *
+ * @typedef {object} TextImage
+ * @property {string} src The address exactly as written.
+ * @property {string} alt Alternative text; empty when none was given.
+ * @property {string} caption The caption (the title of the image); empty when none was given.
+ * @property {boolean} carousel Whether the image is a slide of a carousel.
+ */
+
+/**
  * @typedef {object} RenderResult
  * @property {string} html Rendered body.
  * @property {TocEntry[]} toc Table of contents; empty when the text has fewer headings than the threshold.
  * @property {number} words Number of words in the text, code blocks excluded.
  * @property {number} readingMinutes Estimated reading time in whole minutes, at least 1.
  * @property {{ src: string, alt: string } | null} firstImage The first Markdown image, or null.
+ * @property {TextImage[]} images Every Markdown image of the text, carousel slides included, in document order.
+ * @property {number} carousels Number of carousels in the text; a page with any needs the carousel script.
  * @property {FoundLink[]} links Every Markdown link and image written in the text (links the renderer makes up, such as footnote back references, are left out).
  * @property {string[]} ids Every `id` a link can point at: heading ids, ids of other elements and ids and names set by raw HTML, without duplicates.
  */
@@ -96,6 +129,8 @@ export const DEFAULT_CODE_THEMES = Object.freeze({
  * @property {TocEntry[]} headings
  * @property {string} text
  * @property {{ src: string, alt: string } | null} firstImage
+ * @property {TextImage[]} images
+ * @property {number} carousels
  * @property {FoundLink[]} links
  * @property {Set<string>} ids
  */
@@ -191,8 +226,32 @@ function restoreColons({ source }) {
 }
 
 /**
- * Remark plugin: directives are reserved syntax, and none is defined yet, so
- * each one is an error that names the file and the line.
+ * Remark plugin: the `:::carousel` directive, with its mistakes reported as
+ * errors that name the file and the line.
+ *
+ * @param {{ file?: string, lineOffset: number, labels: CarouselLabels }} options
+ * @returns {(tree: import('mdast').Root) => void}
+ */
+function carousels({ file, lineOffset, labels }) {
+  const transform = remarkCarousels({ labels });
+  return (tree) => {
+    try {
+      transform(tree);
+    } catch (error) {
+      if (!(error instanceof CarouselSyntaxError)) throw error;
+      throw new MarkdownError(error.message, {
+        file,
+        line: error.line === undefined ? undefined : error.line + lineOffset,
+        column: error.column,
+      });
+    }
+  };
+}
+
+/**
+ * Remark plugin: apart from the ones that are defined (see `carousels`),
+ * directives are reserved syntax, so each one is an error that names the file
+ * and the line.
  *
  * @param {{ file?: string, lineOffset: number }} options
  * @returns {(tree: import('mdast').Root) => void}
@@ -222,6 +281,14 @@ function rejectDirectives({ file, lineOffset }) {
 }
 
 /**
+ * @param {import('hast').Element} node
+ * @returns {boolean} Whether the element is the region of a carousel.
+ */
+function isCarousel(node) {
+  return node.tagName === 'section' && node.properties.dataCarousel !== undefined;
+}
+
+/**
  * Rehype plugin: collects everything the result reports besides the HTML.
  * It runs before code highlighting, on the plain tree.
  *
@@ -231,9 +298,11 @@ function rejectDirectives({ file, lineOffset }) {
 function collect({ lineOffset, onResult }) {
   return (tree) => {
     /** @type {Collected} */
-    const found = { headings: [], text: '', firstImage: null, links: [], ids: new Set() };
+    const found = { headings: [], text: '', firstImage: null, images: [], carousels: 0, links: [], ids: new Set() };
     /** @type {string[]} */
     const textParts = [];
+    /** @type {WeakSet<object>} */
+    const slideImages = new WeakSet();
 
     visit(tree, (node) => {
       if (node.type === 'text') {
@@ -259,6 +328,12 @@ function collect({ lineOffset, onResult }) {
       const line = (node.position?.start.line ?? 1) + lineOffset;
       const column = node.position?.start.column ?? 1;
 
+      if (isCarousel(node)) {
+        found.carousels += 1;
+        visit(node, 'element', (inner) => {
+          if (inner.tagName === 'img') slideImages.add(inner);
+        });
+      }
       if (node.tagName === 'h2' || node.tagName === 'h3') {
         const id = node.properties.id;
         if (typeof id === 'string') {
@@ -274,6 +349,12 @@ function collect({ lineOffset, onResult }) {
         const alt = typeof node.properties.alt === 'string' ? node.properties.alt : '';
         if (node.position) found.links.push({ url: node.properties.src, kind: 'image', line, column });
         found.firstImage ??= { src: node.properties.src, alt };
+        found.images.push({
+          src: node.properties.src,
+          alt,
+          caption: typeof node.properties.title === 'string' ? node.properties.title.trim() : '',
+          carousel: slideImages.has(node),
+        });
       }
       // Words of adjacent blocks must not run together.
       if (!INLINE_TAGS.has(node.tagName)) textParts.push(' ');
@@ -304,7 +385,9 @@ function element(tagName, properties, children = []) {
  * image that stands alone in a paragraph into a `<figure>`, with its title as
  * the `<figcaption>`. Every `<img>` gets `width` and `height` (so the page
  * does not jump while it loads), and every one but the first of the page gets
- * `loading="lazy"` and `decoding="async"`.
+ * `loading="lazy"` and `decoding="async"`. The pictures of a carousel use the
+ * sizes of carousels; its slides are images like the others, so the first
+ * slide is eager only when it is the first image of the page.
  *
  * @param {{ images: ImageOptions | null, lineOffset: number }} options
  * @returns {(tree: import('hast').Root) => Promise<void>}
@@ -337,6 +420,16 @@ function responsiveImages({ images, lineOffset }) {
     );
 
     const first = found[0];
+    // The images that are slides of a carousel.
+    /** @type {Set<import('hast').Element>} */
+    const slides = new Set();
+    visit(tree, 'element', (node) => {
+      if (!isCarousel(node)) return undefined;
+      visit(node, 'element', (inner) => {
+        if (inner.tagName === 'img') slides.add(inner);
+      });
+      return SKIP;
+    });
     /**
      * @param {import('hast').Element} node
      * @param {boolean} keepTitle
@@ -349,7 +442,7 @@ function responsiveImages({ images, lineOffset }) {
       const source = element('source', {
         type: image.type ?? 'image/webp',
         srcSet: image.srcset.map((entry) => `${entry.url} ${entry.width}w`).join(', '),
-        sizes: images.sizes,
+        sizes: slides.has(node) ? (images.carouselSizes ?? images.sizes) : images.sizes,
       });
       const img = element('img', {
         src: image.src,
@@ -467,7 +560,7 @@ function highlightCode({ themes }) {
  * @param {string} source Markdown text without front matter.
  * @param {RenderOptions} [options]
  * @returns {Promise<RenderResult>}
- * @throws {MarkdownError} for an unknown directive.
+ * @throws {MarkdownError} for an unknown directive, or a carousel that is written wrongly.
  * @throws {TypeError} for an invalid option.
  */
 export async function renderMarkdown(source, options = {}) {
@@ -476,6 +569,7 @@ export async function renderMarkdown(source, options = {}) {
   const startLine = positiveInteger(options.startLine, 'startLine', 1);
   const themes = options.codeThemes ?? DEFAULT_CODE_THEMES;
   const lineOffset = startLine - 1;
+  const labels = { ...DEFAULT_CAROUSEL_LABELS, ...options.carousel };
 
   /** @type {Collected | undefined} */
   let collected;
@@ -485,6 +579,7 @@ export async function renderMarkdown(source, options = {}) {
     .use(remarkGfm)
     .use(remarkDirective)
     .use(restoreColons, { source })
+    .use(carousels, { file: options.file, lineOffset, labels })
     .use(rejectDirectives, { file: options.file, lineOffset })
     .use(remarkRehype, { allowDangerousHtml: true })
     .use(rehypeSlug)
@@ -508,6 +603,8 @@ export async function renderMarkdown(source, options = {}) {
     words,
     readingMinutes: Math.max(1, Math.ceil(words / wordsPerMinute)),
     firstImage: collected.firstImage,
+    images: collected.images,
+    carousels: collected.carousels,
     links: collected.links,
     ids: [...collected.ids],
   };

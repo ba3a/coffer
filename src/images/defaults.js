@@ -17,6 +17,14 @@ export const DEFAULT_JPEG_QUALITY = 85;
  */
 export const DEFAULT_SIZES = '(min-width: 44rem) 41rem, calc(100vw - 2rem)';
 
+/**
+ * The value of the `sizes` attribute of the pictures in carousels unless the
+ * site says otherwise. A slide is as wide as the carousel, which is as wide as
+ * the text column, so the value is that of {@link DEFAULT_SIZES}; it is a
+ * setting of its own for themes whose carousels are wider or narrower than the text.
+ */
+export const DEFAULT_CAROUSEL_SIZES = DEFAULT_SIZES;
+
 /** Width of the variant that stands in for the picture where no `srcset` is understood: feeds, link previews, old readers. */
 export const DEFAULT_IMAGE_WIDTH = 1200;
 

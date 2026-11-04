@@ -3,6 +3,7 @@ import { dirname, isAbsolute, join, relative, resolve, sep } from 'node:path';
 import { LineCounter, parseDocument } from 'yaml';
 
 import {
+  DEFAULT_CAROUSEL_SIZES,
   DEFAULT_JPEG_QUALITY,
   DEFAULT_SIZES,
   DEFAULT_VIEWER_MAX_EDGE,
@@ -61,6 +62,7 @@ export const CONFIG_FILE_NAME = 'coffer.yaml';
  * @property {number} webpQuality WebP quality, 1 to 100.
  * @property {number} jpegQuality JPEG quality of the full-size image, 1 to 100.
  * @property {string} sizes The `sizes` attribute of the pictures: how wide the image is shown at each screen width.
+ * @property {string} carouselSizes The `sizes` attribute of the pictures in carousels.
  */
 
 /**
@@ -150,7 +152,7 @@ export const DEFAULT_IMAGE = '/assets/social-default.png';
 /** Number of entries in a blog or tag feed unless the site says otherwise. */
 export const DEFAULT_FEED_LIMIT = 20;
 
-const IMAGE_KEYS = ['widths', 'viewerMaxEdge', 'webpQuality', 'jpegQuality', 'sizes'];
+const IMAGE_KEYS = ['widths', 'viewerMaxEdge', 'webpQuality', 'jpegQuality', 'sizes', 'carouselSizes'];
 const SITE_KEYS = [
   'id',
   'baseUrl',
@@ -651,6 +653,7 @@ function normalizeImages(raw, path, problems) {
     webpQuality: DEFAULT_WEBP_QUALITY,
     jpegQuality: DEFAULT_JPEG_QUALITY,
     sizes: DEFAULT_SIZES,
+    carouselSizes: DEFAULT_CAROUSEL_SIZES,
   };
   if (raw === undefined) return images;
   rejectUnknownKeys(raw, IMAGE_KEYS, path, problems);
@@ -671,6 +674,8 @@ function normalizeImages(raw, path, problems) {
   images.jpegQuality = readBoundedInteger(raw, 'jpegQuality', path, problems, 1, 100, images.jpegQuality);
   const sizes = readString(raw, 'sizes', path, problems);
   if (sizes !== undefined) images.sizes = sizes;
+  const carouselSizes = readString(raw, 'carouselSizes', path, problems);
+  if (carouselSizes !== undefined) images.carouselSizes = carouselSizes;
   return images;
 }
 
