@@ -13,12 +13,19 @@ import { join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { run } from '../src/cli.js';
+import { CARDS_OUT_DIR } from '../src/cards.js';
 import {
   ConfigError,
+  RESERVED_OUTPUT_NAMES,
   findConfigFile,
   loadConfig,
   normalizeConfig,
 } from '../src/config.js';
+import { FEED_FILE_NAME } from '../src/feeds.js';
+import { IMAGES_OUT_DIR } from '../src/images/pipeline.js';
+import { REDIRECTS_FILE_NAME } from '../src/redirects.js';
+import { ROBOTS_FILE_NAME, SITEMAP_FILE_NAME } from '../src/sitemap.js';
+import { NOT_FOUND_URL } from '../src/build.js';
 
 const bin = fileURLToPath(new URL('../bin/coffer.js', import.meta.url));
 
@@ -773,4 +780,45 @@ test('feeds.limit is a positive integer', () => {
   assert.deepEqual(normalizeErrors(oneSite({ feeds: { count: 3 } })), [
     'coffer.yaml: sites[0].feeds.count: unknown key (expected one of: limit)',
   ]);
+});
+
+test('urls.projects cannot be a name the build writes itself', () => {
+  for (const name of ['assets', 'img', 'cards', 'robots.txt', 'sitemap.xml', 'assets/more']) {
+    assert.deepEqual(
+      normalizeErrors(oneSite({ projects: { dir: 'content/projects' }, urls: { projects: name } })),
+      [
+        `coffer.yaml: sites[0].urls.projects: "${name.split('/')[0]}" is a name the build writes itself (${RESERVED_OUTPUT_NAMES.join(', ')}); choose another prefix`,
+      ],
+      name,
+    );
+  }
+  assert.equal(
+    normalize(oneSite({ projects: { dir: 'content/projects' }, urls: { projects: 'assets-made' } })).sites[0].urls.projects,
+    'assets-made',
+  );
+});
+
+test('the reserved output names are the ones the build writes', () => {
+  for (const name of [
+    IMAGES_OUT_DIR,
+    CARDS_OUT_DIR,
+    'assets',
+    REDIRECTS_FILE_NAME,
+    ROBOTS_FILE_NAME,
+    SITEMAP_FILE_NAME,
+    FEED_FILE_NAME,
+    NOT_FOUND_URL.slice(1),
+  ]) {
+    assert.ok(RESERVED_OUTPUT_NAMES.includes(name), `${name} is reserved`);
+  }
+});
+
+test('projects.dir must be inside the content directory, and the error says why', () => {
+  assert.deepEqual(
+    normalizeErrors(oneSite({ contentDir: 'content', projects: { dir: 'elsewhere/projects' } })),
+    [
+      'coffer.yaml: sites[0].projects.dir: must be a folder inside contentDir: the links and images of a project page are resolved against the content directory, and a folder outside it cannot be reached',
+    ],
+  );
+  assert.equal(normalize(oneSite({ projects: { dir: 'content/projects' } })).sites[0].projects?.dir, resolve('/work/content/projects'));
 });

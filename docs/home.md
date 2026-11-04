@@ -39,7 +39,7 @@ A site without `home.md` still gets a home page. Its heading is the site's title
 
 1. The title and the about text.
 2. The site's `links`, as a navigation block.
-3. The **showcase**, a slot that is empty for now. The block is called `showcase`, so a theme can fill it (see below) and the projects feature of coffer will.
+3. The **showcase**: a card for each featured project, in the order the projects declare, each with its picture, kind, status, name and pitch, and a link to the projects page. It is left out when the site has no featured project. Which projects are featured, and in what order, is set in their `project.yaml` (see [Projects](projects.md)).
 4. The latest posts of the **first blog** in the site's `blogs` list, newest first, each with its date and summary, and a link to the whole blog. A draft or a future-dated post appears only in a preview build (`--drafts`) and is marked there.
 5. The secondary links.
 
@@ -55,23 +55,25 @@ A blog whose `prefix` is empty has its index at `/`, which is the address of the
 | ---------- | ---------------------------------------- |
 | `about`    | the about text                           |
 | `links`    | the site's `links`                       |
-| `showcase` | empty; for the project showcase          |
+| `showcase` | the cards of the featured projects       |
 | `latest`   | the list of latest posts                 |
 | `secondary`| the secondary links                      |
 
-It receives `page` (`title`, `description`, `content` = the rendered about text), `site`, `nav`, `blog` and `blogUrl` (the first blog and its URL; absent for a site without blogs), `posts` (the latest posts, the same objects as in `blog-index.njk`) and `secondaryLinks`.
+It receives `page` (`title`, `description`, `content` = the rendered about text), `site`, `nav`, `blog` and `blogUrl` (the first blog and its URL; absent for a site without blogs), `posts` (the latest posts, the same objects as in `blog-index.njk`), `secondaryLinks`, `showcase` (the featured projects, in order; see [Projects](projects.md) for what a project holds) and `projectsUrl` (the address of the projects page; null for a site without projects).
 
-To add a block of your own above the latest posts, create `templates/home.njk` in the theme:
+To show the showcase your own way, create `templates/home.njk` in the theme:
 
 ```njk
 {% extends "coffer:home.njk" %}
 
 {% block showcase %}
-  <section class="showcase">...</section>
+  <section class="showcase">
+    {% for project in showcase %}<a href="{{ project.url | url }}">{{ project.name }}</a>{% endfor %}
+  </section>
 {% endblock %}
 ```
 
-The UI strings of the page are `home.links`, `home.latest`, `home.all_posts` and `home.more` (see [Themes and UI strings](themes.md)).
+The UI strings of the page are `home.links`, `home.projects`, `home.latest`, `home.all_posts` and `home.more` (see [Themes and UI strings](themes.md)).
 
 ## The 404 page
 

@@ -1,0 +1,7 @@
+{# The card picture of a project as a responsive <picture>. Usage: {% import "project-picture.njk" as pictures %}{{ pictures.card(project.picture) }} #}
+{% macro card(picture, sizes) %}
+<picture>
+<source type="image/webp" srcset="{% for entry in picture.srcset %}{{ entry.url | url }} {{ entry.width }}w{% if not loop.last %}, {% endif %}{% endfor %}" sizes="{{ sizes or '(min-width: 48rem) 22rem, calc(100vw - 2rem)' }}">
+<img src="{{ picture.src | url }}" alt="{{ picture.alt }}" width="{{ picture.width }}" height="{{ picture.height }}" loading="lazy" decoding="async">
+</picture>
+{% endmacro %}

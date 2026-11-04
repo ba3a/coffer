@@ -49,7 +49,22 @@ home:
   links: Где меня найти
   latest: Свежие записи
   all_posts: "Все записи: {title}"
+  projects: Проекты
   more: Ещё
+projects:
+  title: Проекты
+  empty: Проектов пока нет.
+  all: Все проекты
+  license: "Лицензия: {license}"
+  kind:
+    tool: Инструмент
+    game: Игра
+  status:
+    idea: Идея
+    in-development: В разработке
+    released: Выпущен
+    maintained: Поддерживается
+    archived: В архиве
 feeds:
   title: Ленты
   subscribe: Подписаться

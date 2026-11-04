@@ -20,8 +20,23 @@
 </nav>
 {% endif %}
 {% endblock %}
-{# The project showcase goes here; the projects feature fills it. #}
-{% block showcase %}{% endblock %}
+{# The featured projects, in the order the projects declare. #}
+{% block showcase %}
+{% if showcase.length %}
+<section class="showcase">
+<h2>{{ 'home.projects' | t }}</h2>
+<ul class="project-cards">
+{% for project in showcase %}
+<li>
+{% include "project-card.njk" %}
+</li>
+{% endfor %}
+</ul>
+{% if projectsUrl %}<p class="all-projects"><a href="{{ projectsUrl | url }}">{{ 'projects.all' | t }}</a></p>
+{% endif %}
+</section>
+{% endif %}
+{% endblock %}
 {% block latest %}
 {% if blog and posts.length %}
 <section class="latest-posts">

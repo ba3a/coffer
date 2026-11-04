@@ -167,6 +167,22 @@ export const DEFAULT_URLS = Object.freeze({
   series: 'series',
 });
 
+/**
+ * Names at the top of a site's output that the build itself writes: the asset,
+ * image and title-card folders, and the files at the root. A site's own pages
+ * cannot live at one of them, so `urls.projects` cannot start with one.
+ */
+export const RESERVED_OUTPUT_NAMES = Object.freeze([
+  'assets',
+  'img',
+  'cards',
+  '404.html',
+  '_redirects',
+  'robots.txt',
+  'sitemap.xml',
+  'feed.xml',
+]);
+
 /** Preview image used by pages without one, unless the site says otherwise. It ships with the default theme. */
 export const DEFAULT_IMAGE = '/assets/social-default.png';
 
@@ -948,7 +964,23 @@ function normalizeSite(raw, index, baseDir, problems) {
     const dir = readPath(projectsRaw, 'dir', `${path}.projects`, baseDir, problems, {
       required: true,
     });
-    if (typeof dir === 'string') projects = { dir };
+    if (typeof dir === 'string') {
+      projects = { dir };
+      const inside = typeof contentDir === 'string' ? relative(contentDir, dir) : '';
+      if (inside === '' || inside.startsWith('..') || isAbsolute(inside)) {
+        problems.add(
+          `${path}.projects.dir`,
+          'must be a folder inside contentDir: the links and images of a project page are resolved against the content directory, and a folder outside it cannot be reached',
+        );
+      }
+      const first = urls.projects.split('/')[0];
+      if (RESERVED_OUTPUT_NAMES.includes(first)) {
+        problems.add(
+          `${path}.urls.projects`,
+          `"${first}" is a name the build writes itself (${RESERVED_OUTPUT_NAMES.join(', ')}); choose another prefix`,
+        );
+      }
+    }
   }
 
   for (const blog of blogs) {

@@ -5,7 +5,7 @@ import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 
 import { buildSites } from '../../src/build.js';
-import { applyLinkRewrites, checkSourceLinks, listProjectSlugs } from '../../src/check/source-links.js';
+import { applyLinkRewrites, checkSourceLinks } from '../../src/check/source-links.js';
 import { run } from '../../src/cli.js';
 import { loadConfig } from '../../src/config.js';
 import { ReportError } from '../../src/report.js';
@@ -362,8 +362,10 @@ test('a project reference must name a registered project', async () => {
   await inTree(
     {
       'content/journal/foo/index.md': post('[tool](project:lathe) [gone](project:nope#x) ![pic](project:nope)'),
-      'content/projects/lathe/project.yaml': 'name: Lathe\n',
-      'content/projects/notes/readme.txt': 'not a project',
+      'content/projects/lathe/project.yaml':
+        'name: Lathe\npitch: Turns wood.\nkind: tool\nstatus: released\ncard: card.png\nrepo: https://github.example/me/lathe\n',
+      'content/projects/lathe/index.md': 'The lathe.\n',
+      'content/projects/lathe/card.png': TINY_PNG,
     },
     async (root) => {
       assert.deepEqual(await buildErrors(root), [
@@ -433,7 +435,7 @@ test('the report file lists errors, warnings and info, outside the output', asyn
       ]);
       assert.equal(report.warnings.length, 1);
       assert.match(report.warnings[0].message, /cover: "missing\.jpg" does not exist/);
-      assert.deepEqual(report.info, [{ site: 'demo', message: '1 post(s), 5 page(s) built' }]);
+      assert.deepEqual(report.info, [{ site: 'demo', message: '1 post(s), 6 page(s) built' }]);
       assert.ok(!existsSync(join(root, 'out', '.coffer')));
     },
   );
@@ -465,21 +467,6 @@ test('a build that fails for another reason is also recorded in the report', asy
       const report = JSON.parse(readFileSync(join(root, '.coffer', 'report.json'), 'utf8'));
       assert.equal(report.errors.length, 1);
       assert.match(report.errors[0].message, /date: is required/);
-    },
-  );
-});
-
-test('listProjectSlugs lists the folders that hold a project.yaml', async () => {
-  await inTree(
-    {
-      'content/projects/lathe/project.yaml': 'name: Lathe\n',
-      'content/projects/.hidden/project.yaml': 'name: Hidden\n',
-      'content/projects/loose/index.md': 'no yaml',
-    },
-    async (root) => {
-      assert.deepEqual([...listProjectSlugs(join(root, 'content', 'projects'))], ['lathe']);
-      assert.deepEqual([...listProjectSlugs(join(root, 'nowhere'))], []);
-      assert.deepEqual([...listProjectSlugs(null)], []);
     },
   );
 });

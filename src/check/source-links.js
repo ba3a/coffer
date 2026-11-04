@@ -1,4 +1,4 @@
-import { existsSync, readdirSync, statSync } from 'node:fs';
+import { statSync } from 'node:fs';
 import { dirname, isAbsolute, join, posix, relative, resolve, sep } from 'node:path';
 
 import { mapHtmlUrls } from '../html-urls.js';
@@ -10,10 +10,17 @@ import { mapHtmlUrls } from '../html-urls.js';
  */
 
 /**
- * A post as the link check sees it.
+ * The parts of a page source that the link check uses. A blog post is one;
+ * so is the page of a project (`index.md` in the project's folder).
+ *
+ * @typedef {Pick<Post, 'slug' | 'kind' | 'file' | 'dir' | 'draft'>} SourceFile
+ */
+
+/**
+ * A page source as the link check sees it: a post, or the page of a project.
  *
  * @typedef {object} SourcePost
- * @property {Post} post
+ * @property {SourceFile} post
  * @property {string} url Site-relative canonical URL of the post, ending in a slash.
  * @property {{ links: FoundLink[], ids: string[] } | null} rendered What the Markdown renderer found in the text, or null when the post is not part of this build (a draft, or a post dated in the future, in a normal build).
  */
@@ -23,7 +30,7 @@ import { mapHtmlUrls } from '../html-urls.js';
  * @property {SourcePost[]} posts Every post of the site, built or not; the unbuilt ones let a link to them be explained.
  * @property {string} rootDir Directory that file names in the findings are relative to (the one holding the configuration file).
  * @property {string} contentDir Absolute path of the content directory; relative links and images must stay inside it.
- * @property {Set<string> | ReadonlySet<string>} projects Slugs of the registered projects.
+ * @property {ReadonlySet<string> | ReadonlyMap<string, string>} projects The registered projects: their slugs, or a map from slug to the site-relative URL of the project's page. With the URLs, a `project:slug` link is rewritten to the page.
  */
 
 /**
@@ -31,7 +38,7 @@ import { mapHtmlUrls } from '../html-urls.js';
  *
  * @typedef {object} SourceLinkResult
  * @property {ReportIssue[]} issues Findings so far: every broken relative link, anchor, image and project reference.
- * @property {Map<Post, Map<string, string>>} rewrites For each post, the links to other posts as written, mapped to the canonical URL of the target (anchor and query kept). Apply them with {@link applyLinkRewrites}.
+ * @property {Map<SourceFile, Map<string, string>>} rewrites For each source, the links to other posts as written, mapped to the canonical URL of the target (anchor and query kept). Apply them with {@link applyLinkRewrites}.
  * @property {(urlExists: (path: string) => boolean) => ReportIssue[]} verifyOutput Checks the links that start with `/` once the site's pages exist. `urlExists` receives a decoded site path such as `/journal/x/` or `/assets/site.css` and tells whether the output serves it. Returns the findings.
  */
 
@@ -80,28 +87,9 @@ function isInside(root, target) {
 }
 
 /**
- * Lists the registered projects of a projects directory: the folders that
- * hold a `project.yaml`, each named by its slug.
- *
- * @param {string | null | undefined} dir Absolute path of the projects directory, or null when the site has none.
- * @returns {Set<string>}
- */
-export function listProjectSlugs(dir) {
-  /** @type {Set<string>} */
-  const slugs = new Set();
-  if (!dir || !existsSync(dir)) return slugs;
-  for (const entry of readdirSync(dir, { withFileTypes: true })) {
-    if (entry.isDirectory() && !entry.name.startsWith('.') && isFile(join(dir, entry.name, 'project.yaml'))) {
-      slugs.add(entry.name);
-    }
-  }
-  return slugs;
-}
-
-/**
  * Why a post that exists is not part of the build.
  *
- * @param {Post} post
+ * @param {SourceFile} post
  * @returns {string}
  */
 function unbuiltReason(post) {
@@ -146,7 +134,7 @@ export function checkSourceLinks({ posts, rootDir, contentDir, projects }) {
 
   /** @type {ReportIssue[]} */
   const issues = [];
-  /** @type {Map<Post, Map<string, string>>} */
+  /** @type {Map<SourceFile, Map<string, string>>} */
   const rewrites = new Map();
   /** @type {{ entry: SourcePost, link: FoundLink, path: string, fragment: string, display: string }[]} */
   const deferred = [];
@@ -187,11 +175,19 @@ export function checkSourceLinks({ posts, rootDir, contentDir, projects }) {
 
     if (scheme) {
       if (scheme[1].toLowerCase() !== PROJECT_SCHEME) return;
-      const slug = decode(raw.slice(scheme[0].length).split(/[?#]/, 1)[0]);
+      const reference = raw.slice(scheme[0].length);
+      const slug = decode(reference.split(/[?#]/, 1)[0]);
       if (!projects.has(slug)) {
-        const known = [...projects].sort();
+        const known = [...(projects instanceof Map ? projects.keys() : projects)].sort();
         const hint = known.length === 0 ? 'the site has no projects' : `registered: ${known.join(', ')}`;
         issues.push(issue(entry, link, `unknown project '${slug}' in '${display}' (${hint})`));
+      } else if (projects instanceof Map && link.kind === 'link') {
+        const url = projects.get(slug);
+        if (url !== undefined) {
+          let map = rewrites.get(entry.post);
+          if (!map) rewrites.set(entry.post, (map = new Map()));
+          map.set(raw, `${url}${reference.slice(reference.search(/[?#]|$/))}`);
+        }
       }
       return;
     }

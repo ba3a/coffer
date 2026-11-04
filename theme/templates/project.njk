@@ -1,0 +1,23 @@
+{% extends "base.njk" %}
+
+{% block main %}
+<article class="project">
+{% block project_header %}
+<header class="project-header">
+<p class="project-meta"><span class="project-kind">{{ project.kindLabel }}</span> <span aria-hidden="true">&middot;</span> <span class="project-status">{{ project.statusLabel }}</span></p>
+<h1>{{ project.name }}</h1>
+<p class="project-pitch">{{ project.pitch }}</p>
+</header>
+{% endblock %}
+{% block project_body %}
+<div class="project-body">
+{{ page.content | safe }}
+</div>
+{% endblock %}
+{% block project_footer %}
+{% if project.license %}<p class="project-license">{{ 'projects.license' | t({ license: project.license }) }}</p>
+{% endif %}
+<p class="all-projects"><a href="{{ projectsUrl | url }}">{{ 'projects.all' | t }}</a></p>
+{% endblock %}
+</article>
+{% endblock %}

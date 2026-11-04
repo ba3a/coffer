@@ -36,7 +36,7 @@ A `base.njk` rendered without `meta` (a theme test, for example) falls back to a
 
 A page's preview image is, in this order:
 
-1. the image the page supplies: a post's `cover`, or a generated title card (below); a project's card picture arrives with projects;
+1. the image the page supplies: a post's `cover`, or a generated title card (below); a project page's card picture, the 1200 pixel variant (see [Projects](projects.md));
 2. the site's default image.
 
 The default image is the `defaultImage` key of the site (see [Configuration](configuration.md)): a path starting with `/` or an absolute `http(s)` URL. It defaults to `/assets/social-default.png`, a 1200 by 630 picture that comes with the default theme; a theme can replace it by shipping a file of the same name in its `assets/` folder, or the site can point `defaultImage` at another file. When `defaultImage` is a path and no such file is in the output, the build warns. The home page and the 404 page use it.

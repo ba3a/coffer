@@ -136,8 +136,27 @@ export {
   PROJECT_SCHEME,
   applyLinkRewrites,
   checkSourceLinks,
-  listProjectSlugs,
 } from './check/source-links.js';
+export {
+  COMMON_PROJECT_KEYS,
+  FIELD_TYPES,
+  getProjectKind,
+  listProjectKinds,
+  readKindFields,
+  registerProjectKind,
+  unregisterProjectKind,
+} from './content/project-kinds.js';
+export {
+  PROJECT_FILE_NAME,
+  PROJECT_PAGE_FILE_NAME,
+  PROJECT_STATUSES,
+  ProjectError,
+  compareProjects,
+  loadProjects,
+  parseProjectSource,
+  projectUrl,
+  showcaseOf,
+} from './content/projects.js';
 export { checkOutput, checkSite } from './check/index.js';
 export { checkImages } from './check/output-images.js';
 export { W3C_VALIDATOR_URL, parseW3cResponse, validateFeedsOnline } from './check/w3c.js';

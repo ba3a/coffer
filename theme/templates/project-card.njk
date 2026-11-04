@@ -1,0 +1,22 @@
+{# One project as a card: picture, kind and status, name, pitch. The name is the link; the whole card is clickable. Expects `project`; `level` (default 3) is the heading level of the name. #}
+{% import "project-picture.njk" as pictures %}
+<article class="project-card">
+{% block card_picture %}
+{% if project.picture %}<div class="project-card-picture">
+{{ pictures.card(project.picture) }}
+</div>
+{% endif %}
+{% endblock %}
+<div class="project-card-text">
+{% block card_meta %}
+<p class="project-meta"><span class="project-kind">{{ project.kindLabel }}</span> <span aria-hidden="true">&middot;</span> <span class="project-status">{{ project.statusLabel }}</span></p>
+{% endblock %}
+{% block card_title %}
+{% set heading = 'h' + (level or 3) %}
+<{{ heading }} class="project-card-title"><a href="{{ project.url | url }}">{{ project.name }}</a></{{ heading }}>
+{% endblock %}
+{% block card_pitch %}
+<p class="project-pitch">{{ project.pitch }}</p>
+{% endblock %}
+</div>
+</article>

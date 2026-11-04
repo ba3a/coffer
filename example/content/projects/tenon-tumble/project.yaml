@@ -1,0 +1,18 @@
+name: Tenon Tumble
+pitch: A relaxed puzzle game about fitting wooden joints together before the glue dries.
+kind: game
+status: in-development
+card: card.jpg
+cardAlt: Three wooden blocks in different colours, stacked in a staircase.
+featured: true
+order: 1
+tag: projects/tenon-tumble
+license: All rights reserved
+platforms: [Linux, Windows, Web]
+price: Free
+accent: "#dd6b4d"
+displayFont: Fraunces
+# Fill in a store link and its button appears; until then the page asks readers to follow the devlog.
+stores:
+  itch:
+  steam:

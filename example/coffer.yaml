@@ -15,3 +15,4 @@ sites:
       - { label: Email, url: "mailto:tove@tove-marlowe.example" }
     blogs:
       - { id: journal, dir: content/journal, prefix: journal, title: Workshop journal }
+    projects: { dir: content/projects }

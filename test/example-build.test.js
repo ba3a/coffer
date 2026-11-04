@@ -127,6 +127,9 @@ test('the manifest is written and lists the pages and the posts', async () => {
         '/journal/tags/workshop/boxes/',
         '/journal/tags/workshop/boxes/dovetails/',
         '/journal/walnut-box/',
+        '/made/',
+        '/made/kerfcalc/',
+        '/made/tenon-tumble/',
       ],
     );
     assert.deepEqual(
@@ -151,6 +154,8 @@ test('the manifest is written and lists the pages and the posts', async () => {
         ['content/journal/first-dovetail/marking-gauge.jpg', '/journal/photo-notes/', 'body'],
         ['content/journal/photos/ridge.jpg', '/journal/photo-notes/', 'body'],
         ['content/journal/photos/ridge.jpg', '/journal/ridge-walk/', 'body'],
+        ['content/projects/kerfcalc/card.jpg', '/made/kerfcalc/', 'card'],
+        ['content/projects/tenon-tumble/card.jpg', '/made/tenon-tumble/', 'card'],
       ],
     );
     assert.equal(manifest.site.id, 'workshop');
@@ -181,7 +186,7 @@ test('coffer build with --out, --now and --drafts builds the example from the co
       { encoding: 'utf8', cwd: tmpdir() },
     );
     assert.equal(result.status, 0, result.stderr);
-    assert.match(result.stdout, /workshop: 5 post\(s\), 15 page\(s\)/);
+    assert.match(result.stdout, /workshop: 5 post\(s\), 18 page\(s\)/);
     assert.equal(existsSync(join(out, 'workshop', 'journal', 'spring-open-house')), false);
 
     const preview = spawnSync(
@@ -190,7 +195,7 @@ test('coffer build with --out, --now and --drafts builds the example from the co
       { encoding: 'utf8', cwd: tmpdir() },
     );
     assert.equal(preview.status, 0, preview.stderr);
-    assert.match(preview.stdout, /workshop: 7 post\(s\), 19 page\(s\)/);
+    assert.match(preview.stdout, /workshop: 7 post\(s\), 22 page\(s\)/);
     assert.ok(existsSync(join(out, 'workshop', 'journal', 'spring-open-house', 'index.html')));
   } finally {
     rmSync(out, { recursive: true, force: true });
@@ -277,5 +282,44 @@ test('the footer of every page shows the content license from the configuration'
         entry.file,
       );
     }
+  });
+});
+
+test('the example home shows its featured projects in the declared order, with picture, pitch and kind', async () => {
+  await withExample({}, (site, manifest) => {
+    const html = readFileSync(join(site, 'index.html'), 'utf8');
+    const showcase = /<section class="showcase">[\s\S]*?<\/section>/.exec(html)?.[0] ?? '';
+    // The game declares order 1 and the tool order 2, so the game comes first although "Kerfcalc" sorts before "Tenon".
+    const names = [...showcase.matchAll(/<h3 class="project-card-title"><a href="([^"]+)">([^<]+)<\/a>/g)].map((m) => [m[2], m[1]]);
+    assert.deepEqual(names, [
+      ['Tenon Tumble', '/made/tenon-tumble/'],
+      ['Kerfcalc', '/made/kerfcalc/'],
+    ]);
+    assert.match(showcase, /<span class="project-kind">Game<\/span>/);
+    assert.match(showcase, /<span class="project-kind">Tool<\/span>/);
+    assert.match(showcase, /<p class="project-pitch">A small command-line calculator for saw kerf/);
+    assert.equal(showcase.split('<picture>').length - 1, 2);
+    assert.deepEqual(
+      manifest.projects.map((project) => [project.slug, project.kind, project.featured, project.order, project.tag]),
+      [
+        ['tenon-tumble', 'game', true, 1, 'projects/tenon-tumble'],
+        ['kerfcalc', 'tool', true, 2, 'projects/kerfcalc'],
+      ],
+    );
+  });
+});
+
+test('the example projects page lists both projects and the project pages resolve their links', async () => {
+  await withExample({}, (site) => {
+    assert.deepEqual(
+      [...page(site, '/made/').matchAll(/<h2 class="project-card-title"><a href="([^"]+)">/g)].map((m) => m[1]),
+      ['/made/tenon-tumble/', '/made/kerfcalc/'],
+    );
+    const tool = page(site, '/made/kerfcalc/');
+    assert.match(tool, /<h1>Kerfcalc<\/h1>/);
+    assert.match(tool, /<a href="\/made\/tenon-tumble\/">Tenon Tumble<\/a>/);
+    assert.match(tool, /<a href="\/journal\/walnut-box\/">walnut keepsake box<\/a>/);
+    assert.match(tool, /License: MIT/);
+    assert.match(page(site, '/made/tenon-tumble/'), /<h1>Tenon Tumble<\/h1>/);
   });
 });

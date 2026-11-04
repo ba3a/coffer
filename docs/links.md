@@ -1,6 +1,6 @@
 # Links, images and the build report
 
-`coffer build` resolves every Markdown link and image of every post before it writes a page. A broken link, a missing image or an unknown project reference fails the build, so a mistake never reaches the published site.
+`coffer build` resolves every Markdown link and image of every post, and of every [project page](projects.md), before it writes a page. A broken link, a missing image or an unknown project reference fails the build, so a mistake never reaches the published site.
 
 ## What is checked
 
@@ -11,7 +11,7 @@
 | `[x](#heading)` | A heading or `id` of the same post. `#` and `#top` always work. | Kept. |
 | `[x](/journal/other/)`, `![x](/assets/pic.png)` | A page or file the built site serves, with or without the trailing slash. A link to a post may carry an anchor, which is checked. | Kept. |
 | `![alt](photo.jpg)` | A file inside the content directory, usually beside the post. | Resized and published by the image pipeline (see [Images](images.md)). |
-| `[x](project:slug)` | A registered project: a folder `{projects.dir}/{slug}/` holding a `project.yaml`. | Kept (project pages are linked by a later feature). |
+| `[x](project:slug)` | A registered project: a folder `{projects.dir}/{slug}/` that [declares a project](projects.md). | Rewritten to the project's page, such as `/made/slug/`; an anchor or a query is kept. |
 | `https:`, `mailto:`, `tel:`, `//host/...`, `data:` | Not checked. | Kept. |
 
 Links to a draft, or to a post dated in the future, fail a normal build and pass in preview mode (`--drafts`), because in preview mode those posts are built. A relative link to another kind of file inside the content directory, such as `data.csv`, is accepted as written; a link to a Markdown file that is not a post, or to anything outside the content directory, fails. Links inside code blocks and code spans are text, not links.

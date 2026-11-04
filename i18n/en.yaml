@@ -44,7 +44,22 @@ home:
   links: Find me elsewhere
   latest: Latest posts
   all_posts: "All posts: {title}"
+  projects: Projects
   more: Also
+projects:
+  title: Projects
+  empty: No projects yet.
+  all: All projects
+  license: "License: {license}"
+  kind:
+    tool: Tool
+    game: Game
+  status:
+    idea: Idea
+    in-development: In development
+    released: Released
+    maintained: Maintained
+    archived: Archived
 feeds:
   title: Feeds
   subscribe: Subscribe

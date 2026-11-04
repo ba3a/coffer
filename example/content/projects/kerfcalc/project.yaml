@@ -1,0 +1,11 @@
+name: Kerfcalc
+pitch: A small command-line calculator for saw kerf, joint spacing and board waste.
+kind: tool
+status: released
+card: card.jpg
+cardAlt: A long board and a shorter one, with a thin cut between them.
+featured: true
+order: 2
+tag: projects/kerfcalc
+license: MIT
+repo: https://github.example/tove-marlowe/kerfcalc

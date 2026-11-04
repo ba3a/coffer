@@ -795,3 +795,71 @@ main > article > .post-layout {
   margin: 0 0 0.25rem;
   font-size: 0.9375rem;
 }
+
+/* Projects: the cards on the home page and on the projects page, and a project's page. */
+.project-cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 16rem), 1fr));
+  gap: 1.25rem;
+  margin: 1rem 0;
+  padding: 0;
+  list-style: none;
+}
+
+.project-cards > li {
+  display: flex;
+}
+
+.project-card {
+  position: relative;
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  border: 1px solid var(--coffer-border);
+  border-radius: 0.375rem;
+  overflow: hidden;
+}
+
+.project-card-picture img {
+  display: block;
+  width: 100%;
+  height: auto;
+  aspect-ratio: 16 / 9;
+  object-fit: cover;
+}
+
+.project-card-text {
+  padding: 0.75rem 1rem 1rem;
+}
+
+.project-card-title {
+  margin: 0 0 0.25rem;
+  font-size: 1.25rem;
+}
+
+/* The name is the link; it covers the whole card so the picture is clickable too. */
+.project-card-title a::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+}
+
+.project-meta {
+  margin: 0 0 0.25rem;
+  color: var(--coffer-muted);
+  font-size: 0.875rem;
+}
+
+.project-pitch {
+  margin: 0;
+}
+
+.project-header .project-pitch {
+  font-size: 1.125rem;
+}
+
+.project-license,
+.all-projects {
+  color: var(--coffer-muted);
+  font-size: 0.9375rem;
+}

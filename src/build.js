@@ -5,6 +5,8 @@ import { fileURLToPath } from 'node:url';
 import { CARDS_CACHE_DIR, createCardMaker } from './cards.js';
 import { DEFAULT_LATEST_POSTS, loadHome } from './content/home.js';
 import { discoverPosts, isPublished, resolveNow } from './content/posts.js';
+import { getProjectKind } from './content/project-kinds.js';
+import { loadProjects, projectUrl, showcaseOf } from './content/projects.js';
 import {
   FEED_FILE_NAME,
   absoluteUrl,
@@ -32,7 +34,7 @@ import {
 import { loadTracks } from './geo/gpx.js';
 import { MAP_SCRIPTS, MAP_STYLES } from './geo/map.js';
 import { renderPostMaps, withoutMapPlaceholders } from './geo/post-maps.js';
-import { applyLinkRewrites, checkSourceLinks, listProjectSlugs } from './check/source-links.js';
+import { applyLinkRewrites, checkSourceLinks } from './check/source-links.js';
 import { IMAGE_EXTENSIONS } from './images/defaults.js';
 import { IMAGES_CACHE_DIR, ImageError, createImagePipeline, imageFileUrl, pickVariant } from './images/pipeline.js';
 import { PolicyError, createPolicyResolver, findImageOverride } from './images/policy.js';
@@ -109,7 +111,7 @@ export class BuildError extends Error {
  * @typedef {object} ManifestPage
  * @property {string} url Site-relative URL, ending in a slash.
  * @property {string} file Path of the HTML file, relative to the site's output directory.
- * @property {'home' | 'not-found' | 'blog-index' | 'post' | 'tag-index' | 'tag' | 'series'} type
+ * @property {'home' | 'not-found' | 'blog-index' | 'post' | 'tag-index' | 'tag' | 'series' | 'project-index' | 'project'} type
  * @property {string} title
  */
 
@@ -211,7 +213,7 @@ export class BuildError extends Error {
  * @typedef {object} ManifestImage
  * @property {string} source Path of the original, relative to the configuration file.
  * @property {string} post Site-relative URL of the page that uses the image (`/` for the home page).
- * @property {'body' | 'cover'} use A Markdown image in the text, or the cover of the post.
+ * @property {'body' | 'cover' | 'card'} use A Markdown image in the text, the cover of the post, or the card picture of a project.
  * @property {string} sha256 Hash of the original.
  * @property {number} width Upright width of the original.
  * @property {number} height Upright height of the original.
@@ -243,10 +245,29 @@ export class BuildError extends Error {
  * @property {ManifestPost[]} posts
  * @property {ManifestTag[]} tags Every tag page, with the posts it lists.
  * @property {ManifestSeries[]} series Every series page, with its parts in order.
+ * @property {ManifestProject[]} projects Every project, in showcase order; empty when the site has no projects.
  * @property {ManifestRedirect[]} redirects Permanent redirects from old post addresses.
  * @property {ManifestFeed[]} feeds Every Atom feed, with the page it belongs to.
  * @property {string[]} sitemap Site-relative URLs listed in `sitemap.xml`, sorted.
  * @property {ManifestImage[]} images Every image used by a page, with the files made from it; sorted by page, then original.
+ */
+
+/**
+ * One project listed in the manifest.
+ *
+ * @typedef {object} ManifestProject
+ * @property {string} slug
+ * @property {string} url Site-relative URL of the project's page, ending in a slash.
+ * @property {string} file Path of the HTML file, relative to the site's output directory.
+ * @property {string} source Path of `project.yaml`, relative to the configuration file.
+ * @property {string} name
+ * @property {string} pitch
+ * @property {string} kind
+ * @property {string} status
+ * @property {boolean} featured
+ * @property {number | null} order
+ * @property {string | null} tag The devlog tag that marks posts about the project.
+ * @property {string} card Path of the card picture, relative to the configuration file.
  */
 
 /**
@@ -451,12 +472,14 @@ async function buildSite(config, site, options, outRoot, version, report) {
     onMissing: (message) => warnings.push(message),
   });
 
+  const projectsIndexUrl = site.projects ? `/${site.urls.projects}/` : null;
   const nav = [
     { key: 'nav.home', url: '/' },
+    ...(projectsIndexUrl ? [{ key: 'nav.projects', url: projectsIndexUrl }] : []),
     ...site.blogs.map((blog) => ({ label: blog.title, url: blogUrl(blog) })),
   ];
 
-  const t = (/** @type {string} */ key, /** @type {Record<string, unknown>} */ params) =>
+  const t = (/** @type {string} */ key, /** @type {Record<string, unknown>} */ params = {}) =>
     templates.translator.t(key, params);
   /** The words of carousels, in the language of the site. */
   const carouselLabels = {
@@ -702,7 +725,7 @@ async function buildSite(config, site, options, outRoot, version, report) {
    *
    * @param {import('./images/pipeline.js').ProcessedImage} processed
    * @param {string} pageUrl Site-relative URL of the page that uses the image.
-   * @param {'body' | 'cover'} use
+   * @param {'body' | 'cover' | 'card'} use
    * @param {PageImages} page The page source that uses the image.
    * @param {import('./images/policy.js').ImagePolicy} policy The decision the image was processed under.
    * @returns {import('./images/pipeline.js').ImageFile} The variant that stands in for the picture where no `srcset` is understood.
@@ -923,18 +946,95 @@ async function buildSite(config, site, options, outRoot, version, report) {
       sourcePosts.push({ post, url: postUrl(blog, post.slug), rendered: rendered.get(post) ?? null });
     }
   }
+
+  // The projects: each one's page text is rendered, and its card picture goes
+  // through the image pipeline, before the links are checked.
+  /**
+   * @typedef {object} PreparedProject
+   * @property {import('./content/projects.js').Project} project
+   * @property {string} url Site-relative URL of the project's page.
+   * @property {RenderedPost} rendered
+   * @property {PageImages} page
+   * @property {ProjectPicture | null} picture The card picture, or null when it could not be made (reported).
+   * @property {import('./check/source-links.js').SourceFile} source The page as the link check sees it.
+   */
+  /**
+   * A card picture, ready for a template's `<picture>`.
+   *
+   * @typedef {object} ProjectPicture
+   * @property {string} src
+   * @property {number} width
+   * @property {number} height
+   * @property {{ url: string, width: number }[]} srcset
+   * @property {string} alt
+   */
+  /** @type {PreparedProject[]} */
+  const preparedProjects = [];
+  if (site.projects) {
+    const projectResolver = createResolver(new Map(), null);
+    for (const project of loadProjects(site.projects.dir)) {
+      const url = projectUrl(site.urls.projects, project.slug);
+      const page = pageImagesOf(project.pageFile, null, projectResolver);
+      pageImages.set(project.pageFile, page);
+      const rendered = await renderMarkdown(project.body, {
+        file: project.pageFile,
+        startLine: project.bodyLine,
+        images: imageOptionsFor(project.pageFile, url, page),
+        carousel: carouselLabels,
+      });
+      /** @type {ProjectPicture | null} */
+      let picture = null;
+      try {
+        const policy = page.policyFor(posix(relative(project.dir, project.card)));
+        const processed = await images.process(project.card, {
+          location: policy.location.value,
+          camera: policy.camera.value,
+        });
+        const standIn = publishImage(processed, url, 'card', page, policy);
+        picture = {
+          src: imageFileUrl(processed, standIn),
+          width: standIn.width,
+          height: standIn.height,
+          srcset: processed.variants.map((entry) => ({ url: imageFileUrl(processed, entry), width: entry.width })),
+          alt: project.cardAlt,
+        };
+      } catch (error) {
+        if (!(error instanceof ImageError)) throw error;
+        report.addError({
+          site: site.id,
+          file: posix(relative(config.dir, project.file)),
+          message: `card: image '${posix(relative(project.dir, project.card))}': ${error.message}`,
+        });
+      }
+      preparedProjects.push({
+        project,
+        url,
+        rendered,
+        page,
+        picture,
+        source: { slug: project.slug, kind: 'folder', file: project.pageFile, dir: project.dir, draft: false },
+      });
+    }
+  }
+  for (const entry of preparedProjects) {
+    sourcePosts.push({ post: entry.source, url: entry.url, rendered: entry.rendered });
+  }
+
   const linkCheck = checkSourceLinks({
     posts: sourcePosts,
     rootDir: config.dir,
     contentDir: site.contentDir,
-    projects: listProjectSlugs(site.projects?.dir),
+    projects: new Map(preparedProjects.map((entry) => [entry.project.slug, entry.url])),
   });
   for (const issue of linkCheck.issues) report.addError({ site: site.id, ...issue });
   for (const [post, rewrites] of linkCheck.rewrites) {
     for (const { rendered } of prepared.values()) {
-      const entry = rendered.get(post);
-      if (entry) rendered.set(post, { ...entry, html: applyLinkRewrites(entry.html, rewrites) });
+      const entry = rendered.get(/** @type {Post} */ (post));
+      if (entry) rendered.set(/** @type {Post} */ (post), { ...entry, html: applyLinkRewrites(entry.html, rewrites) });
     }
+  }
+  for (const entry of preparedProjects) {
+    entry.rendered = { ...entry.rendered, html: applyLinkRewrites(entry.rendered.html, linkCheck.rewrites.get(entry.source)) };
   }
 
   for (const blog of site.blogs) {
@@ -1380,6 +1480,83 @@ async function buildSite(config, site, options, outRoot, version, report) {
     }
   }
 
+  // The projects page, one page per project, and the cards that the home page's showcase reuses.
+  /** @type {ManifestProject[]} */
+  const manifestProjects = [];
+  /** @param {string} kind */
+  const kindLabelOf = (kind) => (templates.translator.has(`projects.kind.${kind}`) ? t(`projects.kind.${kind}`) : kind);
+  const projectViews = preparedProjects.map(({ project, url, picture }) => ({
+    slug: project.slug,
+    url,
+    name: project.name,
+    pitch: project.pitch,
+    kind: project.kind,
+    kindLabel: kindLabelOf(project.kind),
+    status: project.status,
+    statusLabel: t(`projects.status.${project.status}`),
+    featured: project.featured,
+    order: project.order,
+    license: project.license,
+    tag: project.tag,
+    fields: project.fields,
+    picture,
+  }));
+  if (projectsIndexUrl) {
+    for (const entry of preparedProjects) {
+      const { project, url, rendered, page, picture } = entry;
+      const shown = posix(relative(config.dir, project.pageFile));
+      for (const directive of rendered.maps) {
+        warnings.push(`${shown}:${directive.line ?? 1}: the ::map directive is only for posts and is left out`);
+      }
+      warnUnusedImageEntries(page);
+      const view = /** @type {(typeof projectViews)[number]} */ (projectViews.find((candidate) => candidate.slug === project.slug));
+      const kind = /** @type {import('./content/project-kinds.js').ProjectKind} */ (getProjectKind(project.kind));
+      const html = templates.render(kind.template, {
+        site,
+        nav,
+        feedLinks: feedLinksFor(null),
+        meta: metaFor({
+          title: project.name,
+          description: project.pitch,
+          url,
+          image: picture ? picture.src : cardFor(project.name),
+        }),
+        project: view,
+        projectsUrl: projectsIndexUrl,
+        ...pageAssetsFor(rendered),
+        page: { title: project.name, description: project.pitch, content: withoutMapPlaceholders(rendered.html) },
+      });
+      const file = fileForUrl(url);
+      writeOutput(outDir, file, html);
+      pages.push({ url, file, type: 'project', title: project.name });
+      manifestProjects.push({
+        slug: project.slug,
+        url,
+        file,
+        source: posix(relative(config.dir, project.file)),
+        name: project.name,
+        pitch: project.pitch,
+        kind: project.kind,
+        status: project.status,
+        featured: project.featured,
+        order: project.order,
+        tag: project.tag,
+        card: posix(relative(config.dir, project.card)),
+      });
+    }
+    const projectsTitle = t('projects.title');
+    const indexHtml = templates.render('project-index.njk', {
+      site,
+      nav,
+      feedLinks: feedLinksFor(null),
+      meta: metaFor({ title: projectsTitle, description: site.description, url: projectsIndexUrl, image: cardFor(projectsTitle) }),
+      projects: projectViews,
+      page: { title: projectsTitle, description: site.description, content: '' },
+    });
+    writeOutput(outDir, fileForUrl(projectsIndexUrl), indexHtml);
+    pages.push({ url: projectsIndexUrl, file: fileForUrl(projectsIndexUrl), type: 'project-index', title: projectsTitle });
+  }
+
   // The home page lives at "/". A blog at the site root has that address.
   const rootBlog = site.blogs.find((blog) => blog.prefix === '');
   const home = loadHome(site.contentDir);
@@ -1421,6 +1598,8 @@ async function buildSite(config, site, options, outRoot, version, report) {
       blogUrl: firstBlog ? blogUrl(firstBlog) : null,
       posts: latest,
       secondaryLinks: home?.secondaryLinks ?? [],
+      showcase: showcaseOf(projectViews),
+      projectsUrl: projectsIndexUrl,
       ...pageAssetsFor(rendered),
       page: {
         title,
@@ -1445,6 +1624,32 @@ async function buildSite(config, site, options, outRoot, version, report) {
     }),
   );
   pages.push({ url: NOT_FOUND_URL, file: NOT_FOUND_FILE, type: 'not-found', title: notFoundTitle });
+
+  // Two pages written to the same file overwrite each other without a trace.
+  // A project page is the one the author can move, so the error names its
+  // project.yaml.
+  {
+    /** @type {Map<string, ManifestPage[]>} */
+    const byFile = new Map();
+    for (const entry of pages) byFile.set(entry.file, [...(byFile.get(entry.file) ?? []), entry]);
+    for (const [file, entries] of byFile) {
+      if (entries.length < 2) continue;
+      for (const entry of entries) {
+        if (entry.type !== 'project' && entry.type !== 'project-index') continue;
+        const owner = preparedProjects.find((candidate) => candidate.url === entry.url);
+        const source = owner
+          ? posix(relative(config.dir, owner.project.file))
+          : posix(relative(config.dir, /** @type {{ dir: string }} */ (site.projects).dir));
+        const others = entries.filter((other) => other !== entry).map((other) => `${other.type} ${other.url}`);
+        const what = entry.type === 'project' ? 'the project page' : 'the projects index';
+        report.addError({
+          site: site.id,
+          file: source,
+          message: `${what} ${entry.url} is written to ${file}, which ${others.join(' and ')} also use${others.length > 1 ? '' : 's'}; rename the project folder or change "urls.projects" or the blog prefix`,
+        });
+      }
+    }
+  }
 
   const redirects = collectRedirects(aliasing);
   const problems = checkRedirects(
@@ -1514,6 +1719,7 @@ async function buildSite(config, site, options, outRoot, version, report) {
     posts: manifestPosts,
     tags: manifestTags,
     series: manifestSeries,
+    projects: manifestProjects,
     redirects: redirects.map(({ from, to, status }) => ({ from, to, status })),
     feeds: manifestFeeds,
     sitemap: sitemapEntries.map((entry) => entry.url).sort(),

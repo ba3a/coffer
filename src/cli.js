@@ -7,6 +7,7 @@ import { checkOutput } from './check/index.js';
 import { ConfigError, loadConfig } from './config.js';
 import { HomeError } from './content/home.js';
 import { PostError } from './content/posts.js';
+import { ProjectError } from './content/projects.js';
 import { SeriesError } from './content/series.js';
 import { TagsError } from './content/tags.js';
 import { FontError } from './font-metrics.js';
@@ -242,6 +243,7 @@ const commands = {
       if (
         error instanceof ConfigError ||
         error instanceof PostError ||
+        error instanceof ProjectError ||
         error instanceof SeriesError ||
         error instanceof TagsError ||
         error instanceof HomeError ||
