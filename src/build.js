@@ -1499,6 +1499,7 @@ async function buildSite(config, site, options, outRoot, version, report) {
     license: project.license,
     tag: project.tag,
     fields: project.fields,
+    docsUrl: project.fields.docs ? `${url}${site.urls.docs}/` : null,
     picture,
   }));
   if (projectsIndexUrl) {

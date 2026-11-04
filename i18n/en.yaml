@@ -51,6 +51,12 @@ projects:
   empty: No projects yet.
   all: All projects
   license: "License: {license}"
+  facts:
+    title: Project details
+    repo: Source code
+    docs: Documentation
+    docs_link: Read the documentation
+    license: License
   kind:
     tool: Tool
     game: Game

@@ -319,7 +319,12 @@ test('the example projects page lists both projects and the project pages resolv
     assert.match(tool, /<h1>Kerfcalc<\/h1>/);
     assert.match(tool, /<a href="\/made\/tenon-tumble\/">Tenon Tumble<\/a>/);
     assert.match(tool, /<a href="\/journal\/walnut-box\/">walnut keepsake box<\/a>/);
-    assert.match(tool, /License: MIT/);
+    assert.match(tool, /<dt>License<\/dt>\s*<dd>MIT<\/dd>/);
+    assert.match(tool, /<p class="project-pitch">A small command-line calculator for saw kerf/);
+    assert.match(tool, /<a href="https:\/\/github\.example\/tove-marlowe\/kerfcalc" rel="noopener">github\.example\/tove-marlowe\/kerfcalc<\/a>/);
+    assert.match(tool, /<div class="project-body">\s*<p>Kerfcalc answers the questions/);
+    // The example tool configures no docs, so there is no docs link and no empty section.
+    assert.doesNotMatch(tool, /project-fact-docs|\/made\/kerfcalc\/docs\//);
     assert.match(page(site, '/made/tenon-tumble/'), /<h1>Tenon Tumble<\/h1>/);
   });
 });

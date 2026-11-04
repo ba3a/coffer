@@ -288,7 +288,7 @@ export function readKindFields(kind, data, context, fail) {
 
 registerProjectKind({
   name: 'tool',
-  template: 'project.njk',
+  template: 'project-tool.njk',
   fields: {
     repo: { type: 'url', required: true },
     docs: { type: 'mapping' },

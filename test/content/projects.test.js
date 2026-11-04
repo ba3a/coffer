@@ -320,7 +320,7 @@ test('projectUrl uses the configured prefix', () => {
 
 test('tool and game ship; a kind needs a name, a template and known field types', () => {
   assert.deepEqual(listProjectKinds().map((kind) => kind.name), ['game', 'tool']);
-  assert.equal(getProjectKind('tool')?.template, 'project.njk');
+  assert.equal(getProjectKind('tool')?.template, 'project-tool.njk');
   assert.deepEqual(Object.keys(getProjectKind('tool')?.fields ?? {}), ['repo', 'docs']);
   assert.deepEqual(Object.keys(getProjectKind('game')?.fields ?? {}), [
     'stores',

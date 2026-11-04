@@ -82,7 +82,7 @@ The `kind` of a project decides which template renders its page and which furthe
 | Kind   | Field         | Required | Description                                                                                                         |
 | ------ | ------------- | -------- | ------------------------------------------------------------------------------------------------------------------- |
 | `tool` | `repo`        | yes      | `http(s)` address of the source repository.                                                                          |
-|        | `docs`        | no       | A mapping that configures the project's documentation. Read by the documentation features.                          |
+|        | `docs`        | no       | A mapping that configures the project's documentation. When it is set, the project's page links to `/{projects}/{slug}/{docs}/`. |
 | `game` | `stores`      | no       | A mapping of store names to `http(s)` links, such as `itch` or `steam`. An empty value means "not set yet".          |
 |        | `platforms`   | no       | A list of platform names.                                                                                            |
 |        | `price`       | no       | Text such as `Free` or `4.99 EUR`.                                                                                   |
@@ -90,7 +90,7 @@ The `kind` of a project decides which template renders its page and which furthe
 |        | `accent`      | no       | The game's accent colour, `#rgb` or `#rrggbb`.                                                                       |
 |        | `displayFont` | no       | A plain font family name such as `Fraunces` (letters, digits, spaces and `-`, up to 64 characters), or a comma-separated list of such names. Quotes, braces, semicolons, angle brackets and backslashes are rejected, so the value is safe in CSS. |
 
-Both kinds render with the generic `project.njk` for now: the name, the pitch, the kind and the status, the text of `index.md`, the license and a link to the projects page. The kind-specific fields are read, validated and passed to the template as `project.fields`; the pages that use them are separate features.
+The generic `project.njk` shows the name, the pitch, the kind and the status, the text of `index.md`, the license and a link to the projects page. `tool` has its own template, described below; `game` still uses the generic one. The kind-specific fields are read, validated and passed to the template as `project.fields`.
 
 An unknown `kind`, a missing required field or a value of the wrong shape fails the build. Every problem is listed, each as `path-of-project.yaml: field: message`:
 
@@ -134,19 +134,35 @@ registerProjectKind({
 
 A site that only needs another look for `tool` or `game` does not need a new kind: put `project.njk` in the theme and override the blocks (see [Themes and UI strings](themes.md)).
 
+## The page of a tool
+
+`project-tool.njk` makes the page of a `tool` read like a polished README, in the default theme's strict style:
+
+1. **The heading**: kind and status, the name, the pitch.
+2. **A facts box** ("Project details") with the links a reader looks for first:
+   - **Source code**: the `repo` address, as a link with `rel="noopener"` (the field is checked to be an absolute `http` or `https` address, so a `javascript:` or `ftp:` address fails the build).
+   - **Documentation**: a link to the project's guides, `/{projects}/{slug}/{docs}/` (`/made/kerfcalc/docs/` with the defaults), present only when `docs` is set in `project.yaml`. The segment comes from `urls.docs`. The documentation pages themselves are a separate feature, so a site that sets `docs` before they exist links to a page that is not built yet and `coffer check` reports the link as broken; the example tool sets no `docs` for that reason.
+   - **License**: the `license` text, as plain text.
+3. **The text of `index.md`**: what it is, why it exists, how it works, a quick start, screenshots or a demo. Write it with ordinary headings; pictures go through the image pipeline like in a post.
+4. **Latest posts**: a slot for the devlog posts about the project (block `project_latest`), filled by the posts feature. It writes nothing while there are no posts.
+
+Nothing renders empty. A fact that is not set has no row, a page whose `index.md` is empty has no text section, and the license is shown in the facts box only. A theme overrides `project-tool.njk`, or one of its blocks `project_facts`, `project_latest`, `project_footer`, like any other template.
+
 ## Templates
+
 
 | Template               | Used for                                                             |
 | ---------------------- | -------------------------------------------------------------------- |
 | `project-index.njk`    | the projects page; block `heading`                                   |
 | `project.njk`          | a project's page; blocks `project_header`, `project_body`, `project_footer` |
+| `project-tool.njk`     | the page of a `tool`; extends `project.njk`; blocks `project_facts`, `project_latest` |
 | `project-card.njk`     | one card, included by the projects page and the home page showcase   |
 | `project-picture.njk`  | the macro `card(picture, sizes)` that writes the card's `<picture>`   |
 | `home.njk`             | the `showcase` block lists the featured projects (see [The home page](home.md)) |
 
-A project, as templates see it (`project` on a project's page, one element of `projects` or `showcase` elsewhere): `slug`, `url`, `name`, `pitch`, `kind`, `kindLabel`, `status`, `statusLabel`, `featured`, `order`, `license`, `tag`, `fields` and `picture` (`src`, `width`, `height`, `srcset` as a list of `{ url, width }`, `alt`; null when the picture could not be made, which also fails the build). The card is included with `level` set to the heading level of the name: 2 on the projects page, 3 in the showcase.
+A project, as templates see it (`project` on a project's page, one element of `projects` or `showcase` elsewhere): `slug`, `url`, `name`, `pitch`, `kind`, `kindLabel`, `status`, `statusLabel`, `featured`, `order`, `license`, `tag`, `fields`, `docsUrl` (the address of the project's guides when `docs` is configured, otherwise null) and `picture` (`src`, `width`, `height`, `srcset` as a list of `{ url, width }`, `alt`; null when the picture could not be made, which also fails the build). The card is included with `level` set to the heading level of the name: 2 on the projects page, 3 in the showcase.
 
-The UI strings are `home.projects`, `projects.title`, `projects.empty`, `projects.all`, `projects.license`, `projects.kind.*` and `projects.status.*`. The navigation gets a "Projects" entry (`nav.projects`) between Home and the blogs.
+The UI strings are `home.projects`, `projects.title`, `projects.empty`, `projects.all`, `projects.license`, `projects.facts.*` (`title`, `repo`, `docs`, `docs_link`, `license`), `projects.kind.*` and `projects.status.*`. The navigation gets a "Projects" entry (`nav.projects`) between Home and the blogs.
 
 ## In the manifest
 
@@ -154,4 +170,4 @@ The UI strings are `home.projects`, `projects.title`, `projects.empty`, `project
 
 ## Not yet
 
-Feeds of a project, the posts that carry its tag, and the pages and documentation of the kinds are separate features; the `tag` field and the kind fields are read and validated now so that a project declaration is complete from the start.
+Feeds of a project, the posts that carry its tag, the page of a `game` and the documentation pages are separate features; the `tag` field and the kind fields are read and validated now so that a project declaration is complete from the start.

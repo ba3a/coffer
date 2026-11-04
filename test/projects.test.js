@@ -662,3 +662,106 @@ test('a project card keeps its position only when the site policy says keep, and
     },
   );
 });
+
+// ---------------------------------------------------------------------------
+// The page of a tool.
+
+/**
+ * @param {string} html
+ * @returns {string} The facts box of a tool page, or the empty string.
+ */
+function facts(html) {
+  return /<section class="project-facts"[\s\S]*?<\/section>/.exec(html)?.[0] ?? '';
+}
+
+test('a tool page shows the hero, the text, and a facts box with repository and license links', async () => {
+  await inSite(
+    project('lathe', toolYaml({ license: 'Apache-2.0' }), 'It turns wood.\n\n## Quick start\n\nRun `lathe`.\n'),
+    async (root) => {
+      await build(root);
+      const html = pageHtml(root, '/made/lathe/');
+      assert.match(html, /<header class="project-header">[\s\S]*<h1>Lathe<\/h1>\s*<p class="project-pitch">Turns wood\.<\/p>/);
+      assert.match(html, /<span class="project-kind">Tool<\/span> <span aria-hidden="true">&middot;<\/span> <span class="project-status">Released<\/span>/);
+      assert.match(html, /<div class="project-body">\s*<p>It turns wood\.<\/p>[\s\S]*<h2[^>]*>Quick start<\/h2>/);
+      const box = facts(html);
+      assert.match(box, /<h2 id="project-facts-title">Project details<\/h2>/);
+      assert.match(box, /<dt>Source code<\/dt>\s*<dd><a href="https:\/\/github\.example\/me\/lathe" rel="noopener">github\.example\/me\/lathe<\/a><\/dd>/);
+      assert.match(box, /<dt>License<\/dt>\s*<dd>Apache-2\.0<\/dd>/);
+      // The license is in the facts box only, not repeated under the text.
+      assert.equal(html.split('Apache-2.0').length - 1, 1);
+      assert.match(html, /<p class="all-projects"><a href="\/made\/">All projects<\/a><\/p>/);
+    },
+  );
+});
+
+test('a tool page links its docs when docs is configured, and shows no docs link otherwise', async () => {
+  await inSite(
+    { ...project('lathe', toolYaml({ docs: { pages: ['intro.md'] } })), ...project('plane', toolYaml({ name: 'Plane' })) },
+    async (root) => {
+      await build(root);
+      const configured = facts(pageHtml(root, '/made/lathe/'));
+      assert.match(configured, /<dt>Documentation<\/dt>\s*<dd><a href="\/made\/lathe\/docs\/">Read the documentation<\/a><\/dd>/);
+      const without = facts(pageHtml(root, '/made/plane/'));
+      assert.match(without, /<dt>Source code<\/dt>/);
+      assert.doesNotMatch(without, /Documentation|project-fact-docs/);
+      assert.doesNotMatch(pageHtml(root, '/made/plane/'), /\/docs\//);
+    },
+  );
+});
+
+test('the docs link follows urls.projects and urls.docs', async () => {
+  await inSite(
+    {
+      ...project('lathe', toolYaml({ docs: { pages: ['intro.md'] } })),
+      'coffer.yaml': CONFIG.replace('    projects:', '    urls: { projects: built, docs: manual }\n    projects:'),
+    },
+    async (root) => {
+      await build(root);
+      assert.match(facts(pageHtml(root, '/built/lathe/')), /<a href="\/built\/lathe\/manual\/">/);
+    },
+  );
+});
+
+test('a tool without license, with an empty text, and without docs renders no empty section or element', async () => {
+  await inSite(project('lathe', toolYaml(), ''), async (root) => {
+    await build(root);
+    const html = pageHtml(root, '/made/lathe/');
+    assert.doesNotMatch(html, /project-body|project-license/);
+    assert.doesNotMatch(html, /<dt>License<\/dt>|<dt>Documentation<\/dt>/);
+    assert.doesNotMatch(html, /<(p|div|section|dl|dd|dt|ul|li)[^>]*>\s*<\/\1>/);
+    // The facts box still has the repository, which every tool declares.
+    assert.match(facts(html), /<dt>Source code<\/dt>/);
+    assert.equal((facts(html).match(/<dt>/g) ?? []).length, 1);
+    // The slot for the latest posts writes nothing while the project has none.
+    assert.doesNotMatch(html, /latest/i);
+  });
+});
+
+test('text from project.yaml is escaped in the facts box, and the repository must be an http(s) URL', async () => {
+  await inSite(
+    project('lathe', toolYaml({ license: '<b>MIT</b> & "co"', repo: 'https://github.example/me/lathe?a=1&b="2"' })),
+    async (root) => {
+      await build(root);
+      const box = facts(pageHtml(root, '/made/lathe/'));
+      assert.match(box, /<dd>&lt;b&gt;MIT&lt;\/b&gt; &amp; &quot;co&quot;<\/dd>/);
+      assert.doesNotMatch(box, /<b>/);
+      assert.match(box, /href="https:\/\/github\.example\/me\/lathe\?a=1&amp;b=&quot;2&quot;"/);
+    },
+  );
+  for (const repo of ['javascript:alert(1)', 'ftp://example.com/x', 'github.com/me/lathe']) {
+    await inSite(project('lathe', toolYaml({ repo })), async (root) => {
+      assert.deepEqual(await buildErrors(root), [
+        `${join(root, 'content', 'projects', 'lathe', 'project.yaml')}: repo: must be an absolute http(s) URL`,
+      ]);
+    });
+  }
+});
+
+test('a game keeps the generic project page for now', async () => {
+  await inSite(project('tumble', 'name: Tumble\npitch: Falling joints.\nkind: game\nstatus: idea\ncard: card.png\nlicense: MIT\n'), async (root) => {
+    await build(root);
+    const html = pageHtml(root, '/made/tumble/');
+    assert.doesNotMatch(html, /project-facts/);
+    assert.match(html, /<p class="project-license">License: MIT<\/p>/);
+  });
+});

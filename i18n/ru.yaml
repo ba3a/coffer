@@ -56,6 +56,12 @@ projects:
   empty: Проектов пока нет.
   all: Все проекты
   license: "Лицензия: {license}"
+  facts:
+    title: О проекте
+    repo: Исходный код
+    docs: Документация
+    docs_link: Читать документацию
+    license: Лицензия
   kind:
     tool: Инструмент
     game: Игра

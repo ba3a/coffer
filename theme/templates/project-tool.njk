@@ -1,0 +1,39 @@
+{# The page of a tool: reads like a README. Hero, facts box (source, docs, license), the text of index.md, then the latest posts. Extends the generic project page, whose header is the hero (kind, status, name, pitch), and fills its body and footer blocks; a section with nothing to show writes nothing. #}
+{% extends "project.njk" %}
+
+{% block project_body %}
+{% block project_facts %}
+{% if project.fields.repo or project.docsUrl or project.license %}
+<section class="project-facts" aria-labelledby="project-facts-title">
+<h2 id="project-facts-title">{{ 'projects.facts.title' | t }}</h2>
+<dl>
+{% if project.fields.repo %}<div class="project-fact project-fact-repo">
+<dt>{{ 'projects.facts.repo' | t }}</dt>
+<dd><a href="{{ project.fields.repo }}" rel="noopener">{{ project.fields.repo | replace(r/^https?:\/\//, '') | replace(r/\/$/, '') }}</a></dd>
+</div>
+{% endif %}
+{% if project.docsUrl %}<div class="project-fact project-fact-docs">
+<dt>{{ 'projects.facts.docs' | t }}</dt>
+<dd><a href="{{ project.docsUrl | url }}">{{ 'projects.facts.docs_link' | t }}</a></dd>
+</div>
+{% endif %}
+{% if project.license %}<div class="project-fact project-fact-license">
+<dt>{{ 'projects.facts.license' | t }}</dt>
+<dd>{{ project.license }}</dd>
+</div>
+{% endif %}
+</dl>
+</section>
+{% endif %}
+{% endblock %}
+{% if page.content %}<div class="project-body">
+{{ page.content | safe }}
+</div>
+{% endif %}
+{# The devlog posts about the project go here; the section is written only when there are posts. #}
+{% block project_latest %}{% endblock %}
+{% endblock %}
+
+{% block project_footer %}
+<p class="all-projects"><a href="{{ projectsUrl | url }}">{{ 'projects.all' | t }}</a></p>
+{% endblock %}
