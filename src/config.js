@@ -10,6 +10,7 @@ import {
   DEFAULT_WEBP_QUALITY,
   DEFAULT_WIDTHS as DEFAULT_IMAGE_WIDTHS,
 } from './images/defaults.js';
+import { DEFAULT_ELEVATION_THRESHOLD_METERS, DEFAULT_TOLERANCE_METERS } from './geo/gpx.js';
 import { CAMERA_POLICIES, LOCATION_POLICIES } from './images/policy.js';
 
 /**
@@ -66,6 +67,14 @@ export const CONFIG_FILE_NAME = 'coffer.yaml';
  */
 
 /**
+ * How GPX tracks are simplified and summarized.
+ *
+ * @typedef {object} TracksConfig
+ * @property {number} tolerance Tolerance of the simplification of the drawn track in metres: the drawn line stays within this distance of the recorded one. 0 keeps every point.
+ * @property {number} elevationThreshold Smoothing threshold of the elevation gain in metres: ups and downs smaller than this count as noise.
+ */
+
+/**
  * Where a site keeps its projects.
  *
  * @typedef {object} ProjectsConfig
@@ -109,6 +118,7 @@ export const CONFIG_FILE_NAME = 'coffer.yaml';
  * @property {UrlsConfig} urls URL prefixes of the generated sections.
  * @property {LocationConfig} location Image metadata policy.
  * @property {ImagesConfig} images How published images are made.
+ * @property {TracksConfig} tracks How GPX tracks are simplified and summarized.
  * @property {ProjectsConfig | null} projects Projects location, or null when the site has no projects.
  */
 
@@ -171,6 +181,7 @@ const SITE_KEYS = [
   'urls',
   'location',
   'images',
+  'tracks',
   'projects',
 ];
 const ID_RE = /^[a-z0-9][a-z0-9._-]*$/i;
@@ -680,6 +691,34 @@ function normalizeImages(raw, path, problems) {
 }
 
 /**
+ * @param {Record<string, unknown> | undefined} raw
+ * @param {string} path
+ * @param {Problems} problems
+ * @returns {TracksConfig}
+ */
+function normalizeTracks(raw, path, problems) {
+  /** @type {TracksConfig} */
+  const tracks = {
+    tolerance: DEFAULT_TOLERANCE_METERS,
+    elevationThreshold: DEFAULT_ELEVATION_THRESHOLD_METERS,
+  };
+  if (raw === undefined) return tracks;
+  rejectUnknownKeys(raw, ['tolerance', 'elevationThreshold'], path, problems);
+  /** @type {[keyof TracksConfig, number][]} */
+  const limits = [
+    ['tolerance', 1000],
+    ['elevationThreshold', 100],
+  ];
+  for (const [key, max] of limits) {
+    const value = raw[key];
+    if (value === undefined || value === null) continue;
+    if (typeof value === 'number' && Number.isFinite(value) && value >= 0 && value <= max) tracks[key] = value;
+    else problems.add(`${path}.${key}`, `must be a number of metres from 0 to ${max}`);
+  }
+  return tracks;
+}
+
+/**
  * Reads the `author` key: a name, or a mapping with `name`, `email` and `url`.
  *
  * @param {unknown} raw
@@ -856,6 +895,11 @@ function normalizeSite(raw, index, baseDir, problems) {
     `${path}.images`,
     problems,
   );
+  const tracks = normalizeTracks(
+    readMapping(raw, 'tracks', path, problems),
+    `${path}.tracks`,
+    problems,
+  );
 
   /** @type {ProjectsConfig | null} */
   let projects = null;
@@ -908,6 +952,7 @@ function normalizeSite(raw, index, baseDir, problems) {
     urls,
     location,
     images,
+    tracks,
     projects,
   };
 }

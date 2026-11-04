@@ -206,6 +206,7 @@ test('defaults are applied to a minimal site', () => {
       sizes: '(min-width: 44rem) 41rem, calc(100vw - 2rem)',
       carouselSizes: '(min-width: 44rem) 41rem, calc(100vw - 2rem)',
     },
+    tracks: { tolerance: 10, elevationThreshold: 3 },
     projects: null,
   });
 });
@@ -668,6 +669,9 @@ test('docs/configuration.md documents every configuration key', () => {
     'location',
     'default',
     'camera',
+    'tracks',
+    'tolerance',
+    'elevationThreshold',
     'images',
     'widths',
     'viewerMaxEdge',
@@ -695,6 +699,19 @@ test('images set the widths, the viewer size, the qualities and the sizes attrib
     carouselSizes: '50vw',
   });
   assert.deepEqual(normalize(oneSite({ images: { widths: [640] } })).sites[0].images.widths, [640]);
+});
+
+test('tracks set the simplification tolerance and the elevation threshold', () => {
+  assert.deepEqual(normalize(oneSite({ tracks: { tolerance: 25.5, elevationThreshold: 0 } })).sites[0].tracks, {
+    tolerance: 25.5,
+    elevationThreshold: 0,
+  });
+  assert.deepEqual(normalize(oneSite({ tracks: { tolerance: 0 } })).sites[0].tracks, { tolerance: 0, elevationThreshold: 3 });
+  assert.deepEqual(normalizeErrors(oneSite({ tracks: { tolerance: -1, elevationThreshold: 'high', speed: 3 } })), [
+    'coffer.yaml: sites[0].tracks.speed: unknown key (expected one of: tolerance, elevationThreshold)',
+    'coffer.yaml: sites[0].tracks.tolerance: must be a number of metres from 0 to 1000',
+    'coffer.yaml: sites[0].tracks.elevationThreshold: must be a number of metres from 0 to 100',
+  ]);
 });
 
 test('invalid image settings are reported with their keys', () => {

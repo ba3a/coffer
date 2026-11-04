@@ -169,15 +169,25 @@ export function parseXml(source) {
   const text = source.charCodeAt(0) === 0xfeff ? source.slice(1) : source;
   let pos = 0;
 
+  // Positions are asked for in increasing order (once per start tag), so the
+  // line count carries on from the last answer instead of starting over.
+  let countedLine = 1;
+  let countedBreak = -1;
   /** @param {number} at */
   const where = (at) => {
-    let line = 1;
-    let lastBreak = -1;
-    for (let index = text.indexOf('\n'); index !== -1 && index < at; index = text.indexOf('\n', index + 1)) {
-      line += 1;
-      lastBreak = index;
+    if (at <= countedBreak) {
+      countedLine = 1;
+      countedBreak = -1;
     }
-    return { line, column: at - lastBreak };
+    for (
+      let index = text.indexOf('\n', countedBreak + 1);
+      index !== -1 && index < at;
+      index = text.indexOf('\n', index + 1)
+    ) {
+      countedLine += 1;
+      countedBreak = index;
+    }
+    return { line: countedLine, column: at - countedBreak };
   };
   /**
    * @param {string} message

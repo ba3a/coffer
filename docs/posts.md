@@ -50,6 +50,7 @@ The text of the post.
 | `aliases`        | no       | List of old slugs that redirect permanently to this post; see [URLs](urls.md).                              |
 | `location`       | no       | Image location policy for this post (`strip`, `coarse` or `keep`), overriding the site and tag settings. See [Location and camera metadata](location-policy.md). |
 | `camera`         | no       | Camera metadata policy for this post (`strip` or `keep`). See [Location and camera metadata](location-policy.md). |
+| `tracks`         | no       | The GPX files of this post, as a list of file names beside the post, each either a name or `{ file, title }`. Without it every `*.gpx` file in a post folder is a track. `tracks: []` publishes none. See [Maps and GPX tracks](maps.md). |
 | `images`         | no       | Mapping of image paths to `{ location, camera }` overrides for single images, for example `images: { IMG_1.jpg: { location: strip } }`. See [Location and camera metadata](location-policy.md). |
 | `map`            | no       | `true` or `false` to force or suppress the map. Without it, a map appears when there is something to show. |
 

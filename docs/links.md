@@ -43,4 +43,4 @@ Every build writes `.coffer/report.json` beside the configuration file (the `rep
 }
 ```
 
-`errors` fail the build, `warnings` are worth fixing, `exactLocations` lists the posts whose published images carry an exact position (post file and image count, see [Location and camera metadata](location-policy.md#what-the-build-does-with-the-decision)) and `info` is for the record. The report is written whether the build succeeds or fails. In code, `Report`, `ReportError` and `formatIssue` from `src/report.js` are the same pieces later checks use to report their findings.
+`errors` fail the build, `warnings` are worth fixing, `exactLocations` lists the posts whose published images or GPX tracks carry exact positions (post file, image count and, for posts with tracks, track count; see [Maps and GPX tracks](maps.md#exact-locations) and [Location and camera metadata](location-policy.md#what-the-build-does-with-the-decision)) and `info` is for the record. The report is written whether the build succeeds or fails. In code, `Report`, `ReportError` and `formatIssue` from `src/report.js` are the same pieces later checks use to report their findings.

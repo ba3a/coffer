@@ -22,12 +22,15 @@ export const REPORT_FILE_NAME = 'report.json';
  */
 
 /**
- * A page whose images publish their exact location.
+ * A page that publishes exact locations: images whose published file carries
+ * the exact position, and GPX tracks (a GPX file is published unchanged, so it
+ * always carries exact positions).
  *
  * @typedef {object} ExactLocation
  * @property {string} site Id of the site.
  * @property {string} file Path of the post (or other page source), relative to the configuration file, with forward slashes.
- * @property {number} images Number of its distinct images whose published file carries the exact position.
+ * @property {number} images Number of its distinct images whose published file carries the exact position; 0 for a page that only publishes tracks.
+ * @property {number} [tracks] Number of GPX files it publishes; absent when there are none.
  */
 
 /**
@@ -48,7 +51,7 @@ export const EXACT_LOCATIONS_TITLE = 'Posts publishing exact locations';
 
 /**
  * The section "Posts publishing exact locations" as text: the heading with the
- * number of posts, then one line per post with its image count. With none, a
+ * number of posts, then one line per post with its image and track counts. With none, a
  * single line says so.
  *
  * @param {readonly ExactLocation[]} entries
@@ -58,9 +61,13 @@ export function formatExactLocations(entries) {
   if (entries.length === 0) return `${EXACT_LOCATIONS_TITLE}: none\n`;
   // Two sites can share content files, so the site is named when there are several.
   const several = new Set(entries.map((entry) => entry.site)).size > 1;
-  const lines = entries.map(
-    (entry) => `  ${several ? `${entry.site}: ` : ''}${entry.file}: ${entry.images} image(s)`,
-  );
+  const lines = entries.map((entry) => {
+    /** @type {string[]} */
+    const what = [];
+    if (entry.images > 0 || !entry.tracks) what.push(`${entry.images} image(s)`);
+    if (entry.tracks) what.push(`${entry.tracks} track(s)`);
+    return `  ${several ? `${entry.site}: ` : ''}${entry.file}: ${what.join(', ')}`;
+  });
   return `${EXACT_LOCATIONS_TITLE} (${entries.length})\n${lines.join('\n')}\n`;
 }
 

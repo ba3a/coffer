@@ -94,3 +94,14 @@ test('writeReport creates the folder and writes JSON', () => {
     rmSync(root, { recursive: true, force: true });
   }
 });
+
+test('the exact-locations section counts tracks beside images, and a track-only post has no image line', () => {
+  assert.equal(
+    formatExactLocations([
+      { site: 'a', file: 'x.md', images: 2, tracks: 1 },
+      { site: 'a', file: 'y/index.md', images: 0, tracks: 3 },
+      { site: 'a', file: 'z.md', images: 1 },
+    ]),
+    'Posts publishing exact locations (3)\n  x.md: 2 image(s), 1 track(s)\n  y/index.md: 3 track(s)\n  z.md: 1 image(s)\n',
+  );
+});

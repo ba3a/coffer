@@ -462,6 +462,7 @@ test('example: a photo without a position publishes none, and no variant ever ca
 test('example: the build report lists the posts that publish exact locations', () => {
   assert.deepEqual(example.exactLocations, [
     { site: 'workshop', file: 'content/journal/mountain-weekend.md', images: 1 },
+    { site: 'workshop', file: 'content/journal/ridge-walk/index.md', images: 0, tracks: 1 },
   ]);
   const report = JSON.parse(readFileSync(join(pristine, 'report', 'report.json'), 'utf8'));
   assert.deepEqual(report.exactLocations, example.exactLocations);
@@ -482,12 +483,15 @@ test('coffer build prints the posts that publish exact locations after every bui
     };
     const first = await runBuild([]);
     assert.equal(first.code, 0, first.err);
-    assert.match(first.out, /^Posts publishing exact locations \(1\)\n {2}content\/journal\/mountain-weekend\.md: 1 image\(s\)$/m);
+    assert.match(
+      first.out,
+      /^Posts publishing exact locations \(2\)\n {2}content\/journal\/mountain-weekend\.md: 1 image\(s\)\n {2}content\/journal\/ridge-walk\/index\.md: 1 track\(s\)$/m,
+    );
 
     rewrite(root, 'content/journal/tags.yaml', (text) => text.replace('location: keep', 'location: coarse'));
     const second = await runBuild([]);
     assert.equal(second.code, 0, second.err);
-    assert.match(second.out, /^Posts publishing exact locations: none$/m);
+    assert.match(second.out, /^Posts publishing exact locations \(1\)\n {2}content\/journal\/ridge-walk\/index\.md: 1 track\(s\)$/m);
     assert.doesNotMatch(second.out, /mountain-weekend\.md: \d/);
   });
 });
@@ -519,7 +523,9 @@ test('an entry in the images map of a post overrides the tag for one image', asy
     assert.equal(ridge.policy.camera.value, 'keep', 'the camera setting still comes from the tag');
     assert.equal(ridge.gps, null);
     assert.equal(await gpsOf(viewerPath(result.outDir, ridge)), null);
-    assert.deepEqual(result.exactLocations, []);
+    assert.deepEqual(result.exactLocations, [
+      { site: 'workshop', file: 'content/journal/ridge-walk/index.md', images: 0, tracks: 1 },
+    ]);
     assert.deepEqual(result.warnings.filter((warning) => /images:/.test(warning)), []);
   });
 });
@@ -571,7 +577,10 @@ test('the same photo in two posts is published once per policy', async () => {
       assert.ok(kept?.gps && stripped?.gps === null);
       assert.equal(await gpsOf(viewerPath(result.outDir, /** @type {any} */ (stripped))), null);
       assert.ok(await gpsOf(viewerPath(result.outDir, /** @type {any} */ (kept))));
-      assert.deepEqual(result.exactLocations.map((entry) => entry.file), ['content/journal/mountain-weekend.md']);
+      assert.deepEqual(result.exactLocations.map((entry) => entry.file), [
+        'content/journal/mountain-weekend.md',
+        'content/journal/ridge-walk/index.md',
+      ]);
     },
     {
       'content/journal/ridge-again.md': '---\ntitle: The ridge again\ndate: 2025-02-21\ntags: [notes]\n---\n\n![The same ridge.](photos/ridge.jpg)\n',

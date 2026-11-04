@@ -26,6 +26,7 @@ import { normalizeImageKey } from '../images/policy.js';
  * @property {string | null} camera Camera metadata policy override as written; checked when the policy is resolved.
  * @property {Map<string, import('../images/policy.js').ImageOverride>} images Per-image metadata policy overrides from the `images:` map, by normalized image path (see `normalizeImageKey`); empty when there are none.
  * @property {boolean | null} map True or false to force or suppress the map; null to decide from the post's content.
+ * @property {{ file: string, title: string | null }[] | null} tracks The GPX files named by `tracks:` (file names beside the post, with optional titles); null when the front matter has no `tracks:`, which means every `*.gpx` file in a post folder.
  * @property {Record<string, unknown>} frontMatter The parsed front matter, including keys this module does not know.
  * @property {string} body The Markdown text after the front matter.
  * @property {number} bodyLine 1-based line of the file on which `body` starts.
@@ -253,6 +254,57 @@ export function readFrontMatter(file, text, errors) {
 }
 
 /**
+ * Reads the `tracks:` list of the front matter: GPX file names beside the post,
+ * each either a string or a mapping with `file` and an optional `title`.
+ *
+ * @param {unknown} value The `tracks` value of the front matter.
+ * @param {(field: string, message: string) => void} fail Reports a problem.
+ * @returns {{ file: string, title: string | null }[] | null} Null when there is no `tracks:`.
+ */
+function readTracks(value, fail) {
+  if (value === undefined || value === null) return null;
+  if (!Array.isArray(value)) {
+    fail('tracks', 'must be a list of GPX file names, each optionally with a title');
+    return null;
+  }
+  /** @type {{ file: string, title: string | null }[]} */
+  const tracks = [];
+  value.forEach((item, index) => {
+    const field = `tracks[${index}]`;
+    /** @type {unknown} */
+    let file = item;
+    /** @type {unknown} */
+    let title = null;
+    if (isMapping(item)) {
+      for (const key of Object.keys(item)) {
+        if (key !== 'file' && key !== 'title') fail(`${field}.${key}`, 'unknown key (expected "file" or "title")');
+      }
+      file = item.file;
+      title = item.title ?? null;
+    }
+    if (typeof file !== 'string' || file.trim() === '') {
+      fail(field, 'must be a GPX file name, or a mapping with "file" and an optional "title"');
+      return;
+    }
+    const name = file.trim();
+    if (!/^[^/\\:*?"<>|]+\.gpx$/i.test(name) || name.startsWith('.')) {
+      fail(field, `"${name}" must be the name of a .gpx file beside the post (no folders)`);
+      return;
+    }
+    if (title !== null && (typeof title !== 'string' || title.trim() === '')) {
+      fail(`${field}.title`, 'must be a non-empty string');
+      return;
+    }
+    if (tracks.some((entry) => entry.file.toLowerCase() === name.toLowerCase())) {
+      fail(field, `"${name}" is listed twice`);
+      return;
+    }
+    tracks.push({ file: name, title: title === null ? null : String(title).trim() });
+  });
+  return tracks;
+}
+
+/**
  * Reads the `images:` map of the front matter: image paths mapped to
  * `{ location, camera }` overrides. A mistake is reported rather than ignored,
  * because a misspelled key would silently publish an image with the wrong
@@ -438,6 +490,7 @@ function parseInto(file, text, slug, kind, dir, options, errors) {
   const images = readImageOverrides(fm.images, fail);
   const draft = optionalBoolean('draft');
   const map = optionalBoolean('map');
+  const tracks = readTracks(fm.tracks, fail);
 
   /** @type {number | null} */
   let seriesPosition = null;
@@ -491,6 +544,7 @@ function parseInto(file, text, slug, kind, dir, options, errors) {
     camera: camera ?? null,
     images,
     map: map ?? null,
+    tracks,
     frontMatter: fm,
     body: parts.body,
     bodyLine: parts.bodyLine,

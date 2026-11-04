@@ -72,6 +72,7 @@ Unknown keys are errors everywhere in the file, so a misspelled key never passes
 | `urls`           | no       | see below    | URL prefixes of generated sections.                                                                                                                          |
 | `images`         | no       | see below    | Widths, sizes and quality of the published images (see [Images](images.md)).                                                                                 |
 | `location`       | no       | see below    | Image metadata policy.                                                                                                                                       |
+| `tracks`         | no       | see below    | How GPX tracks are simplified and summarized (see [Maps and GPX tracks](maps.md)).                                                                           |
 | `projects`       | no       | none         | Where the site's projects live. Without it the site has no projects.                                                                                         |
 
 ## `author` and `feeds`
@@ -149,6 +150,23 @@ What happens to the location and the camera metadata of published images. A more
 | --------- | -------------------------- | ------- | ------------------------------------------------------------------------------------------------------------------ |
 | `default` | `strip`, `coarse`, `keep`  | `strip` | `strip` removes the location, `coarse` rounds it to roughly a kilometre, `keep` publishes it exactly.            |
 | `camera`  | `strip`, `keep`            | `strip` | Whether camera model, lens and exposure settings stay in published images.                                         |
+
+## `tracks`
+
+How the GPX tracks of posts are simplified for the map and summarized (see [Maps and GPX tracks](maps.md)). Both keys are optional.
+
+```yaml
+tracks:
+  tolerance: 10
+  elevationThreshold: 3
+```
+
+| Key                  | Default | Description                                                                                                                                  |
+| -------------------- | ------- | -------------------------------------------------------------------------------------------------------------------------------------------- |
+| `tolerance`          | `10`    | Tolerance of the simplification of the drawn track in metres (0 to 1000): the drawn line stays within this distance of the recorded one. `0` keeps every point that is not on a straight line. |
+| `elevationThreshold` | `3`     | Smoothing threshold of the elevation gain in metres (0 to 100): ups and downs smaller than this count as noise and add nothing to the climb. |
+
+The summary of a track (distance, elevation gain, highest point) is always computed from every recorded point; `tolerance` only changes the drawn geometry.
 
 ## `projects`
 

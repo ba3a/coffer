@@ -29,6 +29,7 @@ import {
   seriesUrl,
   unusedSeriesWarnings,
 } from './content/series.js';
+import { loadTracks } from './geo/gpx.js';
 import { applyLinkRewrites, checkSourceLinks, listProjectSlugs } from './check/source-links.js';
 import { IMAGE_EXTENSIONS } from './images/defaults.js';
 import { IMAGES_CACHE_DIR, ImageError, createImagePipeline, imageFileUrl, pickVariant } from './images/pipeline.js';
@@ -126,6 +127,24 @@ export class BuildError extends Error {
  * @property {boolean} published False for a post that is only built because of preview mode.
  * @property {number} readingMinutes
  * @property {{ slug: string, number: number, count: number } | null} series The series the post belongs to, with its place in it ("part number of count"), or null.
+ * @property {ManifestTrack[]} tracks The GPX tracks published with the post, in the order they are shown; empty when it has none.
+ */
+
+/**
+ * One GPX track published with a post, as listed in the manifest. The GPX file
+ * is published unchanged, so it carries the exact positions of the track.
+ *
+ * @typedef {object} ManifestTrack
+ * @property {string} title Title given in front matter, else the name inside the file, else the file name.
+ * @property {string} source Path of the GPX file, relative to the configuration file.
+ * @property {string} gpx Site-relative address of the published GPX file, for download.
+ * @property {string} geojson Site-relative address of the simplified geometry as GeoJSON, for the map.
+ * @property {number} distanceMeters Length along the recorded points, rounded to a metre.
+ * @property {number | null} elevationGainMeters Total climb with small ups and downs smoothed away, rounded to a metre; null when the file has no elevations.
+ * @property {{ elevationMeters: number, latitude: number, longitude: number } | null} highest The highest point (elevation rounded to a metre), or null when the file has no elevations.
+ * @property {number} points Number of recorded points.
+ * @property {number} simplifiedPoints Number of points of the simplified geometry.
+ * @property {[number, number, number, number]} bounds West, south, east and north in degrees.
  */
 
 /**
@@ -366,7 +385,7 @@ function outputServes(outDir, path) {
 /**
  * @param {string} outDir
  * @param {string} file Path relative to `outDir`, with forward slashes.
- * @param {string} content
+ * @param {string | Uint8Array} content
  */
 function writeOutput(outDir, file, content) {
   const target = join(outDir, ...file.split('/'));
@@ -545,6 +564,7 @@ async function buildSite(config, site, options, outRoot, version, report) {
    * @property {ReadonlyMap<string, import('./images/policy.js').ImageOverride>} overrides The page's `images:` map.
    * @property {Set<string>} used Keys of `overrides` that matched an image.
    * @property {Set<string>} exact Originals of the page whose published file carries the exact position.
+   * @property {number} tracks Number of GPX files the page publishes; each carries the exact positions of its track.
    */
 
   /**
@@ -629,6 +649,7 @@ async function buildSite(config, site, options, outRoot, version, report) {
       overrides: policyPost.images,
       used,
       exact: new Set(),
+      tracks: 0,
       policyFor: (reference) => {
         const found = findImageOverride(policyPost.images, reference);
         if (found !== null) used.add(found.key);
@@ -849,6 +870,11 @@ async function buildSite(config, site, options, outRoot, version, report) {
   // can be resolved before any page is written.
   /** @type {Map<string, { selected: Post[], rendered: Map<Post, RenderedPost>, tagMeta: ReturnType<typeof loadTagMeta> }>} */
   const prepared = new Map();
+  /**
+   * The GPX tracks of each selected post, read and analyzed.
+   * @type {Map<Post, import('./geo/gpx.js').LoadedTrack[]>}
+   */
+  const postTracks = new Map();
   /** @type {import('./check/source-links.js').SourcePost[]} */
   const sourcePosts = [];
   for (const blog of site.blogs) {
@@ -863,6 +889,17 @@ async function buildSite(config, site, options, outRoot, version, report) {
     for (const post of selected) {
       const page = pageImagesOf(post.file, post, resolver);
       pageImages.set(post.file, page);
+      // A single-file post has no folder of its own, so only the files it lists are its tracks.
+      const { tracks, errors } = loadTracks({
+        dir: post.dir,
+        listed: post.kind === 'file' ? (post.tracks ?? []) : post.tracks,
+        show: (path) => posix(relative(config.dir, path)),
+        tolerance: site.tracks.tolerance,
+        elevationThreshold: site.tracks.elevationThreshold,
+      });
+      for (const error of errors) report.addError({ site: site.id, file: error.file, message: error.reason });
+      postTracks.set(post, tracks);
+      page.tracks = tracks.length;
       rendered.set(
         post,
         await renderMarkdown(post.body, {
@@ -1053,6 +1090,36 @@ async function buildSite(config, site, options, outRoot, version, report) {
       const file = fileForUrl(url);
       writeOutput(outDir, file, html);
       pages.push({ url, file, type: 'post', title: post.title });
+      /** @type {ManifestTrack[]} */
+      const manifestTracks = [];
+      for (const track of postTracks.get(post) ?? []) {
+        // The GPX file goes out exactly as it came; the map draws the simplified GeoJSON.
+        const gpxFile = `${posix(dirname(file))}/${track.name}.gpx`;
+        const geojsonFile = `${posix(dirname(file))}/${track.name}.geojson`;
+        writeOutput(outDir, gpxFile, track.bytes);
+        writeOutput(outDir, geojsonFile, `${JSON.stringify(track.summary.geojson)}
+`);
+        const { summary } = track;
+        manifestTracks.push({
+          title: summary.title,
+          source: posix(relative(config.dir, track.path)),
+          gpx: `${url}${encodeURIComponent(track.name)}.gpx`,
+          geojson: `${url}${encodeURIComponent(track.name)}.geojson`,
+          distanceMeters: Math.round(summary.distance),
+          elevationGainMeters: summary.elevationGain === null ? null : Math.round(summary.elevationGain),
+          highest:
+            summary.highest === null
+              ? null
+              : {
+                  elevationMeters: Math.round(summary.highest.elevation),
+                  latitude: summary.highest.latitude,
+                  longitude: summary.highest.longitude,
+                },
+          points: summary.points,
+          simplifiedPoints: summary.simplifiedPoints,
+          bounds: summary.bounds,
+        });
+      }
       manifestPosts.push({
         blog: blog.id,
         slug: post.slug,
@@ -1068,6 +1135,7 @@ async function buildSite(config, site, options, outRoot, version, report) {
         series: view.series
           ? { slug: view.series.slug, number: view.series.number, count: view.series.count }
           : null,
+        tracks: manifestTracks,
       });
     }
 
@@ -1424,8 +1492,13 @@ async function buildSite(config, site, options, outRoot, version, report) {
 
   /** @type {import('./report.js').ExactLocation[]} */
   const exactLocations = [...pageImages.values()]
-    .filter((page) => page.exact.size > 0)
-    .map((page) => ({ site: site.id, file: page.shown, images: page.exact.size }))
+    .filter((page) => page.exact.size > 0 || page.tracks > 0)
+    .map((page) => ({
+      site: site.id,
+      file: page.shown,
+      images: page.exact.size,
+      ...(page.tracks > 0 ? { tracks: page.tracks } : {}),
+    }))
     .sort((a, b) => (a.file < b.file ? -1 : a.file > b.file ? 1 : 0));
 
   return {
