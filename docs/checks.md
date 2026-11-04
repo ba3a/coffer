@@ -23,6 +23,7 @@ The build writes a manifest (`.coffer-manifest.json`) into each site's output; t
 - **Preview metadata.** Every HTML page except the redirect stubs for old slugs has a non-empty `<title>`, `description`, canonical link, `og:title`, `og:image` and `twitter:card`. The canonical link of a page the manifest lists must be that page's address on `baseUrl`, and the `og:image` must be served by the output when it is on the site. See [SEO and link previews](seo.md).
 - **Feeds.** Every feed in the manifest exists and passes the [local validator](feeds.md) (well-formed Atom with the elements and dates RFC 4287 requires, absolute URLs and a correct self link).
 - **Sitemap.** `sitemap.xml` lists exactly the addresses the manifest says it should, and each of them is served.
+- **Image metadata.** Every image the manifest lists is read back (the viewer JPEG with exifr, the WebP variants with sharp) and compared with the [location and camera policy](location-policy.md) the manifest records for it: with `location: strip` no position anywhere; with `coarse` the viewer JPEG's position is the original's rounded to two decimals; with `keep` it is the original's; with `camera: strip` no camera fields; with `camera: keep` the fields the manifest lists; no EXIF, XMP or IPTC data in a WebP variant, and no XMP or IPTC in the viewer JPEG. The original is found through the configuration and is the reference when it is unchanged since the build (same hash); otherwise the check holds the files to what the manifest says. A failure names the file and what is wrong, and never prints a coordinate, so the log of a check does not give away what the policy hides.
 
 ## The W3C feed validator
 
@@ -41,4 +42,4 @@ const result = await checkOutput(loadConfig({ configPath: 'coffer.yaml' }), { ou
 for (const failure of result.failures) console.error(`${failure.site}/${failure.file}: ${failure.message}`);
 ```
 
-`checkOutput` resolves to `{ sites, failures, warnings }`; every finding has a `site`, a `file` relative to the site's output directory and a `message`. `checkSite(outDir, siteId)` checks one directory without a configuration.
+`checkOutput` resolves to `{ sites, failures, warnings }`; every finding has a `site`, a `file` relative to the site's output directory and a `message`. `checkSite(outDir, siteId, { rootDir })` checks one directory without a configuration and returns a promise; `rootDir` is where the originals are (the directory of the configuration file) and may be left out.

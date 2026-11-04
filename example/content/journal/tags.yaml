@@ -9,3 +9,6 @@ workshop/boxes:
 trips/mountains:
   name: Mountains
   description: Walking days in the hills.
+  # Photos of walking days may publish where they were taken and with what.
+  location: keep
+  camera: keep

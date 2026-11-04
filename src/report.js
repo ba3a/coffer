@@ -22,15 +22,47 @@ export const REPORT_FILE_NAME = 'report.json';
  */
 
 /**
- * What a build reports, in three sections: `errors` fail the build, `warnings`
- * are worth fixing and `info` is for the record.
+ * A page whose images publish their exact location.
+ *
+ * @typedef {object} ExactLocation
+ * @property {string} site Id of the site.
+ * @property {string} file Path of the post (or other page source), relative to the configuration file, with forward slashes.
+ * @property {number} images Number of its distinct images whose published file carries the exact position.
+ */
+
+/**
+ * What a build reports: `errors` fail the build, `warnings` are worth fixing,
+ * `exactLocations` lists the posts that publish exact locations, and `info` is
+ * for the record.
  *
  * @typedef {object} ReportData
  * @property {number} reportVersion
  * @property {ReportIssue[]} errors
  * @property {ReportIssue[]} warnings
+ * @property {ExactLocation[]} exactLocations
  * @property {ReportIssue[]} info
  */
+
+/** Heading of the section that lists the posts that publish exact locations. */
+export const EXACT_LOCATIONS_TITLE = 'Posts publishing exact locations';
+
+/**
+ * The section "Posts publishing exact locations" as text: the heading with the
+ * number of posts, then one line per post with its image count. With none, a
+ * single line says so.
+ *
+ * @param {readonly ExactLocation[]} entries
+ * @returns {string} Lines ending in a newline.
+ */
+export function formatExactLocations(entries) {
+  if (entries.length === 0) return `${EXACT_LOCATIONS_TITLE}: none\n`;
+  // Two sites can share content files, so the site is named when there are several.
+  const several = new Set(entries.map((entry) => entry.site)).size > 1;
+  const lines = entries.map(
+    (entry) => `  ${several ? `${entry.site}: ` : ''}${entry.file}: ${entry.images} image(s)`,
+  );
+  return `${EXACT_LOCATIONS_TITLE} (${entries.length})\n${lines.join('\n')}\n`;
+}
 
 /**
  * Raised at the end of a build that found errors. Every error is listed in
@@ -78,6 +110,17 @@ export class Report {
     this.warnings = [];
     /** @type {ReportIssue[]} */
     this.info = [];
+    /** @type {ExactLocation[]} */
+    this.exactLocations = [];
+  }
+
+  /**
+   * @param {ExactLocation} entry A post that publishes exact locations.
+   * @returns {this}
+   */
+  addExactLocation(entry) {
+    this.exactLocations.push({ ...entry });
+    return this;
   }
 
   /**
@@ -122,6 +165,7 @@ export class Report {
       reportVersion: REPORT_VERSION,
       errors: this.errors,
       warnings: this.warnings,
+      exactLocations: this.exactLocations,
       info: this.info,
     };
   }
@@ -134,18 +178,20 @@ export class Report {
   format() {
     /** @type {string[]} */
     const lines = [];
-    /** @type {[string, ReportIssue[]][]} */
-    const sections = [
-      ['Errors', this.errors],
-      ['Warnings', this.warnings],
-      ['Info', this.info],
-    ];
-    for (const [title, issues] of sections) {
-      if (issues.length === 0) continue;
+    /** @param {string} title @param {ReportIssue[]} issues */
+    const addSection = (title, issues) => {
+      if (issues.length === 0) return;
       if (lines.length > 0) lines.push('');
       lines.push(`${title} (${issues.length})`);
       for (const issue of issues) lines.push(`  ${formatIssue(issue)}`);
+    };
+    addSection('Errors', this.errors);
+    addSection('Warnings', this.warnings);
+    if (this.exactLocations.length > 0) {
+      if (lines.length > 0) lines.push('');
+      lines.push(...formatExactLocations(this.exactLocations).trimEnd().split('\n'));
     }
+    addSection('Info', this.info);
     return lines.length === 0 ? '' : `${lines.join('\n')}\n`;
   }
 

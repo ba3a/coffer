@@ -38,8 +38,9 @@ Every build writes `.coffer/report.json` beside the configuration file (the `rep
   "reportVersion": 1,
   "errors": [{ "site": "workshop", "file": "content/journal/foo/index.md", "line": 12, "column": 5, "message": "broken link '../bar/'" }],
   "warnings": [{ "site": "workshop", "message": "content/journal/foo/index.md: cover: \"x.jpg\" does not exist; using a generated card" }],
+  "exactLocations": [{ "site": "workshop", "file": "content/journal/mountain-weekend.md", "images": 1 }],
   "info": [{ "site": "workshop", "message": "6 post(s), 12 page(s) built" }]
 }
 ```
 
-`errors` fail the build, `warnings` are worth fixing and `info` is for the record. The report is written whether the build succeeds or fails. In code, `Report`, `ReportError` and `formatIssue` from `src/report.js` are the same pieces later checks use to report their findings.
+`errors` fail the build, `warnings` are worth fixing, `exactLocations` lists the posts whose published images carry an exact position (post file and image count, see [Location and camera metadata](location-policy.md#what-the-build-does-with-the-decision)) and `info` is for the record. The report is written whether the build succeeds or fails. In code, `Report`, `ReportError` and `formatIssue` from `src/report.js` are the same pieces later checks use to report their findings.

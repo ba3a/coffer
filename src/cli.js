@@ -12,7 +12,7 @@ import { TagsError } from './content/tags.js';
 import { FontError } from './font-metrics.js';
 import { MarkdownError } from './markdown/render.js';
 import { I18nError } from './render/i18n.js';
-import { ReportError } from './report.js';
+import { ReportError, formatExactLocations } from './report.js';
 import { DEFAULT_PORT, startServer } from './serve.js';
 import { readVersion } from './version.js';
 
@@ -234,6 +234,9 @@ const commands = {
           `${result.id}: ${posts.length} post(s), ${pages.length} page(s) -> ${result.outDir}\n`,
         );
       }
+      // Every build says which posts publish exact locations, so that a mistake
+      // in a policy is seen before the site is pushed.
+      io.out(formatExactLocations(results.flatMap((result) => result.exactLocations)));
       return 0;
     } catch (error) {
       if (
@@ -280,7 +283,7 @@ const commands = {
       for (const site of result.sites) {
         const problems = site.failures.length;
         io.out(
-          `${site.site}: ${site.checked.pages} page(s), ${site.checked.feeds} feed(s) checked, ` +
+          `${site.site}: ${site.checked.pages} page(s), ${site.checked.feeds} feed(s), ${site.checked.images} image(s) checked, ` +
             `${problems === 0 ? 'no failures' : `${problems} failure(s)`}\n`,
         );
       }

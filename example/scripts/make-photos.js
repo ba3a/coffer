@@ -7,11 +7,15 @@
 // It overwrites the small JPEG files below `example/content`; they are committed,
 // so a fresh clone does not need to run it.
 //
-// - dovetail-joint.jpg and marking-gauge.jpg: plain landscape pictures.
+// - dovetail-joint.jpg: a landscape picture with a made-up GPS position, the
+//   workshop. Its post says `location: coarse`, so the published file carries
+//   the position only rounded to about a kilometre.
+// - marking-gauge.jpg: a plain landscape picture.
 // - ridge.jpg: a portrait picture stored sideways with the EXIF orientation 6,
-//   as phones do, and a made-up GPS position. It shows how the pipeline turns
-//   it upright, reads its true size and (in later steps) applies the location
-//   policy. The place is invented; it points at no real location of interest.
+//   as phones do, with a made-up GPS position and a made-up camera. Its post
+//   is tagged `trips/mountains`, which says `location: keep` and
+//   `camera: keep`, so the viewer JPEG carries both. The places are invented;
+//   they point at no real location of interest.
 
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
@@ -128,7 +132,21 @@ function jpegOf(svg) {
   return sharp(Buffer.from(svg)).jpeg({ quality: JPEG_QUALITY, mozjpeg: true }).toBuffer();
 }
 
-save('journal/first-dovetail/dovetail-joint.jpg', await jpegOf(dovetailSvg()));
+// The made-up position of the workshop is 52 deg 23' 31.7" N, 9 deg 43' 37.4" E.
+save(
+  'journal/first-dovetail/dovetail-joint.jpg',
+  await sharp(Buffer.from(dovetailSvg()))
+    .jpeg({ quality: JPEG_QUALITY, mozjpeg: true })
+    .withExif({
+      IFD3: {
+        GPSLatitudeRef: 'N',
+        GPSLatitude: '52/1 23/1 317/10',
+        GPSLongitudeRef: 'E',
+        GPSLongitude: '9/1 43/1 374/10',
+      },
+    })
+    .toBuffer(),
+);
 save('journal/first-dovetail/marking-gauge.jpg', await jpegOf(gaugeSvg()));
 
 // A phone holds the camera upright, stores the sensor's landscape picture and

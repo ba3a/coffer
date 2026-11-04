@@ -4,6 +4,8 @@ date: 2025-03-14
 tags: [workshop/boxes/dovetails]
 aliases: [dovetail-diary]
 series: boxes-by-hand
+# The photos were taken in the workshop at home: publish only the area.
+location: coarse
 summary: Six attempts, one tidy joint, and what the saw taught me about patience.
 ---
 

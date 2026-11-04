@@ -9,6 +9,7 @@ import {
   DEFAULT_WEBP_QUALITY,
   DEFAULT_WIDTHS as DEFAULT_IMAGE_WIDTHS,
 } from './images/defaults.js';
+import { CAMERA_POLICIES, LOCATION_POLICIES } from './images/policy.js';
 
 /**
  * The file name coffer looks for when no `--config` path is given.
@@ -150,8 +151,6 @@ export const DEFAULT_IMAGE = '/assets/social-default.png';
 export const DEFAULT_FEED_LIMIT = 20;
 
 const IMAGE_KEYS = ['widths', 'viewerMaxEdge', 'webpQuality', 'jpegQuality', 'sizes'];
-const LOCATION_POLICIES = ['strip', 'coarse', 'keep'];
-const CAMERA_POLICIES = ['strip', 'keep'];
 const SITE_KEYS = [
   'id',
   'baseUrl',

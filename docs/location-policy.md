@@ -100,3 +100,19 @@ Values of `tags.yaml` and the site configuration are checked for every entry, wh
 | `image`  | The key in the post's `images` map.                                              |
 
 `describeSource(source)` turns a source into words for a report. The module reads no files and changes no images; the pipeline applies the decision.
+
+## What the build does with the decision
+
+The build resolves the policy of every image of every post, of the cover and of the home page, and gives it to the image pipeline, which applies it to the viewer JPEG (see [What the files carry](images.md#what-the-files-carry)). The WebP variants never carry metadata.
+
+- A wrong value fails the build with the file and the key, as above. The images are then published without any metadata, so the other problems of the build are still reported.
+- An entry of a post's `images` map that no image of the post uses is a warning: `journal/trip/index.md: images: "IMG_1043.jpg" matches no image of the post`. A misspelt file name would otherwise leave the image with the policy of the post.
+- The build report lists the **posts that publish exact locations**, with the number of images in each whose published file carries the exact position (in `.coffer/report.json` as `exactLocations`), and `coffer build` prints the list after every build:
+
+  ```
+  Posts publishing exact locations (1)
+    content/journal/mountain-weekend.md: 1 image(s)
+  ```
+
+  Without such a post it prints `Posts publishing exact locations: none`. Only images that really have a position count: a post with `location: keep` whose photos have none is not listed.
+- The manifest records each image's policy and the coordinates it publishes, see [Images](images.md#the-manifest). `coffer check` reads the published files back and fails when they do not match, see [Checking a finished build](checks.md).

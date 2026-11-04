@@ -32,6 +32,7 @@ import {
 import { applyLinkRewrites, checkSourceLinks, listProjectSlugs } from './check/source-links.js';
 import { IMAGE_EXTENSIONS } from './images/defaults.js';
 import { IMAGES_CACHE_DIR, ImageError, createImagePipeline, imageFileUrl, pickVariant } from './images/pipeline.js';
+import { PolicyError, createPolicyResolver, findImageOverride } from './images/policy.js';
 import { buildMeta } from './meta.js';
 import { renderMarkdown } from './markdown/render.js';
 import {
@@ -191,7 +192,18 @@ export class BuildError extends Error {
  * @property {string} sha256 Hash of the original.
  * @property {number} width Upright width of the original.
  * @property {number} height Upright height of the original.
+ * @property {ManifestImagePolicy} policy The metadata policy the image was published under, and where each setting came from.
+ * @property {import('./images/metadata.js').PublishedPosition | null} gps The position the viewer JPEG carries, which is what a map may show: the exact one (`precision: "exact"`), a rounded one (`"coarse"`) or none. It is never more precise than the policy allows, and no other file carries a position.
+ * @property {import('./images/metadata.js').CameraFields | null} camera The camera fields the viewer JPEG carries, or null.
  * @property {ManifestImageOutput[]} outputs The variants, narrowest first, then the viewer image.
+ */
+
+/**
+ * The effective metadata policy of an image, one decision per setting.
+ *
+ * @typedef {object} ManifestImagePolicy
+ * @property {import('./images/policy.js').PolicyDecision<'strip' | 'coarse' | 'keep'>} location
+ * @property {import('./images/policy.js').PolicyDecision<'strip' | 'keep'>} camera
  */
 
 /**
@@ -233,6 +245,7 @@ export class BuildError extends Error {
  * @property {string[]} warnings
  * @property {{ generated: number, reused: number }} cards Title cards drawn by this build, and cards found in the cache.
  * @property {{ generated: number, reused: number }} images Images processed by this build, and images found in the cache.
+ * @property {import('./report.js').ExactLocation[]} exactLocations The posts (and other pages) whose published images carry exact positions, by file.
  */
 
 /**
@@ -486,16 +499,152 @@ async function buildSite(config, site, options, outRoot, version, report) {
   const recordedImages = new Set();
 
   /**
+   * What decides the metadata policy of the images of one page source: a post,
+   * or the home page. Created by `pageImagesOf`.
+   *
+   * @typedef {object} PageImages
+   * @property {string} shown Path of the source file, relative to the configuration file.
+   * @property {(reference: string) => import('./images/policy.js').ImagePolicy} policyFor The metadata policy of an image, given as the page refers to it (a Markdown address, or the cover).
+   * @property {ReadonlyMap<string, import('./images/policy.js').ImageOverride>} overrides The page's `images:` map.
+   * @property {Set<string>} used Keys of `overrides` that matched an image.
+   * @property {Set<string>} exact Originals of the page whose published file carries the exact position.
+   */
+
+  /**
+   * The stand-in for a policy that cannot be resolved because of a mistake that
+   * has been reported: nothing is published.
+   *
+   * @type {import('./images/policy.js').ImagePolicy}
+   */
+  const strictestPolicy = {
+    location: { value: 'strip', source: { level: 'site', origin: null } },
+    camera: { value: 'strip', source: { level: 'site', origin: null } },
+  };
+
+  /**
+   * Adds the errors of a policy problem to the report. Each message starts with
+   * the file and names the setting.
+   *
+   * @param {PolicyError} error
+   */
+  const reportPolicyError = (error) => {
+    for (const message of error.errors) report.addError({ site: site.id, message });
+  };
+
+  /**
+   * Creates the function that resolves the metadata policy of the images of a
+   * blog, from the site settings and the blog's `tags.yaml`. A wrong value is
+   * reported once; the images of the blog are then published without any
+   * metadata so that the other problems of the build are still found.
+   *
+   * @param {ReadonlyMap<string, import('./content/tags.js').TagMeta>} tags
+   * @param {string | null} tagsFile Absolute path of `tags.yaml`, or null when the blog has none.
+   * @returns {((post: import('./images/policy.js').PolicyPost, image?: string) => import('./images/policy.js').ImagePolicy) | null} Null when the settings are wrong.
+   */
+  const createResolver = (tags, tagsFile) => {
+    try {
+      return createPolicyResolver({
+        site: site.location,
+        tags,
+        tagsFile: tagsFile === null ? 'tags.yaml' : posix(relative(config.dir, tagsFile)),
+      });
+    } catch (error) {
+      if (!(error instanceof PolicyError)) throw error;
+      reportPolicyError(error);
+      return null;
+    }
+  };
+
+  /**
+   * Prepares the policy of the images of one page source.
+   *
+   * @param {string} sourceFile Absolute path of the Markdown file.
+   * @param {Post | null} post The post, or null for a page that has no front matter for the policy (the home page).
+   * @param {ReturnType<typeof createResolver>} resolver
+   * @returns {PageImages}
+   */
+  const pageImagesOf = (sourceFile, post, resolver) => {
+    const shown = posix(relative(config.dir, sourceFile));
+    /** @type {import('./images/policy.js').PolicyPost} */
+    const policyPost = {
+      file: shown,
+      tags: post?.tags ?? [],
+      location: post?.location ?? null,
+      camera: post?.camera ?? null,
+      images: post?.images ?? new Map(),
+    };
+    let usable = resolver !== null;
+    if (resolver !== null) {
+      // Everything the post says about the policy is checked now, whether or
+      // not an image uses it, so that a typo in the front matter fails the build.
+      try {
+        resolver(policyPost);
+      } catch (error) {
+        if (!(error instanceof PolicyError)) throw error;
+        reportPolicyError(error);
+        usable = false;
+      }
+    }
+    /** @type {Set<string>} */
+    const used = new Set();
+    return {
+      shown,
+      overrides: policyPost.images,
+      used,
+      exact: new Set(),
+      policyFor: (reference) => {
+        const found = findImageOverride(policyPost.images, reference);
+        if (found !== null) used.add(found.key);
+        return usable && resolver !== null ? resolver(policyPost, reference) : strictestPolicy;
+      },
+    };
+  };
+
+  /**
+   * The page sources of the site, by absolute path of the Markdown file.
+   *
+   * @type {Map<string, PageImages>}
+   */
+  const pageImages = new Map();
+
+  /**
+   * Warns about entries of a page's `images:` map that no image of the page uses.
+   *
+   * @param {PageImages} page
+   */
+  const warnUnusedImageEntries = (page) => {
+    for (const key of page.overrides.keys()) {
+      if (!page.used.has(key)) {
+        warnings.push(`${page.shown}: images: "${key}" matches no image of the post`);
+      }
+    }
+  };
+
+  /**
+   * The path in an image address, without a query or a fragment.
+   *
+   * @param {string} address
+   * @returns {string}
+   */
+  const addressPath = (address) => {
+    const cut = address.search(/[?#]/);
+    return cut < 0 ? address : address.slice(0, cut);
+  };
+
+  /**
    * Publishes a processed image and lists it in the manifest.
    *
    * @param {import('./images/pipeline.js').ProcessedImage} processed
    * @param {string} pageUrl Site-relative URL of the page that uses the image.
    * @param {'body' | 'cover'} use
+   * @param {PageImages} page The page source that uses the image.
+   * @param {import('./images/policy.js').ImagePolicy} policy The decision the image was processed under.
    * @returns {import('./images/pipeline.js').ImageFile} The variant that stands in for the picture where no `srcset` is understood.
    */
-  const publishImage = (processed, pageUrl, use) => {
+  const publishImage = (processed, pageUrl, use, page, policy) => {
     images.publish(processed, outDir);
-    const id = `${processed.source}\n${pageUrl}\n${use}`;
+    if (processed.gps?.precision === 'exact') page.exact.add(processed.source);
+    const id = `${processed.source}\n${pageUrl}\n${use}\n${processed.key}`;
     if (!recordedImages.has(id)) {
       recordedImages.add(id);
       /**
@@ -515,6 +664,9 @@ async function buildSite(config, site, options, outRoot, version, report) {
         sha256: processed.sha256,
         width: processed.width,
         height: processed.height,
+        policy: { location: policy.location, camera: policy.camera },
+        gps: processed.gps,
+        camera: processed.camera,
         outputs: [
           ...processed.variants.map((entry) => output(entry, 'variant', 'image/webp')),
           output(processed.viewer, 'viewer', 'image/jpeg'),
@@ -535,8 +687,7 @@ async function buildSite(config, site, options, outRoot, version, report) {
    */
   const localImageFile = (sourceFile, address) => {
     if (/^[a-z][a-z0-9+.-]*:/i.test(address) || address.startsWith('/')) return null;
-    const cut = address.search(/[?#]/);
-    const raw = cut < 0 ? address : address.slice(0, cut);
+    const raw = addressPath(address);
     let path = raw;
     try {
       path = decodeURIComponent(raw);
@@ -556,9 +707,10 @@ async function buildSite(config, site, options, outRoot, version, report) {
    *
    * @param {string} sourceFile Markdown file of the text.
    * @param {string} pageUrl Site-relative URL of the page the text appears on.
+   * @param {PageImages} page Decides the metadata policy of the images.
    * @returns {import('./markdown/render.js').ImageOptions}
    */
-  const imageOptionsFor = (sourceFile, pageUrl) => {
+  const imageOptionsFor = (sourceFile, pageUrl, page) => {
     const shown = posix(relative(config.dir, sourceFile));
     return {
       sizes: site.images.sizes,
@@ -577,8 +729,9 @@ async function buildSite(config, site, options, outRoot, version, report) {
           return null;
         }
         try {
-          const processed = await images.process(file);
-          const standIn = publishImage(processed, pageUrl, 'body');
+          const policy = page.policyFor(addressPath(src));
+          const processed = await images.process(file, { location: policy.location.value, camera: policy.camera.value });
+          const standIn = publishImage(processed, pageUrl, 'body', page, policy);
           return {
             src: imageFileUrl(processed, standIn),
             width: standIn.width,
@@ -618,8 +771,10 @@ async function buildSite(config, site, options, outRoot, version, report) {
       warnings.push(`${shown}: cover: "${cover}" does not exist; using a generated card`);
     } else {
       try {
-        const processed = await images.process(source);
-        return imageFileUrl(processed, publishImage(processed, url, 'cover'));
+        const page = /** @type {PageImages} */ (pageImages.get(post.file));
+        const policy = page.policyFor(addressPath(cover));
+        const processed = await images.process(source, { location: policy.location.value, camera: policy.camera.value });
+        return imageFileUrl(processed, publishImage(processed, url, 'cover', page, policy));
       } catch (error) {
         if (!(error instanceof ImageError)) throw error;
         warnings.push(`${shown}: cover: "${cover}": ${error.message}; using a generated card`);
@@ -648,26 +803,32 @@ async function buildSite(config, site, options, outRoot, version, report) {
 
   // Every post of every blog is read and rendered first, so that links between posts
   // can be resolved before any page is written.
-  /** @type {Map<string, { selected: Post[], rendered: Map<Post, RenderedPost> }>} */
+  /** @type {Map<string, { selected: Post[], rendered: Map<Post, RenderedPost>, tagMeta: ReturnType<typeof loadTagMeta> }>} */
   const prepared = new Map();
   /** @type {import('./check/source-links.js').SourcePost[]} */
   const sourcePosts = [];
   for (const blog of site.blogs) {
     const found = discoverPosts(blog.dir, { timezone: site.timezone });
     const selected = found.filter((post) => isPublished(post, { now, drafts }));
+    // The tags decide the metadata policy of the images, so they are read
+    // before the first image is processed.
+    const tagMeta = loadTagMeta(blog.dir);
+    const resolver = createResolver(tagMeta.meta, tagMeta.file);
     /** @type {Map<Post, RenderedPost>} */
     const rendered = new Map();
     for (const post of selected) {
+      const page = pageImagesOf(post.file, post, resolver);
+      pageImages.set(post.file, page);
       rendered.set(
         post,
         await renderMarkdown(post.body, {
           file: post.file,
           startLine: post.bodyLine,
-          images: imageOptionsFor(post.file, postUrl(blog, post.slug)),
+          images: imageOptionsFor(post.file, postUrl(blog, post.slug), page),
         }),
       );
     }
-    prepared.set(blog.id, { selected, rendered });
+    prepared.set(blog.id, { selected, rendered, tagMeta });
     for (const post of found) {
       sourcePosts.push({ post, url: postUrl(blog, post.slug), rendered: rendered.get(post) ?? null });
     }
@@ -687,7 +848,7 @@ async function buildSite(config, site, options, outRoot, version, report) {
   }
 
   for (const blog of site.blogs) {
-    const { selected, rendered: renderedPosts } = /** @type {{ selected: Post[], rendered: Map<Post, RenderedPost> }} */ (
+    const { selected, rendered: renderedPosts, tagMeta } = /** @type {{ selected: Post[], rendered: Map<Post, RenderedPost>, tagMeta: ReturnType<typeof loadTagMeta> }} */ (
       prepared.get(blog.id)
     );
 
@@ -703,7 +864,6 @@ async function buildSite(config, site, options, outRoot, version, report) {
         `a post with the slug "${FEED_FILE_NAME}" in the blog "${blog.id}" would collide with the blog's feed (${feedUrlFor(blogBase)}); rename the post`,
       );
     }
-    const tagMeta = loadTagMeta(blog.dir);
     const tagTree = buildTagTree(selected);
     const clashingTag = tagTree.all.find((node) => node.path.includes('/') && node.path.split('/').pop() === FEED_FILE_NAME);
     if (clashingTag) {
@@ -817,6 +977,7 @@ async function buildSite(config, site, options, outRoot, version, report) {
         seriesOf.get(post) ?? null,
       );
       const previewImage = await previewImageOf(post, url);
+      warnUnusedImageEntries(/** @type {PageImages} */ (pageImages.get(post.file)));
       const html = templates.render('post.njk', {
         site,
         nav,
@@ -1090,13 +1251,18 @@ async function buildSite(config, site, options, outRoot, version, report) {
       );
     }
   } else {
-    const rendered = home
-      ? await renderMarkdown(home.body, {
-          file: home.file,
-          startLine: home.bodyLine,
-          images: imageOptionsFor(home.file, '/'),
-        })
-      : null;
+    // The home page has no front matter for the metadata policy: the site's
+    // settings apply to its images.
+    const homePage = home ? pageImagesOf(home.file, null, createResolver(new Map(), null)) : null;
+    if (home && homePage) pageImages.set(home.file, homePage);
+    const rendered =
+      home && homePage
+        ? await renderMarkdown(home.body, {
+            file: home.file,
+            startLine: home.bodyLine,
+            images: imageOptionsFor(home.file, '/', homePage),
+          })
+        : null;
     const firstBlog = site.blogs[0];
     const latest = firstBlogPosts.slice(0, home?.latestPosts ?? DEFAULT_LATEST_POSTS);
     const title = home?.title ?? site.title;
@@ -1208,7 +1374,21 @@ async function buildSite(config, site, options, outRoot, version, report) {
   };
   writeFileSync(join(outDir, MANIFEST_FILE_NAME), `${JSON.stringify(manifest, null, 2)}\n`);
 
-  return { id: site.id, outDir, manifest, warnings, cards: { ...cards.stats }, images: { ...images.stats } };
+  /** @type {import('./report.js').ExactLocation[]} */
+  const exactLocations = [...pageImages.values()]
+    .filter((page) => page.exact.size > 0)
+    .map((page) => ({ site: site.id, file: page.shown, images: page.exact.size }))
+    .sort((a, b) => (a.file < b.file ? -1 : a.file > b.file ? 1 : 0));
+
+  return {
+    id: site.id,
+    outDir,
+    manifest,
+    warnings,
+    cards: { ...cards.stats },
+    images: { ...images.stats },
+    exactLocations,
+  };
 }
 
 /**
@@ -1287,6 +1467,7 @@ export async function buildSites(config, options = {}) {
     for (const site of sites) {
       const result = await buildSite(config, site, options, outRoot, version, report);
       for (const message of result.warnings) report.addWarning({ site: result.id, message });
+      for (const entry of result.exactLocations) report.addExactLocation(entry);
       report.addInfo({
         site: result.id,
         message: `${result.manifest.posts.length} post(s), ${result.manifest.pages.length} page(s) built`,

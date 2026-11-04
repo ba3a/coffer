@@ -1,6 +1,6 @@
 # Images
 
-Drop the originals next to the post and refer to them in Markdown. coffer resizes every image a post uses, publishes the small versions and never the original. This page describes what the build makes, what the pages look like and how to tune it. Which location and camera metadata an image may publish is decided by a policy described in [Location and camera metadata](location-policy.md); until the policy is applied to the files, every published file is stripped of all metadata.
+Drop the originals next to the post and refer to them in Markdown. coffer resizes every image a post uses, publishes the small versions and never the original. This page describes what the build makes, what the pages look like and how to tune it. Which location and camera metadata an image may publish is decided by a policy described in [Location and camera metadata](location-policy.md); [What the files carry](#what-the-files-carry) below says what the build then writes.
 
 ## Using images
 
@@ -28,7 +28,7 @@ iPhones and many Android phones save photos as HEIC (`.heic` or `.heif`). You ca
 sharp's prebuilt binaries cannot read HEIC, so coffer detects the format by the first bytes of the file (an `ftyp` box with a HEVC brand such as `heic`, whatever the file is called) and decodes it with [heic-decode](https://github.com/catdad-experiments/heic-decode), which is [libheif](https://github.com/strukturag/libheif) compiled to WebAssembly. The raw pixels are then handed to sharp. Nothing has to be installed on your machine.
 
 - **Orientation.** The rotation and mirroring that a phone stores in the file (the `irot` and `imir` properties) are applied by the decoder, so the published files are upright. When a file has neither property but an Exif orientation, [exifr](https://github.com/MikeKovarik/exifr) reads it and coffer turns the pixels accordingly. When the file has such a property the Exif orientation is ignored, as the HEIF standard says, so a picture is never turned twice.
-- **Metadata.** As for every image, nothing is copied: no Exif, no GPS position, no camera fields.
+- **Metadata.** As for every image, the position and the camera fields are read from the Exif item (with exifr) and published only as the metadata policy allows; see [What the files carry](#what-the-files-carry).
 - **Errors.** A HEIC file that cannot be decoded (damaged, cut short, or using a HEIF feature that libheif-js lacks) fails the build. The message names the file and says what to do, for example `image 'IMG_4021.HEIC': cannot decode the HEIC image "IMG_4021.HEIC": Could not parse HEIF file ...; convert the file to JPEG or PNG (for example by exporting it from your photo app) and use that instead`. A file called `.heic` that is not HEIC at all fails the same way. As with other formats, a damaged `cover` is a warning, and the post gets a generated card instead.
 - **Limits.**
   - Only the first (primary) picture of a file is used: no burst sequences, Live Photo videos, depth maps or HDR gain maps.
@@ -51,10 +51,28 @@ For every image, in the `img/{key}/` folder of the site's output (the `{key}` is
 `{name}` comes from the file name of the original, in lower case with anything but letters and digits turned into hyphens. The original is never copied to the output.
 
 - The **EXIF orientation** is applied: a photo that a phone stored sideways with orientation 6 is published upright, and the size recorded for it (and written into the page) is the upright size.
-- All published files are stripped of metadata: no EXIF, no GPS position, no camera fields, no colour profile (pixels are converted to sRGB first).
+- **The WebP variants never carry metadata**: no EXIF, no GPS position, no camera fields, no colour profile (pixels are converted to sRGB first). The viewer JPEG carries only what the metadata policy allows, see below.
 - Transparency in a PNG is kept in the WebP variants; the viewer JPEG has a white background.
 
 The default widths are 480, 800, 1200, 1600 and 2400 pixels and the viewer image is capped at 3200 pixels; see [`images`](configuration.md#images) to change them. An original of 3000 by 2000 pixels gets variants at 480, 800, 1200, 1600 and 2400 and a viewer JPEG at 3000 by 2000; one of 700 by 500 gets 480 and 700 and a viewer JPEG at 700 by 500.
+
+## What the files carry
+
+Before an image is processed, coffer decides its policy (see [Location and camera metadata](location-policy.md)): a `location` of `strip`, `coarse` or `keep`, and a `camera` of `strip` or `keep`. The WebP variants always carry nothing. The full-size viewer JPEG carries:
+
+| Policy               | What the viewer JPEG has                                                                                                                  |
+| -------------------- | ----------------------------------------------------------------------------------------------------------------------------------------- |
+| `location: strip`  | No position.                                                                                                                              |
+| `location: coarse` | The position rounded to two decimals of a degree, about a kilometre (for example 47.0123, 11.0456 becomes 47.01, 11.05).                  |
+| `location: keep`   | The exact position.                                                                                                                       |
+| `camera: strip`    | No camera fields.                                                                                                                         |
+| `camera: keep`     | Make, model, lens make and model, exposure time, f-number, ISO and focal length (also on a 35 mm scale), for the fields the original has. |
+
+Only these fields are ever copied, and only as the policy says. The time the picture was taken, the altitude, serial numbers, the name of the owner, thumbnails, maker notes, XMP and IPTC data are never published. The orientation is applied to the pixels and is not written, so the file needs no turning.
+
+The position is read from the Exif of the original with [exifr](https://github.com/MikeKovarik/exifr) and written as the Exif GPS fields with sharp, so any program that reads Exif (including exifr) reads back what the policy allows. A picture that has no position, or whose format exifr cannot read a position from (a WebP or PNG original, for example), publishes none whatever the policy says. The policy is part of the cache key, so the same photo used in two posts with different policies is published twice, in two folders, and a change of policy gives the files new addresses.
+
+`coffer check` reads every published image back and fails if what it finds does not match the policy recorded in the manifest, see [Checking a finished build](checks.md).
 
 ## What the page looks like
 
@@ -109,9 +127,26 @@ Each image a page uses is listed in `.coffer-manifest.json` under `images`, so c
 
 `source` is relative to the configuration file, `post` is the address of the page that uses the image (`/` for the home page) and `use` is `body` for a Markdown image and `cover` for a post's cover. `width` and `height` are the upright size of the original. An image used by two pages has two entries.
 
+Each entry also says what was published of the image's metadata, so that maps and checks need not open the files:
+
+```json
+{
+  "policy": {
+    "location": { "value": "keep", "source": { "level": "tag", "origin": "trips/mountains" } },
+    "camera": { "value": "keep", "source": { "level": "tag", "origin": "trips/mountains" } }
+  },
+  "gps": { "latitude": 47.012305, "longitude": 11.045611, "precision": "exact" },
+  "camera": { "make": "Examplecam", "model": "Made-up 1" }
+}
+```
+
+- `policy` is the effective policy and where each setting came from (`level` is `site`, `tag`, `post` or `image`; `origin` is the tag path, the post file relative to the configuration file, or the key in the `images` map).
+- `gps` is the position the viewer JPEG carries: `"precision": "exact"`, or `"coarse"` with the rounded coordinates, or `null`. It is never more precise than the policy allows, so a map may show it.
+- `camera` lists the camera fields the viewer JPEG carries, or is `null`.
+
 ## The example photos
 
-The example site's photographs are made up and generated, so nothing copyrighted ships with coffer. `example/scripts/make-photos.js` draws them with [sharp](https://sharp.pixelplumbing.com/) and writes small JPEGs below `example/content/`; they are committed, so you only run the script (`node example/scripts/make-photos.js` in the coffer directory) to change them. One of them, `journal/photos/ridge.jpg`, is stored sideways with EXIF orientation 6 and carries a made-up GPS position, to show what the pipeline does with a phone photo.
+The example site's photographs are made up and generated, so nothing copyrighted ships with coffer. `example/scripts/make-photos.js` draws them with [sharp](https://sharp.pixelplumbing.com/) and writes small JPEGs below `example/content/`; they are committed, so you only run the script (`node example/scripts/make-photos.js` in the coffer directory) to change them. One of them, `journal/photos/ridge.jpg`, is stored sideways with EXIF orientation 6 and carries a made-up GPS position and camera, to show what the pipeline does with a phone photo: its tag `trips/mountains` says `location: keep` and `camera: keep`, so its viewer JPEG carries both. `journal/first-dovetail/dovetail-joint.jpg` has a made-up position too, and its post says `location: coarse`, so only the rounded position is published.
 
 ## From JavaScript
 
@@ -119,8 +154,8 @@ The example site's photographs are made up and generated, so nothing copyrighted
 import { createImagePipeline } from 'coffer';
 
 const pipeline = createImagePipeline({ cacheDir: '.cache/images', widths: [480, 960] });
-const image = await pipeline.process('/abs/path/photo.jpg'); // throws ImageError for a bad file
+const image = await pipeline.process('/abs/path/photo.jpg', { location: 'coarse', camera: 'strip' }); // throws ImageError for a bad file
 pipeline.publish(image, 'dist/site');                        // copies variants and viewer image to dist/site/img/{key}/
 ```
 
-`process` returns the upright `width` and `height`, the `variants` and the `viewer` file (each with `file`, `width`, `height` and `bytes`), the cache folder `dir`, the published folder `url` and whether the files were `cached`. `pipeline.stats` counts images `generated` and `reused`.
+`process` takes the metadata policy as its second argument (both settings default to `strip`) and returns the upright `width` and `height`, the `variants` and the `viewer` file (each with `file`, `width`, `height` and `bytes`), the `policy`, the published `gps` (`{ latitude, longitude, precision }` or `null`) and `camera` fields, the cache folder `dir`, the published folder `url` and whether the files were `cached`. `pipeline.stats` counts images `generated` and `reused`.

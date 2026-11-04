@@ -121,6 +121,15 @@ export {
   pickVariant,
   variantWidths,
 } from './images/pipeline.js';
+export {
+  CAMERA_FIELDS,
+  COORDINATE_TOLERANCE,
+  exifFor,
+  publishedPosition,
+  readOriginalMetadata,
+  readPublishedMetadata,
+  roundCoordinate,
+} from './images/metadata.js';
 export { FontError, readFontMetrics } from './font-metrics.js';
 export { renderRobots, renderSitemap } from './sitemap.js';
 export {
@@ -130,13 +139,16 @@ export {
   listProjectSlugs,
 } from './check/source-links.js';
 export { checkOutput, checkSite } from './check/index.js';
+export { checkImages } from './check/output-images.js';
 export { W3C_VALIDATOR_URL, parseW3cResponse, validateFeedsOnline } from './check/w3c.js';
 export {
   REPORT_DIR_NAME,
   REPORT_FILE_NAME,
+  EXACT_LOCATIONS_TITLE,
   REPORT_VERSION,
   Report,
   ReportError,
+  formatExactLocations,
   formatIssue,
   writeReport,
 } from './report.js';

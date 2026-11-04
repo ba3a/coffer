@@ -528,7 +528,9 @@ test('a photo with EXIF orientation 6 is published upright with matching width a
     for (const output of entry.outputs) {
       const size = await sharp(join(result.outDir, ...output.file.split('/'))).metadata();
       assert.ok(size.height > size.width, `${output.file} is upright`);
-      assert.equal(size.exif, undefined, `${output.file} has no EXIF data (no position)`);
+      assert.ok(size.orientation === undefined || size.orientation === 1, `${output.file} needs no turning`);
+      // The example's tag for walking days says "keep", so the viewer JPEG has a position; variants never do.
+      assert.equal(size.exif === undefined, output.role === 'variant', `${output.file}: EXIF data only in the viewer JPEG`);
     }
   });
 });

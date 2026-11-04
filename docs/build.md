@@ -13,7 +13,7 @@ coffer build --config example/coffer.yaml --out example/dist
 | `--drafts`        | Preview mode: also build drafts and posts dated in the future (see below).                                                                                     |
 | `--now <date>`    | Pretend it is this moment. A date or a date and time, read in the site's time zone when it has no offset. The `COFFER_NOW` environment variable does the same. |
 
-The command prints one line per site and exits 0, or prints every problem it found (with the file and the field) and exits 1. The same build is available in code as `buildSites(config, options)`.
+The command prints one line per site, then the posts that publish exact locations (see [Location and camera metadata](location-policy.md#what-the-build-does-with-the-decision)), and exits 0, or prints every problem it found (with the file and the field) and exits 1. The same build is available in code as `buildSites(config, options)`.
 
 ## What is written
 
@@ -47,10 +47,10 @@ For a site `workshop` with a blog whose `prefix` is `journal`:
 - **The blog index** lists the published posts, newest first, with the date, the summary and the reading time of each.
 - **A post page** shows the title, the date, the reading time, the table of contents and the body. The table of contents is built from the `h2` and `h3` headings of posts with enough of them (see [Markdown](markdown.md)). It comes before the body in the page. On a narrow screen it is a collapsible block; on a wide screen the stylesheet puts it beside the body.
 - **Page metadata**: every page has a title, a description, a canonical address and the Open Graph and Twitter card tags for link previews, and `<html lang>` is the site's language. The build also writes `sitemap.xml` and `robots.txt`, and a title card for every page that has no image of its own (cached in `.cache/cards/`). See [SEO and link previews](seo.md).
-- **Images**: every image a post uses (a Markdown image or the cover) is rotated upright, resized into WebP variants and one full-size JPEG, stripped of metadata and cached in `.cache/images/`; the page gets a `<figure>` with `<picture>`, `srcset`, `width` and `height`, lazy loading after the first image, and a caption when the image has a title. The originals are never copied. See [Images](images.md).
+- **Images**: every image a post uses (a Markdown image or the cover) is rotated upright, resized into WebP variants and one full-size JPEG, published with the metadata its [policy](location-policy.md) allows (never in the WebP variants) and cached in `.cache/images/`; the page gets a `<figure>` with `<picture>`, `srcset`, `width` and `height`, lazy loading after the first image, and a caption when the image has a title. The originals are never copied. See [Images](images.md).
 - **Links and images** in every post are resolved before anything is written: a broken link, a missing image or an unknown `project:` reference fails the build with `file:line:column`, and relative links between posts become canonical URLs. The errors, warnings and notes of the build are also written to `.coffer/report.json`, outside the output. See [Links, images and the build report](links.md).
 - **Assets** are the files of the default theme's `assets/` folder, followed by the `assets/` folder of the site's theme, which wins on equal names. The default stylesheet is `assets/coffer.css`.
-- **Checking the result**: `coffer check` inspects the finished output for broken links and anchors, missing preview metadata, invalid feeds and a sitemap that differs from the manifest. See [Checking a finished build](checks.md).
+- **Checking the result**: `coffer check` inspects the finished output for broken links and anchors, missing preview metadata, invalid feeds, a sitemap that differs from the manifest, and published images whose location or camera metadata does not match their policy. See [Checking a finished build](checks.md).
 - An earlier build of the same site is removed first, so a post that is no longer published disappears from the output.
 
 ## Drafts and future posts
@@ -78,7 +78,7 @@ Each site's output contains `.coffer-manifest.json`, which records what the buil
 | `redirects`        | Every alias redirect: `from`, `to` (site-relative URLs) and `status`.                                          |
 | `feeds`            | Every Atom feed: `type` (`blog`, `tag` or `series`), blog id, `url`, `selfUrl` (absolute), `file`, the `page` it belongs to, `title`, number of `entries`, and the `tag` path or `series` slug. See [Feeds](feeds.md). |
 | `sitemap`          | The site-relative URLs listed in `sitemap.xml`, sorted. See [SEO and link previews](seo.md). |
-| `images`           | Every image a page uses: the `source` file, the `post` (page) that uses it, `use` (`body` or `cover`), the hash and upright size of the original, and the `outputs` made from it. See [Images](images.md). |
+| `images`           | Every image a page uses: the `source` file, the `post` (page) that uses it, `use` (`body` or `cover`), the hash and upright size of the original, the metadata `policy` it was published under, the published `gps` position and `camera` fields, and the `outputs` made from it. See [Images](images.md). |
 
 The manifest is for checks and not for visitors. It is excluded from deployment by its name, `.coffer-manifest.json` (exported as `MANIFEST_FILE_NAME`; `DEPLOY_EXCLUDES` lists every name a deployment must skip). Leave it out when uploading the output to a host.
 

@@ -6,6 +6,7 @@ import { absoluteUrl } from '../feeds.js';
 import { listHtmlUrls } from '../html-urls.js';
 import { XmlError, parseXml } from '../xml.js';
 import { validateFeed } from './feed-validator.js';
+import { checkImages } from './output-images.js';
 import { checkHtmlLinks, checkLinkTarget, createOutputResolver, urlForHtmlFile } from './output-links.js';
 import { pagePreviewProblems, readPageHead } from './output-meta.js';
 import { validateFeedsOnline } from './w3c.js';
@@ -30,7 +31,7 @@ import { validateFeedsOnline } from './w3c.js';
  * @property {string} site
  * @property {string} outDir
  * @property {Finding[]} failures
- * @property {{ pages: number, feeds: number }} checked
+ * @property {{ pages: number, feeds: number, images: number }} checked
  * @property {string[]} feedFiles Feed files the manifest lists, relative to `outDir`; empty when the manifest could not be used.
  */
 
@@ -38,6 +39,7 @@ import { validateFeedsOnline } from './w3c.js';
  * @typedef {object} CheckOptions
  * @property {string} [out] Output root (default `dist`); each site is read from `{out}/{siteId}`.
  * @property {string} [cwd] Directory a relative `out` resolves against (default the working directory).
+ * @property {string} [rootDir] Directory the manifest's `source` paths are relative to; `checkOutput` takes it from the configuration.
  * @property {boolean} [w3c] Also post every feed to the W3C feed validator.
  * @property {import('./w3c.js').W3cOptions} [w3cOptions] Overrides for the online validation, for tests.
  */
@@ -202,13 +204,15 @@ function manifestProblem(manifest) {
 
 /**
  * Checks the finished build of one site: links, anchors, preview metadata,
- * feeds and the sitemap. The build manifest tells what to expect.
+ * feeds, the sitemap and the location and camera metadata of the published
+ * images. The build manifest tells what to expect.
  *
  * @param {string} outDir Output directory of the site (`{out}/{siteId}`).
  * @param {string} siteId
- * @returns {SiteCheck}
+ * @param {{ rootDir?: string }} [options] `rootDir`: where the originals are, so that published positions can be compared with them (see {@link CheckOptions}).
+ * @returns {Promise<SiteCheck>}
  */
-export function checkSite(outDir, siteId) {
+export async function checkSite(outDir, siteId, options = {}) {
   /** @type {Finding[]} */
   const failures = [];
   /**
@@ -218,7 +222,7 @@ export function checkSite(outDir, siteId) {
   const fail = (file, message) => {
     failures.push({ site: siteId, file, message });
   };
-  const result = () => ({ site: siteId, outDir, failures, checked: { pages: 0, feeds: 0 }, feedFiles: [] });
+  const result = () => ({ site: siteId, outDir, failures, checked: { pages: 0, feeds: 0, images: 0 }, feedFiles: [] });
 
   const manifestFile = join(outDir, MANIFEST_FILE_NAME);
   if (!existsSync(manifestFile)) {
@@ -241,7 +245,7 @@ export function checkSite(outDir, siteId) {
 
   const baseUrl = manifest.site.baseUrl;
   const resolver = createOutputResolver(outDir);
-  const checked = { pages: 0, feeds: 0 };
+  const checked = { pages: 0, feeds: 0, images: 0 };
 
   for (const page of manifest.pages) {
     if (!existsSync(join(outDir, ...page.file.split('/')))) {
@@ -283,6 +287,10 @@ export function checkSite(outDir, siteId) {
 
   for (const message of checkSitemap(outDir, manifest, resolver)) fail('sitemap.xml', message);
 
+  const imageCheck = await checkImages(outDir, manifest, { rootDir: options.rootDir });
+  checked.images = imageCheck.checked;
+  for (const finding of imageCheck.findings) fail(finding.file, finding.message);
+
   return { site: siteId, outDir, failures, checked, feedFiles: manifest.feeds.map((feed) => feed.file) };
 }
 
@@ -303,7 +311,7 @@ export async function checkOutput(config, options = {}) {
   const online = [];
   for (const site of config.sites) {
     const outDir = join(root, site.id);
-    const check = checkSite(outDir, site.id);
+    const check = await checkSite(outDir, site.id, { rootDir: options.rootDir ?? config.dir });
     result.sites.push(check);
     result.failures.push(...check.failures);
     if (options.w3c) {

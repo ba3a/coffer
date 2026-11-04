@@ -14,6 +14,8 @@ import {
   DEFAULT_WIDTHS,
   IMAGE_EXTENSIONS,
 } from './defaults.js';
+import { exifFor, publishedPosition, readOriginalMetadata } from './metadata.js';
+import { CAMERA_POLICIES, LOCATION_POLICIES } from './policy.js';
 
 export {
   DEFAULT_IMAGE_WIDTH,
@@ -44,7 +46,10 @@ const INFO_FILE_NAME = 'info.json';
  * Changes whenever the processing code changes in a way that alters the
  * files, so that images cached by an older engine are not reused.
  */
-const PIPELINE_VERSION = 1;
+const PIPELINE_VERSION = 2;
+
+/** The metadata policy of an image that is given none: nothing is published. */
+const STRICT_POLICY = Object.freeze({ location: 'strip', camera: 'strip' });
 
 // Do not keep files open between operations. The pipeline reads each original a
 // few times and the originals change while a preview runs; on Windows an open
@@ -85,9 +90,32 @@ export class ImageError extends Error {
  * @property {number} height Upright height of the original.
  * @property {ImageFile[]} variants The WebP variants, narrowest first. Never wider than the original.
  * @property {ImageFile} viewer The full-size JPEG for the viewer, downloads and press kits.
+ * @property {MetadataPolicy} policy The metadata policy the files were made under.
+ * @property {import('./metadata.js').PublishedPosition | null} gps The position written into the viewer JPEG (exact, or rounded for `coarse`), or null when it carries none. No other file carries a position.
+ * @property {import('./metadata.js').CameraFields | null} camera The camera fields written into the viewer JPEG, or null when it carries none.
  * @property {string} dir Absolute path of the folder in the cache that holds the files.
  * @property {string} url Site-relative address of the folder the files are published in, ending in a slash.
  * @property {boolean} cached True when the files were found in the cache.
+ */
+
+/**
+ * What a published image keeps of the metadata of its original.
+ *
+ * @typedef {object} MetadataPolicy
+ * @property {'strip' | 'coarse' | 'keep'} location Whether the viewer JPEG has no position, a position rounded to about a kilometre, or the exact position.
+ * @property {'strip' | 'keep'} camera Whether the viewer JPEG has the camera's make, model, lens and exposure fields.
+ */
+
+/**
+ * What a folder of the cache lists in its `info.json`.
+ *
+ * @typedef {object} CachedInfo
+ * @property {number} width
+ * @property {number} height
+ * @property {ImageFile[]} variants
+ * @property {ImageFile} viewer
+ * @property {import('./metadata.js').PublishedPosition | null} gps
+ * @property {import('./metadata.js').CameraFields | null} camera
  */
 
 /**
@@ -191,10 +219,12 @@ export function pickVariant(variants, width = DEFAULT_IMAGE_WIDTH) {
 
 /**
  * Creates the image pipeline of one site. For each original it makes WebP
- * variants at the configured widths and one full-size JPEG for the viewer, all
- * rotated upright by their EXIF orientation and without any metadata, and
- * keeps them in a cache keyed by the hash of the original and the options, so
- * an unchanged photo is processed once. Originals are never published.
+ * variants at the configured widths, which never carry metadata, and one
+ * full-size JPEG for the viewer, whose position and camera fields follow the
+ * metadata policy given to `process`. All are rotated upright by their EXIF
+ * orientation. They are kept in a cache keyed by the hash of the original, the
+ * policy and the options, so an unchanged photo is processed once. Originals
+ * are never published.
  *
  * @param {ImagePipelineOptions} options
  */
@@ -222,7 +252,7 @@ export function createImagePipeline(options) {
 
   /**
    * @param {string} folder
-   * @returns {{ width: number, height: number, variants: ImageFile[], viewer: ImageFile } | null} What a folder of the cache holds, or null when it is missing or incomplete.
+   * @returns {CachedInfo | null} What a folder of the cache holds, or null when it is missing or incomplete.
    */
   function readCached(folder) {
     try {
@@ -245,15 +275,25 @@ export function createImagePipeline(options) {
    * @param {string} name
    * @param {string} key
    * @param {boolean} heic Whether the original is a HEIC picture, which sharp cannot read.
+   * @param {MetadataPolicy} policy
    * @returns {Promise<ProcessedImage>}
    */
-  async function produce(source, bytes, sha256, name, key, heic) {
+  async function produce(source, bytes, sha256, name, key, heic, policy) {
     const folder = join(cacheDir, key);
     const found = readCached(folder);
     if (found) {
       stats.reused += 1;
-      return describe(source, sha256, name, key, folder, found, true);
+      return describe(source, sha256, name, key, folder, found, policy, true);
     }
+
+    // Only what the policy lets through is ever taken from the original.
+    const original =
+      policy.location === 'strip' && policy.camera === 'strip'
+        ? { gps: null, camera: null }
+        : await readOriginalMetadata(bytes);
+    const gps = publishedPosition(original.gps, policy.location);
+    const camera = policy.camera === 'keep' ? original.camera : null;
+    const exif = exifFor(gps, camera);
 
     /** @type {() => import('sharp').Sharp} */
     let open;
@@ -309,19 +349,24 @@ export function createImagePipeline(options) {
         variants.push({ file, width: info.width, height: info.height, bytes: info.size });
       }
       const viewerFile = `${name}-full.jpg`;
-      const viewerInfo = await open()
+      // The variants never carry metadata. The viewer JPEG gets only the EXIF
+      // data the policy allows (sharp writes none unless it is told to), and it
+      // is upright, so it needs no orientation tag.
+      const viewerImage = open()
         .autoOrient()
         .flatten({ background: '#ffffff' })
         .resize({ width: viewerMaxEdge, height: viewerMaxEdge, fit: 'inside', withoutEnlargement: true })
-        .jpeg({ quality: jpegQuality, mozjpeg: true })
-        .toFile(join(work, viewerFile));
+        .jpeg({ quality: jpegQuality, mozjpeg: true });
+      if (exif !== null) viewerImage.withExif(exif);
+      const viewerInfo = await viewerImage.toFile(join(work, viewerFile));
       const viewer = { file: viewerFile, width: viewerInfo.width, height: viewerInfo.height, bytes: viewerInfo.size };
-      const info = { width, height, variants, viewer };
+      /** @type {CachedInfo} */
+      const info = { width, height, variants, viewer, gps, camera };
       writeFileSync(join(work, INFO_FILE_NAME), `${JSON.stringify(info)}\n`);
       rmSync(folder, { recursive: true, force: true });
       renameSync(work, folder);
       stats.generated += 1;
-      return describe(source, sha256, name, key, folder, info, false);
+      return describe(source, sha256, name, key, folder, info, policy, false);
     } catch (error) {
       rmSync(work, { recursive: true, force: true });
       if (error instanceof ImageError) throw error;
@@ -335,11 +380,12 @@ export function createImagePipeline(options) {
    * @param {string} name
    * @param {string} key
    * @param {string} folder
-   * @param {{ width: number, height: number, variants: ImageFile[], viewer: ImageFile }} info
+   * @param {CachedInfo} info
+   * @param {MetadataPolicy} policy
    * @param {boolean} cached
    * @returns {ProcessedImage}
    */
-  function describe(source, sha256, name, key, folder, info, cached) {
+  function describe(source, sha256, name, key, folder, info, policy, cached) {
     return {
       source,
       sha256,
@@ -349,6 +395,9 @@ export function createImagePipeline(options) {
       height: info.height,
       variants: info.variants,
       viewer: info.viewer,
+      policy: { ...policy },
+      gps: info.gps ?? null,
+      camera: info.camera ?? null,
       dir: folder,
       url: `/${IMAGES_OUT_DIR}/${key}/`,
       cached,
@@ -366,11 +415,24 @@ export function createImagePipeline(options) {
      * processed once per pipeline, however often it is asked for.
      *
      * @param {string} source Absolute path of a JPEG, PNG, WebP or HEIC file.
+     * @param {Partial<MetadataPolicy>} [policy] What the viewer JPEG keeps of the original's location and camera fields (default `strip` for both).
      * @returns {Promise<ProcessedImage>}
      * @throws {ImageError} When the file is not an image of an accepted format or cannot be decoded.
+     * @throws {TypeError} When the policy has an unknown value.
      */
-    process(source) {
-      let pending = processing.get(source);
+    process(source, policy = {}) {
+      const effective = {
+        location: /** @type {MetadataPolicy['location']} */ (policy.location ?? STRICT_POLICY.location),
+        camera: /** @type {MetadataPolicy['camera']} */ (policy.camera ?? STRICT_POLICY.camera),
+      };
+      if (!LOCATION_POLICIES.includes(effective.location)) {
+        throw new TypeError(`location must be one of: ${LOCATION_POLICIES.join(', ')}`);
+      }
+      if (!CAMERA_POLICIES.includes(effective.camera)) {
+        throw new TypeError(`camera must be one of: ${CAMERA_POLICIES.join(', ')}`);
+      }
+      const id = `${source}\n${effective.location}\n${effective.camera}`;
+      let pending = processing.get(id);
       if (!pending) {
         pending = limit(async () => {
           if (!IMAGE_EXTENSIONS.includes(extname(source).toLowerCase())) {
@@ -394,6 +456,8 @@ export function createImagePipeline(options) {
                 sha256,
                 ...(heic ? { heic: HEIC_DECODER_VERSION } : {}),
                 name,
+                location: effective.location,
+                camera: effective.camera,
                 widths,
                 viewerMaxEdge,
                 webpQuality,
@@ -402,9 +466,9 @@ export function createImagePipeline(options) {
             )
             .digest('hex')
             .slice(0, 16);
-          return produce(source, bytes, sha256, name, key, heic);
+          return produce(source, bytes, sha256, name, key, heic, effective);
         });
-        processing.set(source, pending);
+        processing.set(id, pending);
       }
       return pending;
     },
