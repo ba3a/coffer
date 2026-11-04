@@ -503,3 +503,55 @@ test('the engine entry point exports the content API', () => {
   assert.equal(engine.isPublished, isPublished);
   assert.equal(engine.resolveNow, resolveNow);
 });
+
+test('the images map gives per-image metadata overrides by normalized path', () => {
+  const post = parsePostSource({
+    file: 'x.md',
+    slug: 'x',
+    text: doc(
+      [
+        'title: T',
+        'date: 2024-05-01',
+        'images:',
+        '  IMG_1.jpg: { location: strip }',
+        '  ./photos//IMG_2.jpg:',
+        '    location: keep',
+        '    camera: keep',
+        '  IMG_3.jpg:',
+      ].join('\n'),
+    ),
+  });
+  assert.deepEqual(
+    [...post.images],
+    [
+      ['IMG_1.jpg', { location: 'strip', camera: null }],
+      ['photos/IMG_2.jpg', { location: 'keep', camera: 'keep' }],
+      ['IMG_3.jpg', { location: null, camera: null }],
+    ],
+  );
+  assert.equal(parsePostSource({ file: 'x.md', slug: 'x', text: MINIMAL }).images.size, 0);
+});
+
+test('mistakes in the images map name the file and the entry', () => {
+  /** @type {[string, RegExp][]} */
+  const cases = [
+    ['images: nope', /^x\.md: images: must be a mapping/],
+    ['images: [a.jpg]', /^x\.md: images: must be a mapping/],
+    ['images:\n  a.jpg: keep', /^x\.md: images\.a\.jpg: must be a mapping/],
+    ['images:\n  a.jpg: { locaton: keep }', /^x\.md: images\.a\.jpg\.locaton: unknown key/],
+    ['images:\n  a.jpg: { location: 3 }', /^x\.md: images\.a\.jpg\.location: must be a non-empty string/],
+    ['images:\n  a.jpg: {}\n  ./a.jpg: {}', /^x\.md: images\.\.\/a\.jpg: is the same image/],
+    ['images:\n  "/": {}', /^x\.md: images: "\/" is not an image path/],
+  ];
+  for (const [fields, pattern] of cases) {
+    const errors = errorsOf(() =>
+      parsePostSource({
+        file: 'x.md',
+        slug: 'x',
+        text: doc(`title: T\ndate: 2024-05-01\n${fields}`),
+      }),
+    );
+    assert.equal(errors.length, 1, fields);
+    assert.match(errors[0], pattern, fields);
+  }
+});

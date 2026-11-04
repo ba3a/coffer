@@ -2,6 +2,8 @@ import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 import { LineCounter, parseDocument } from 'yaml';
 
+import { normalizeImageKey } from '../images/policy.js';
+
 /**
  * A blog post as read from disk.
  *
@@ -22,6 +24,7 @@ import { LineCounter, parseDocument } from 'yaml';
  * @property {string[]} aliases Old slugs that redirect to this post.
  * @property {string | null} location Location policy override as written; checked when the policy is resolved.
  * @property {string | null} camera Camera metadata policy override as written; checked when the policy is resolved.
+ * @property {Map<string, import('../images/policy.js').ImageOverride>} images Per-image metadata policy overrides from the `images:` map, by normalized image path (see `normalizeImageKey`); empty when there are none.
  * @property {boolean | null} map True or false to force or suppress the map; null to decide from the post's content.
  * @property {Record<string, unknown>} frontMatter The parsed front matter, including keys this module does not know.
  * @property {string} body The Markdown text after the front matter.
@@ -250,6 +253,62 @@ export function readFrontMatter(file, text, errors) {
 }
 
 /**
+ * Reads the `images:` map of the front matter: image paths mapped to
+ * `{ location, camera }` overrides. A mistake is reported rather than ignored,
+ * because a misspelled key would silently publish an image with the wrong
+ * policy.
+ *
+ * @param {unknown} value The `images` value of the front matter.
+ * @param {(field: string, message: string) => void} fail
+ * @returns {Map<string, import('../images/policy.js').ImageOverride>}
+ */
+function readImageOverrides(value, fail) {
+  /** @type {Map<string, import('../images/policy.js').ImageOverride>} */
+  const images = new Map();
+  if (value === undefined || value === null) return images;
+  if (!isMapping(value)) {
+    fail('images', 'must be a mapping of image paths to { location, camera }');
+    return images;
+  }
+  for (const [rawKey, entry] of Object.entries(value)) {
+    const key = normalizeImageKey(rawKey);
+    if (key === '') {
+      fail('images', `"${rawKey}" is not an image path`);
+      continue;
+    }
+    if (images.has(key)) {
+      fail(`images.${rawKey}`, `is the same image as an earlier entry, "${key}"`);
+      continue;
+    }
+    /** @type {import('../images/policy.js').ImageOverride} */
+    const override = { location: null, camera: null };
+    if (entry !== null && entry !== undefined) {
+      if (!isMapping(entry)) {
+        fail(`images.${rawKey}`, 'must be a mapping with "location" and "camera"');
+        continue;
+      }
+      let valid = true;
+      for (const [setting, raw] of Object.entries(entry)) {
+        if (setting !== 'location' && setting !== 'camera') {
+          fail(`images.${rawKey}.${setting}`, 'unknown key (expected "location" or "camera")');
+          valid = false;
+        } else if (raw === null || raw === undefined) {
+          continue;
+        } else if (typeof raw !== 'string' || raw.trim() === '') {
+          fail(`images.${rawKey}.${setting}`, 'must be a non-empty string');
+          valid = false;
+        } else {
+          override[setting] = raw.trim();
+        }
+      }
+      if (!valid) continue;
+    }
+    images.set(key, override);
+  }
+  return images;
+}
+
+/**
  * Reads the posts' YAML front matter from the text of one file.
  *
  * @param {string} file Path shown in error messages.
@@ -376,6 +435,7 @@ function parseInto(file, text, slug, kind, dir, options, errors) {
   }
   const location = optionalString('location');
   const camera = optionalString('camera');
+  const images = readImageOverrides(fm.images, fail);
   const draft = optionalBoolean('draft');
   const map = optionalBoolean('map');
 
@@ -429,6 +489,7 @@ function parseInto(file, text, slug, kind, dir, options, errors) {
     aliases,
     location: location ?? null,
     camera: camera ?? null,
+    images,
     map: map ?? null,
     frontMatter: fm,
     body: parts.body,

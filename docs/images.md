@@ -1,6 +1,6 @@
 # Images
 
-Drop the originals next to the post and refer to them in Markdown. coffer resizes every image a post uses, publishes the small versions and never the original. This page describes what the build makes, what the pages look like and how to tune it. Location and camera metadata policies (`location`) arrive with a later feature; for now every published file is stripped of all metadata.
+Drop the originals next to the post and refer to them in Markdown. coffer resizes every image a post uses, publishes the small versions and never the original. This page describes what the build makes, what the pages look like and how to tune it. Which location and camera metadata an image may publish is decided by a policy described in [Location and camera metadata](location-policy.md); until the policy is applied to the files, every published file is stripped of all metadata.
 
 ## Using images
 

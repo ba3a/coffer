@@ -140,3 +140,13 @@ export {
   formatIssue,
   writeReport,
 } from './report.js';
+export {
+  CAMERA_POLICIES,
+  LOCATION_POLICIES,
+  PolicyError,
+  createPolicyResolver,
+  describeSource,
+  findImageOverride,
+  normalizeImageKey,
+  policyValueProblem,
+} from './images/policy.js';

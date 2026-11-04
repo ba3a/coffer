@@ -141,7 +141,7 @@ Changing a value makes the next build process the images again; the cache is key
 
 ## `location`
 
-What happens to the location and the camera metadata of published images. A more specific setting (for a tag, a post or an image) overrides these site-wide defaults.
+What happens to the location and the camera metadata of published images. A more specific setting (for a tag, a post or an image) overrides these site-wide defaults; see [Location and camera metadata](location-policy.md).
 
 | Key       | Values                     | Default | Description                                                                                                        |
 | --------- | -------------------------- | ------- | ------------------------------------------------------------------------------------------------------------------ |

@@ -45,7 +45,7 @@ trips/mountains:
 - Keys are tag paths, written like in a post (case is ignored). Each value has `name` and `description`, both optional.
 - The name is shown in the headings, the breadcrumbs, the lists and on the posts; the description appears on the tag page and in the tag tree, and is the page's `description` meta tag.
 - Entries for tags that no published post uses are ignored and reported as **warnings**, as are unknown keys inside an entry. Warnings never fail the build.
-- `location` and `camera` are accepted for the image metadata policy of a tag's subtree; they are read and kept, and take effect with the image features that use them.
+- `location` (`strip`, `coarse` or `keep`) and `camera` (`strip` or `keep`) set the image metadata policy of the tag's whole subtree; see [Location and camera metadata](location-policy.md) for how they combine with the site, post and image settings. A value the setting does not accept fails the build.
 - A file that is not valid YAML, an entry that is not a mapping, a tag path that is not valid, or a `name` that is not text fails the build, with the file and the key.
 
 ## Templates

@@ -48,8 +48,9 @@ The text of the post.
 | `seriesPosition` | no       | Whole number that puts the post ahead of the unnumbered ones, by value. Needs `series`; see [Series](series.md). |
 | `draft`          | no       | `true` keeps the post out of the published site. Default `false`.                                           |
 | `aliases`        | no       | List of old slugs that redirect permanently to this post; see [URLs](urls.md).                              |
-| `location`       | no       | Image location policy for this post, overriding the site and tag settings. Checked when the policy is applied. |
-| `camera`         | no       | Camera metadata policy for this post. Checked when the policy is applied.                                   |
+| `location`       | no       | Image location policy for this post (`strip`, `coarse` or `keep`), overriding the site and tag settings. See [Location and camera metadata](location-policy.md). |
+| `camera`         | no       | Camera metadata policy for this post (`strip` or `keep`). See [Location and camera metadata](location-policy.md). |
+| `images`         | no       | Mapping of image paths to `{ location, camera }` overrides for single images, for example `images: { IMG_1.jpg: { location: strip } }`. See [Location and camera metadata](location-policy.md). |
 | `map`            | no       | `true` or `false` to force or suppress the map. Without it, a map appears when there is something to show. |
 
 Keys that coffer does not know are kept in the post's `frontMatter` and otherwise ignored.
