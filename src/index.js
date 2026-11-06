@@ -106,6 +106,7 @@ export {
   loadCardColours,
 } from './cards.js';
 export {
+  DEFAULT_DOWNLOAD_JPEG_QUALITY,
   DEFAULT_IMAGE_WIDTH,
   DEFAULT_JPEG_QUALITY,
   DEFAULT_SIZES,
@@ -121,6 +122,7 @@ export {
   pickVariant,
   variantWidths,
 } from './images/pipeline.js';
+export { MAX_SVG_BYTES, inspectSvg } from './images/svg.js';
 export {
   CAMERA_FIELDS,
   COORDINATE_TOLERANCE,

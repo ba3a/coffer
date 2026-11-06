@@ -76,6 +76,23 @@ projects:
     status: Статус
     platforms: Платформы
     price: Цена
+  press:
+    title: Пресс-кит
+    facts: Краткая справка
+    developer: Разработчик
+    release_status: Статус выпуска
+    platforms: Платформы
+    price: Цена
+    short_description: Краткое описание
+    long_description: Описание
+    logos: Логотипы
+    screenshots: Скриншоты
+    logo_n: "Логотип {n}"
+    screenshot_n: "Скриншот {n}"
+    download: "Скачать: {name} ({format}, {size})"
+    download_sized: "Скачать: {name} ({format}, {width} × {height} пикс., {size})"
+    size_kb: "{value} КБ"
+    size_mb: "{value} МБ"
   kind:
     tool: Инструмент
     game: Игра

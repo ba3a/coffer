@@ -247,7 +247,20 @@ export function parseProjectSource({ slug, dir, file, text }, errors) {
   /** @type {Record<string, unknown>} */
   let fields = {};
   if (kind !== undefined) {
-    fields = readKindFields(kind, data, { dir }, fail);
+    /**
+     * @param {(string | number)[]} path
+     * @returns {number | undefined}
+     */
+    const lineOf = (path) => {
+      const node = /** @type {{ range?: [number, number, number], type?: string } | null} */ (
+        /** @type {unknown} */ (document.getIn(path, true))
+      );
+      if (!node || !node.range) return undefined;
+      const line = lines.linePos(node.range[0]).line;
+      // The text of a block scalar starts on the line after its `|` or `>`.
+      return node.type === 'BLOCK_LITERAL' || node.type === 'BLOCK_FOLDED' ? line + 1 : line;
+    };
+    fields = readKindFields(kind, data, { dir, lineOf }, fail);
     const allowed = [...COMMON_PROJECT_KEYS, ...Object.keys(kind.fields)];
     for (const key of Object.keys(data)) {
       if (allowed.includes(key)) continue;

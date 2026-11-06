@@ -1,0 +1,73 @@
+{# The press kit of a game, from `project.pressKit` (written only when the project has one): a factsheet, a short and a long description, and the logos and screenshots as thumbnails with a link to the full-resolution file. Every part with nothing to show writes nothing. The section has the anchor "press-kit", so /made/{slug}/#press-kit leads here. The `download` attribute suggests the descriptive file name. #}
+{% import "project-picture.njk" as pictures %}
+{% macro asset(item, kind) %}
+{% set name = ('projects.press.logo_n' if kind == 'logo' else 'projects.press.screenshot_n') | t({ n: item.number }) %}
+{% set size = ('projects.press.size_' ~ item.size.unit) | t({ value: item.size.value }) %}
+<li class="press-asset press-{{ kind }}">
+<figure>
+<div class="press-thumbnail">
+{% if item.thumbnail.srcset | length %}{{ pictures.card(item.thumbnail, '(min-width: 48rem) 14rem, calc(50vw - 1.5rem)') }}
+{% else %}<img src="{{ item.thumbnail.src | url }}" alt="{{ item.thumbnail.alt }}"{% if item.thumbnail.width and item.thumbnail.height %} width="{{ item.thumbnail.width }}" height="{{ item.thumbnail.height }}"{% endif %} loading="lazy" decoding="async">
+{% endif %}
+</div>
+<figcaption>
+<span class="press-asset-name">{{ name }}</span>
+<a class="press-download" href="{{ item.url | url }}" download="{{ item.fileName }}">{% if item.width and item.height %}{{ 'projects.press.download_sized' | t({ name: name, format: item.format, width: item.width, height: item.height, size: size }) }}{% else %}{{ 'projects.press.download' | t({ name: name, format: item.format, size: size }) }}{% endif %}</a>
+</figcaption>
+</figure>
+</li>
+{% endmacro %}
+{% set kit = project.pressKit %}
+{% if kit %}
+<section class="press-kit" id="press-kit" aria-labelledby="press-kit-title">
+<h2 id="press-kit-title">{{ 'projects.press.title' | t }}</h2>
+{% if kit.developer or kit.releaseStatus or kit.platforms or kit.price %}
+<dl class="press-facts">
+{% if kit.developer %}<div class="press-fact press-fact-developer">
+<dt>{{ 'projects.press.developer' | t }}</dt>
+<dd>{{ kit.developer }}</dd>
+</div>
+{% endif %}
+{% if kit.releaseStatus %}<div class="press-fact press-fact-status">
+<dt>{{ 'projects.press.release_status' | t }}</dt>
+<dd>{{ kit.releaseStatus }}</dd>
+</div>
+{% endif %}
+{% if kit.platforms %}<div class="press-fact press-fact-platforms">
+<dt>{{ 'projects.press.platforms' | t }}</dt>
+<dd>{{ kit.platforms | join(', ') }}</dd>
+</div>
+{% endif %}
+{% if kit.price %}<div class="press-fact press-fact-price">
+<dt>{{ 'projects.press.price' | t }}</dt>
+<dd>{{ kit.price }}</dd>
+</div>
+{% endif %}
+</dl>
+{% endif %}
+{% if kit.shortDescription %}<div class="press-description press-short">
+<h3>{{ 'projects.press.short_description' | t }}</h3>
+{{ kit.shortDescription | safe }}
+</div>
+{% endif %}
+{% if kit.longDescription %}<div class="press-description press-long">
+<h3>{{ 'projects.press.long_description' | t }}</h3>
+{{ kit.longDescription | safe }}
+</div>
+{% endif %}
+{% if kit.logos | length %}<div class="press-assets press-logos">
+<h3>{{ 'projects.press.logos' | t }}</h3>
+<ul class="press-asset-list">
+{% for item in kit.logos %}{{ asset(item, 'logo') }}{% endfor %}
+</ul>
+</div>
+{% endif %}
+{% if kit.screenshots | length %}<div class="press-assets press-screenshots">
+<h3>{{ 'projects.press.screenshots' | t }}</h3>
+<ul class="press-asset-list">
+{% for item in kit.screenshots %}{{ asset(item, 'screenshot') }}{% endfor %}
+</ul>
+</div>
+{% endif %}
+</section>
+{% endif %}

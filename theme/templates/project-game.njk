@@ -1,4 +1,4 @@
-{# The page of a game: a small promo page. Logo and key art, the hook, the stores (or a call to follow the devlog), the trailer, the text of index.md (screenshots go there, as a carousel), the feature points and the details. Extends the generic project page and fills its header, body and footer blocks; a part with nothing to show writes nothing. The accent colour and the display font of project.yaml restyle the wrapper `.game-page` only (custom properties in its style attribute, and an @font-face in the head, both made from checked values), so the site header and footer stay as they are. A game has no link to a source repository, whatever its project.yaml says. #}
+{# The page of a game: a small promo page. Logo and key art, the hook, the stores (or a call to follow the devlog), the trailer, the text of index.md (screenshots go there, as a carousel), the feature points and the details. Extends the generic project page and fills its header, body and footer blocks; a part with nothing to show writes nothing. The accent colour and the display font of project.yaml restyle the wrapper `.game-page` only (custom properties in its style attribute, and an @font-face in the head, both made from checked values), so the site header and footer stay as they are. A game has no link to a source repository, whatever its project.yaml says. The press kit (partials/press-kit.njk) closes the page, with the anchor "press-kit". #}
 {% extends "project.njk" %}
 
 {% block page_meta %}
@@ -106,6 +106,7 @@
 </dl>
 </section>
 {% endblock %}
+{% block game_press_kit %}{% include "partials/press-kit.njk" %}{% endblock %}
 {% endblock %}
 
 {% block project_footer %}

@@ -13,6 +13,13 @@
 // - marking-gauge.jpg: a plain landscape picture.
 // - screenshot-1.jpg, screenshot-2.jpg: made-up screenshots of the example
 //   game Tenon Tumble, for the gallery on its page.
+// - press-kit/logo.png and press-kit/logo.svg: the made-up logo of the game
+//   (wooden blocks) for its press kit, the PNG with a transparent background
+//   and the SVG as hand-written text.
+// - press-kit/on-the-bench.jpg: a made-up photograph of the game on a screen,
+//   taken with a made-up camera at a made-up position. The press kit offers it
+//   as a download, and the site's policy strips both, so the published file
+//   has neither.
 // - ridge.jpg: a portrait picture stored sideways with the EXIF orientation 6,
 //   as phones do, with a made-up GPS position and a made-up camera. Its post
 //   is tagged `trips/mountains`, which says `location: keep` and
@@ -146,6 +153,24 @@ function tumbleSvg(variant) {
 }
 
 /**
+ * The logo of the example game: blocks on a staircase. No background, so that
+ * the PNG made from it has a transparent one.
+ *
+ * @returns {string}
+ */
+function logoSvg() {
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512">
+  <title>Tenon Tumble</title>
+  <rect x="48" y="304" width="144" height="144" rx="14" fill="#dd6b4d" stroke="#3a2a18" stroke-width="10"/>
+  <rect x="184" y="304" width="144" height="144" rx="14" fill="#e0b04a" stroke="#3a2a18" stroke-width="10"/>
+  <rect x="320" y="304" width="144" height="144" rx="14" fill="#6a994e" stroke="#3a2a18" stroke-width="10"/>
+  <rect x="116" y="160" width="144" height="144" rx="14" fill="#4d7ea8" stroke="#3a2a18" stroke-width="10"/>
+  <rect x="252" y="40" width="144" height="120" rx="14" fill="#dd6b4d" stroke="#3a2a18" stroke-width="10" transform="rotate(12 324 100)"/>
+</svg>
+`;
+}
+
+/**
  * @param {string} relativePath Path below the content directory.
  * @param {Buffer} data
  */
@@ -166,6 +191,30 @@ function jpegOf(svg) {
 
 save('projects/tenon-tumble/screenshot-1.jpg', await jpegOf(tumbleSvg(1)));
 save('projects/tenon-tumble/screenshot-2.jpg', await jpegOf(tumbleSvg(2)));
+
+// The press kit of the example game: a logo as SVG and, rendered from it, as a
+// PNG with transparency, and a photograph with a made-up position and camera.
+save('projects/tenon-tumble/press-kit/logo.svg', Buffer.from(logoSvg()));
+save(
+  'projects/tenon-tumble/press-kit/logo.png',
+  await sharp(Buffer.from(logoSvg())).png({ palette: true, colours: 32, compressionLevel: 9 }).toBuffer(),
+);
+// The made-up position is 52 deg 23' 33.0" N, 9 deg 43' 40.0" E.
+save(
+  'projects/tenon-tumble/press-kit/on-the-bench.jpg',
+  await sharp(Buffer.from(gaugeSvg()))
+    .jpeg({ quality: JPEG_QUALITY, mozjpeg: true })
+    .withExif({
+      IFD0: { Make: 'Examplecam', Model: 'Made-up 1' },
+      IFD3: {
+        GPSLatitudeRef: 'N',
+        GPSLatitude: '52/1 23/1 33/1',
+        GPSLongitudeRef: 'E',
+        GPSLongitude: '9/1 43/1 40/1',
+      },
+    })
+    .toBuffer(),
+);
 
 // The made-up position of the workshop is 52 deg 23' 31.7" N, 9 deg 43' 37.4" E.
 save(

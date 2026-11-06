@@ -984,3 +984,86 @@ main > article > .post-layout {
 .game-details {
   border-color: var(--project-accent, var(--coffer-border));
 }
+
+/* The press kit of a game: factsheet, descriptions, and thumbnails with a link
+   to the full-resolution file. */
+.press-kit {
+  margin: 2rem 0 1rem;
+  padding-top: 1rem;
+  border-top: 3px solid var(--project-accent, var(--coffer-border));
+}
+
+.press-facts {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 12rem), 1fr));
+  gap: 0.75rem 1.5rem;
+  margin: 1rem 0;
+}
+
+.press-fact dt {
+  color: var(--coffer-muted);
+  font-size: 0.875rem;
+}
+
+.press-fact dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.press-description h3,
+.press-assets h3 {
+  font-size: 1.0625rem;
+}
+
+.press-asset-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 13rem), 1fr));
+  gap: 1rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.press-asset figure {
+  margin: 0;
+}
+
+.press-thumbnail {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 6rem;
+  padding: 0.5rem;
+  border: 1px solid var(--coffer-border);
+  border-radius: 0.375rem;
+  background: var(--coffer-code-bg);
+}
+
+.press-thumbnail picture {
+  display: contents;
+}
+
+.press-thumbnail img {
+  display: block;
+  max-width: 100%;
+  max-height: 10rem;
+  width: auto;
+  height: auto;
+  object-fit: contain;
+}
+
+.press-asset figcaption {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  margin-top: 0.4rem;
+  font-size: 0.9375rem;
+}
+
+.press-asset-name {
+  font-weight: 600;
+}
+
+.press-download {
+  overflow-wrap: anywhere;
+}

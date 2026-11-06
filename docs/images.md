@@ -46,7 +46,7 @@ For every image, in the `img/{key}/` folder of the site's output (the `{key}` is
 | File                    | What                                                                                                                  |
 | ----------------------- | --------------------------------------------------------------------------------------------------------------------- |
 | `{name}-{width}.webp`   | A WebP variant, one for each configured width that is **narrower than the original**. When the original is not wider than the widest configured width, its own width is a variant too, so the full picture is always offered and nothing is ever enlarged. |
-| `{name}-full.jpg`       | One JPEG for the viewer, for downloads and for press kits: the full picture, its long edge capped at `viewerMaxEdge`. |
+| `{name}-full.jpg`       | One JPEG for the viewer: the full picture, its long edge capped at `viewerMaxEdge`. |
 
 `{name}` comes from the file name of the original, in lower case with anything but letters and digits turned into hyphens. The original is never copied to the output.
 
@@ -55,6 +55,18 @@ For every image, in the `img/{key}/` folder of the site's output (the `{key}` is
 - Transparency in a PNG is kept in the WebP variants; the viewer JPEG has a white background.
 
 The default widths are 480, 800, 1200, 1600 and 2400 pixels and the viewer image is capped at 3200 pixels; see [`images`](configuration.md#images) to change them. An original of 3000 by 2000 pixels gets variants at 480, 800, 1200, 1600 and 2400 and a viewer JPEG at 3000 by 2000; one of 700 by 500 gets 480 and 700 and a viewer JPEG at 700 by 500.
+
+## Full-resolution downloads
+
+A picture that people are meant to download at its full size, such as a screenshot in the [press kit](projects.md#the-press-kit) of a game, does not use the viewer JPEG, whose size is capped. `pipeline.download(file, policy)` makes a file of the **pixel size of the upright original** instead, and `publishDownload(download, outDir, address)` copies it to an address the caller chose from checked text. The picture is turned upright, re-encoded and never reduced, so the metadata policy applies to it exactly as it does to the viewer JPEG (`strip`, `coarse` or `keep` for the position, `strip` or `keep` for the camera; nothing else is ever copied):
+
+| Original                    | Download                                                              |
+| --------------------------- | --------------------------------------------------------------------- |
+| PNG                         | PNG, with its transparency                                            |
+| WebP with transparency      | PNG                                                                   |
+| JPEG, HEIC, opaque WebP     | JPEG at quality 95 (the pipeline option `downloadJpegQuality`, not a site setting; 4:4:4), on a white background where there was transparency |
+
+Downloads are kept in the cache beside the other images (`dl-{key}/`, keyed by the hash of the original, the policy and the quality), so an unchanged file is made once.
 
 ## What the files carry
 

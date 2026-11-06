@@ -103,7 +103,7 @@ Values of `tags.yaml` and the site configuration are checked for every entry, wh
 
 ## What the build does with the decision
 
-The build resolves the policy of every image of every post, of the cover and of the home page, and gives it to the image pipeline, which applies it to the viewer JPEG (see [What the files carry](images.md#what-the-files-carry)). The WebP variants never carry metadata.
+The build resolves the policy of every image of every post, of the cover and of the home page, and gives it to the image pipeline, which applies it to the viewer JPEG and to the full-resolution downloads of a game's press kit (see [What the files carry](images.md#what-the-files-carry)). A project page has no tags or front matter, so the site's settings apply to its pictures and downloads. The WebP variants never carry metadata.
 
 - A wrong value fails the build with the file and the key, as above. The images are then published without any metadata, so the other problems of the build are still reported.
 - An entry of a post's `images` map that no image of the post uses is a warning: `journal/trip/index.md: images: "IMG_1043.jpg" matches no image of the post`. A misspelt file name would otherwise leave the image with the policy of the post.

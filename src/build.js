@@ -1,4 +1,5 @@
-import { copyFileSync, cpSync, existsSync, mkdirSync, rmSync, statSync, writeFileSync } from 'node:fs';
+import { createHash } from 'node:crypto';
+import { copyFileSync, cpSync, existsSync, mkdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { dirname, extname, isAbsolute, join, relative, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -39,6 +40,7 @@ import { applyLinkRewrites, checkSourceLinks } from './check/source-links.js';
 import { IMAGE_EXTENSIONS } from './images/defaults.js';
 import { IMAGES_CACHE_DIR, ImageError, createImagePipeline, imageFileUrl, pickVariant } from './images/pipeline.js';
 import { PolicyError, createPolicyResolver, findImageOverride } from './images/policy.js';
+import { inspectSvg } from './images/svg.js';
 import { buildMeta } from './meta.js';
 import { renderMarkdown } from './markdown/render.js';
 import {
@@ -214,7 +216,7 @@ export class BuildError extends Error {
  * @typedef {object} ManifestImage
  * @property {string} source Path of the original, relative to the configuration file.
  * @property {string} post Site-relative URL of the page that uses the image (`/` for the home page).
- * @property {'body' | 'cover' | 'card'} use A Markdown image in the text, the cover of the post, or the card picture of a project.
+ * @property {'body' | 'cover' | 'card' | 'press-kit'} use A Markdown image in the text, the cover of the post, a picture of a project (its card, logo or key art), or the thumbnail of a press kit's logo or screenshot.
  * @property {string} sha256 Hash of the original.
  * @property {number} width Upright width of the original.
  * @property {number} height Upright height of the original.
@@ -270,6 +272,28 @@ export class BuildError extends Error {
  * @property {string | null} tag The devlog tag that marks posts about the project.
  * @property {string} card Path of the card picture, relative to the configuration file.
  * @property {ManifestProjectFile[]} files The files copied unchanged to the output for the project, such as a trailer video or a font; empty when it has none. Pictures are listed under `images`.
+ * @property {ManifestDownload[]} downloads The full-resolution logos and screenshots of the project's press kit; empty when it has none. `coffer check` reads each one back against its policy.
+ */
+
+/**
+ * A file of a press kit that people download. A picture is re-encoded at the
+ * size of the original, so its metadata follows the policy; an SVG logo is
+ * published as it is, and is checked for anything that could run script.
+ *
+ * @typedef {object} ManifestDownload
+ * @property {'logos' | 'screenshots'} field The list of `pressKit` in `project.yaml` that names it.
+ * @property {string} source Path of the original, relative to the configuration file.
+ * @property {string} sha256 Hash of the original.
+ * @property {string} url Site-relative address of the published file.
+ * @property {string} file Path of the published file, relative to the site's output directory.
+ * @property {string} fileName The descriptive file name that the `download` attribute suggests.
+ * @property {string} type Media type of the published file.
+ * @property {number | null} width Width in pixels of the published file (the upright original's, never reduced); null for an SVG that declares none.
+ * @property {number | null} height Height in pixels, likewise.
+ * @property {number} bytes Size of the published file.
+ * @property {ManifestImagePolicy | null} policy The metadata policy the file was published under; null for an SVG, which is published as it is.
+ * @property {import('./images/metadata.js').PublishedPosition | null} gps The position the file carries, never more precise than the policy allows.
+ * @property {import('./images/metadata.js').CameraFields | null} camera The camera fields the file carries.
  */
 
 /**
@@ -737,7 +761,7 @@ async function buildSite(config, site, options, outRoot, version, report) {
    *
    * @param {import('./images/pipeline.js').ProcessedImage} processed
    * @param {string} pageUrl Site-relative URL of the page that uses the image.
-   * @param {'body' | 'cover' | 'card'} use
+   * @param {'body' | 'cover' | 'card' | 'press-kit'} use
    * @param {PageImages} page The page source that uses the image.
    * @param {import('./images/policy.js').ImagePolicy} policy The decision the image was processed under.
    * @returns {import('./images/pipeline.js').ImageFile} The variant that stands in for the picture where no `srcset` is understood.
@@ -969,16 +993,17 @@ async function buildSite(config, site, options, outRoot, version, report) {
    * @param {string} alt
    * @param {string} url Site-relative URL of the project's page.
    * @param {PageImages} page
+   * @param {'card' | 'press-kit'} [use] What the manifest says the picture is used for (default `card`).
    * @returns {Promise<ProjectPicture | null>} Null when the picture cannot be made; the problem is reported.
    */
-  const makeProjectPicture = async (project, field, file, alt, url, page) => {
+  const makeProjectPicture = async (project, field, file, alt, url, page, use = 'card') => {
     try {
       const policy = page.policyFor(posix(relative(project.dir, file)));
       const processed = await images.process(file, {
         location: policy.location.value,
         camera: policy.camera.value,
       });
-      const standIn = publishImage(processed, url, 'card', page, policy);
+      const standIn = publishImage(processed, url, use, page, policy);
       return {
         src: imageFileUrl(processed, standIn),
         width: standIn.width,
@@ -1021,6 +1046,229 @@ async function buildSite(config, site, options, outRoot, version, report) {
     return address;
   };
 
+  /** Folder, below a game's page, in which the files of its press kit are published. */
+  const PRESS_KIT_DIR = 'press-kit';
+  /** Pseudo-addresses of the descriptions of a press kit for the link check; nothing links to them. */
+  const PRESS_KIT_DESCRIPTION_URL = '~press-kit-';
+
+  /**
+   * The size of a file in words a person can compare: whole kilobytes, or
+   * megabytes with one decimal.
+   *
+   * @param {number} bytes
+   * @returns {{ value: string, unit: 'kb' | 'mb' }}
+   */
+  const fileSizeOf = (bytes) => {
+    /** @type {Intl.NumberFormat} */
+    let format;
+    try {
+      format = new Intl.NumberFormat(site.lang, { maximumFractionDigits: 1 });
+    } catch {
+      format = new Intl.NumberFormat('en', { maximumFractionDigits: 1 });
+    }
+    return bytes < 1024 * 1024
+      ? { value: format.format(Math.max(1, Math.round(bytes / 1024))), unit: 'kb' }
+      : { value: format.format(Math.round((bytes / (1024 * 1024)) * 10) / 10), unit: 'mb' };
+  };
+
+  /**
+   * One logo or screenshot of a press kit as the template shows it: a
+   * thumbnail and the facts about the file to download.
+   *
+   * @typedef {object} PressKitAssetView
+   * @property {number} number Place in its list, from 1.
+   * @property {string} alt
+   * @property {{ src: string, width: number | null, height: number | null, srcset: { url: string, width: number }[], alt: string }} thumbnail For an SVG the thumbnail is the file itself and has no `srcset`.
+   * @property {string} url Address of the file to download.
+   * @property {string} fileName
+   * @property {string} format `PNG`, `JPEG` or `SVG`.
+   * @property {number | null} width
+   * @property {number | null} height
+   * @property {{ value: string, unit: 'kb' | 'mb' }} size
+   */
+
+  /**
+   * A description of a press kit, rendered. The link check sees it as a page
+   * of its own, so a broken link in it is reported with the line of `project.yaml`.
+   *
+   * @typedef {object} PressKitDescription
+   * @property {RenderedPost} rendered
+   * @property {import('./check/source-links.js').SourceFile} source
+   * @property {string} url Pseudo-address for the link check.
+   * @property {string} html The HTML to show; link rewrites are applied to it once the links are checked.
+   */
+
+  /**
+   * @typedef {object} PreparedPressKit
+   * @property {import('./content/project-kinds.js').PressKit} kit
+   * @property {PressKitDescription | null} shortDescription
+   * @property {PressKitDescription | null} longDescription
+   * @property {PressKitAssetView[]} logos
+   * @property {PressKitAssetView[]} screenshots
+   * @property {ManifestDownload[]} downloads
+   */
+
+  /**
+   * Prepares the press kit of a game: renders its descriptions, makes a
+   * thumbnail of every logo and screenshot, and publishes the files to
+   * download under `{page}/press-kit/{slug}-{logo|screenshot}-{nn}.{ext}`.
+   * A picture is re-encoded at the size of the original under the policy of
+   * the project's page; an SVG logo, which the schema already checked, is
+   * copied as it is.
+   *
+   * @param {import('./content/projects.js').Project} project
+   * @param {string} url Site-relative URL of the project's page.
+   * @param {import('./content/project-kinds.js').PressKit} kit
+   * @param {PageImages} page
+   * @returns {Promise<PreparedPressKit>}
+   */
+  const preparePressKit = async (project, url, kit, page) => {
+    const shown = posix(relative(config.dir, project.file));
+
+    /**
+     * @param {'shortDescription' | 'longDescription'} name
+     * @returns {Promise<PressKitDescription | null>}
+     */
+    const describe = async (name) => {
+      const description = kit[name];
+      if (description === null) return null;
+      const rendered = await renderMarkdown(description.text, {
+        file: project.file,
+        startLine: description.line,
+        carousel: carouselLabels,
+      });
+      for (const directive of rendered.maps) {
+        warnings.push(`${shown}:${directive.line ?? description.line}: pressKit.${name}: the ::map directive is only for posts and is left out`);
+      }
+      if (rendered.carousels > 0) {
+        warnings.push(`${shown}:${description.line}: pressKit.${name}: a carousel needs pictures of the page; it is shown as plain pictures (list screenshots under "screenshots")`);
+      }
+      for (const image of rendered.images) {
+        if (!/^(?:[a-z][a-z0-9+.-]*:|\/\/)/i.test(image.src)) {
+          warnings.push(`${shown}:${description.line}: pressKit.${name}: the picture "${image.src}" is not published from a description; list it under "screenshots" or "logos"`);
+        }
+      }
+      return {
+        rendered,
+        source: {
+          slug: `${PRESS_KIT_DESCRIPTION_URL}${name}`,
+          kind: 'file',
+          file: project.file,
+          dir: project.dir,
+          draft: false,
+        },
+        url: `${url}${PRESS_KIT_DESCRIPTION_URL}${name}/`,
+        html: withoutMapPlaceholders(rendered.html),
+      };
+    };
+
+    /** @type {ManifestDownload[]} */
+    const downloads = [];
+    /**
+     * @param {'logos' | 'screenshots'} group
+     * @param {'logo' | 'screenshot'} label Part of the published file names.
+     * @returns {Promise<PressKitAssetView[]>}
+     */
+    const assetsOf = async (group, label) => {
+      /** @type {PressKitAssetView[]} */
+      const views = [];
+      for (const [index, asset] of kit[group].entries()) {
+        const number = index + 1;
+        const stem = `${project.slug}-${label}-${String(number).padStart(2, '0')}`;
+        const absolute = join(project.dir, ...asset.file.split('/'));
+        const source = posix(relative(config.dir, absolute));
+        const field = `pressKit.${group}: item ${number}`;
+
+        if (asset.kind === 'svg') {
+          const bytes = readFileSync(absolute);
+          const svg = inspectSvg(bytes);
+          const fileName = `${stem}.svg`;
+          const address = `${url}${PRESS_KIT_DIR}/${fileName}`;
+          const target = join(outDir, ...address.split('/').filter(Boolean));
+          mkdirSync(dirname(target), { recursive: true });
+          writeFileSync(target, bytes);
+          downloads.push({
+            field: group,
+            source,
+            sha256: createHash('sha256').update(bytes).digest('hex'),
+            url: address,
+            file: address.slice(1),
+            fileName,
+            type: 'image/svg+xml',
+            width: svg.width,
+            height: svg.height,
+            bytes: bytes.length,
+            policy: null,
+            gps: null,
+            camera: null,
+          });
+          views.push({
+            number,
+            alt: asset.alt,
+            thumbnail: { src: address, width: svg.width, height: svg.height, srcset: [], alt: asset.alt },
+            url: address,
+            fileName,
+            format: 'SVG',
+            width: svg.width,
+            height: svg.height,
+            size: fileSizeOf(bytes.length),
+          });
+          continue;
+        }
+
+        const thumbnail = await makeProjectPicture(project, field, absolute, asset.alt, url, page, 'press-kit');
+        if (thumbnail === null) continue;
+        try {
+          const policy = page.policyFor(asset.file);
+          const download = await images.download(absolute, {
+            location: policy.location.value,
+            camera: policy.camera.value,
+          });
+          const fileName = `${stem}${download.extension}`;
+          const address = `${url}${PRESS_KIT_DIR}/${fileName}`;
+          images.publishDownload(download, outDir, address);
+          if (download.gps?.precision === 'exact') page.exact.add(download.source);
+          downloads.push({
+            field: group,
+            source,
+            sha256: download.sha256,
+            url: address,
+            file: address.slice(1),
+            fileName,
+            type: download.mime,
+            width: download.width,
+            height: download.height,
+            bytes: download.bytes,
+            policy: { location: policy.location, camera: policy.camera },
+            gps: download.gps,
+            camera: download.camera,
+          });
+          views.push({
+            number,
+            alt: asset.alt,
+            thumbnail,
+            url: address,
+            fileName,
+            format: download.format === 'png' ? 'PNG' : 'JPEG',
+            width: download.width,
+            height: download.height,
+            size: fileSizeOf(download.bytes),
+          });
+        } catch (error) {
+          if (!(error instanceof ImageError)) throw error;
+          report.addError({ site: site.id, file: shown, message: `${field}: image '${asset.file}': ${error.message}` });
+        }
+      }
+      return views;
+    };
+
+    const shortDescription = await describe('shortDescription');
+    const longDescription = await describe('longDescription');
+    const logos = await assetsOf('logos', 'logo');
+    const screenshots = await assetsOf('screenshots', 'screenshot');
+    return { kit, shortDescription, longDescription, logos, screenshots, downloads };
+  };
+
   // The projects: each one's page text is rendered, and its card picture goes
   // through the image pipeline, before the links are checked.
   /**
@@ -1032,6 +1280,7 @@ async function buildSite(config, site, options, outRoot, version, report) {
    * @property {ProjectPicture | null} picture The card picture, or null when it could not be made (reported).
    * @property {Record<string, ProjectMedium | null>} media What the kind's `image`, `trailer` and `font-file` fields publish, by field name; null for a picture that could not be made (reported). A field that is not set has no entry.
    * @property {ManifestProjectFile[]} files The video and font files copied to the output for the project.
+   * @property {PreparedPressKit | null} pressKit The press kit of a game that has one.
    * @property {import('./check/source-links.js').SourceFile} source The page as the link check sees it.
    */
   /**
@@ -1092,6 +1341,8 @@ async function buildSite(config, site, options, outRoot, version, report) {
           media[field] = { type: 'font', url: publishProjectFile(project, url, field, file, files), format };
         }
       }
+      const kit = /** @type {import('./content/project-kinds.js').PressKit | null | undefined} */ (project.fields.pressKit);
+      const pressKit = kit ? await preparePressKit(project, url, kit, page) : null;
       preparedProjects.push({
         project,
         url,
@@ -1100,12 +1351,28 @@ async function buildSite(config, site, options, outRoot, version, report) {
         picture,
         media,
         files,
+        pressKit,
         source: { slug: project.slug, kind: 'folder', file: project.pageFile, dir: project.dir, draft: false },
       });
     }
   }
   for (const entry of preparedProjects) {
-    sourcePosts.push({ post: entry.source, url: entry.url, rendered: entry.rendered });
+    // The press kit section has the anchor "press-kit", which links may point at.
+    sourcePosts.push({
+      post: entry.source,
+      url: entry.url,
+      rendered: entry.pressKit ? { ...entry.rendered, ids: [...entry.rendered.ids, 'press-kit'] } : entry.rendered,
+    });
+    for (const description of [entry.pressKit?.shortDescription, entry.pressKit?.longDescription]) {
+      // The descriptions are shown inside the press kit section, so `#press-kit` is a valid anchor for them too.
+      if (description) {
+        sourcePosts.push({
+          post: description.source,
+          url: description.url,
+          rendered: { ...description.rendered, ids: [...description.rendered.ids, 'press-kit'] },
+        });
+      }
+    }
   }
 
   const linkCheck = checkSourceLinks({
@@ -1123,6 +1390,9 @@ async function buildSite(config, site, options, outRoot, version, report) {
   }
   for (const entry of preparedProjects) {
     entry.rendered = { ...entry.rendered, html: applyLinkRewrites(entry.rendered.html, linkCheck.rewrites.get(entry.source)) };
+    for (const description of [entry.pressKit?.shortDescription, entry.pressKit?.longDescription]) {
+      if (description) description.html = applyLinkRewrites(description.html, linkCheck.rewrites.get(description.source));
+    }
   }
 
   for (const blog of site.blogs) {
@@ -1601,7 +1871,33 @@ async function buildSite(config, site, options, outRoot, version, report) {
       font: font?.type === 'font' ? { url: font.url, format: font.format } : null,
     });
   };
-  const projectViews = preparedProjects.map(({ project, url, picture, media }) => ({
+  /**
+   * What the template of a game shows as its press kit: the factsheet (the
+   * fields that are known, the game's own platforms and price standing in for
+   * ones the press kit does not give), the rendered descriptions and the
+   * assets to download.
+   *
+   * @param {import('./content/projects.js').Project} project
+   * @param {PreparedPressKit | null} prepared
+   */
+  const pressKitViewOf = (project, prepared) => {
+    if (prepared === null) return null;
+    const { kit } = prepared;
+    const platforms = kit.platforms ?? /** @type {string[]} */ (project.fields.platforms ?? []);
+    const price = kit.price ?? /** @type {string | null | undefined} */ (project.fields.price) ?? null;
+    return {
+      developer: kit.developer,
+      releaseStatus: kit.releaseStatus ?? t(`projects.status.${project.status}`),
+      platforms: platforms.length > 0 ? platforms : null,
+      price,
+      shortDescription: prepared.shortDescription?.html ?? null,
+      longDescription: prepared.longDescription?.html ?? null,
+      logos: prepared.logos,
+      screenshots: prepared.screenshots,
+    };
+  };
+  const projectViews = preparedProjects.map(({ project, url, picture, media, pressKit }) => ({
+    pressKit: pressKitViewOf(project, pressKit),
     slug: project.slug,
     url,
     name: project.name,
@@ -1663,6 +1959,7 @@ async function buildSite(config, site, options, outRoot, version, report) {
         tag: project.tag,
         card: posix(relative(config.dir, project.card)),
         files,
+        downloads: entry.pressKit?.downloads ?? [],
       });
     }
     const projectsTitle = t('projects.title');

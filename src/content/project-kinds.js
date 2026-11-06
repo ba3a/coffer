@@ -1,7 +1,8 @@
-import { statSync } from 'node:fs';
+import { readFileSync, realpathSync, statSync } from 'node:fs';
 import { extname, isAbsolute, relative, resolve, sep } from 'node:path';
 
 import { IMAGE_EXTENSIONS } from '../images/defaults.js';
+import { inspectSvg } from '../images/svg.js';
 
 /**
  * The kinds of project a site can have, and the fields each kind adds to the
@@ -19,6 +20,7 @@ import { IMAGE_EXTENSIONS } from '../images/defaults.js';
  *
  * @typedef {object} FieldContext
  * @property {string} dir Absolute path of the project's folder.
+ * @property {(path: (string | number)[]) => number | undefined} [lineOf] The 1-based line of `project.yaml` on which the value at a path (such as `['pressKit', 'longDescription']`) starts, or undefined when it is not known.
  */
 
 /**
@@ -88,6 +90,240 @@ function fileInProject(value, dir, extensions, what) {
     return { problem: `the file "${text}" does not exist in the project folder` };
   }
   return { value: inside.split(sep).join('/') };
+}
+
+/**
+ * Whether a path, once symbolic links are followed, is still inside a folder.
+ *
+ * @param {string} root
+ * @param {string} target
+ * @returns {boolean}
+ */
+function realPathStaysInside(root, target) {
+  try {
+    return staysInside(relative(realpathSync(root), realpathSync(target)));
+  } catch {
+    return false;
+  }
+}
+
+/** The keys a `pressKit` mapping can have. */
+export const PRESS_KIT_KEYS = Object.freeze([
+  'dir',
+  'developer',
+  'releaseStatus',
+  'platforms',
+  'price',
+  'shortDescription',
+  'longDescription',
+  'logos',
+  'screenshots',
+]);
+
+/** File extensions of the files a press kit lists as logos: any picture, and SVG. */
+export const PRESS_KIT_LOGO_EXTENSIONS = Object.freeze([...IMAGE_EXTENSIONS, '.svg']);
+
+/** The most logos, and the most screenshots, a press kit can list. */
+export const MAX_PRESS_KIT_ASSETS = 40;
+
+/**
+ * One logo or screenshot of a press kit.
+ *
+ * @typedef {object} PressKitAsset
+ * @property {string} file Path relative to the project folder, with `/`.
+ * @property {string} alt Alternative text of the thumbnail; empty when the author gave none.
+ * @property {'raster' | 'svg'} kind An SVG file is published as it is; any other picture is re-encoded.
+ */
+
+/**
+ * The normalized `pressKit` of a game.
+ *
+ * @typedef {object} PressKit
+ * @property {string | null} dir The folder, relative to the project folder, that the file names are relative to; null for the project folder itself. (Each asset's `file` is already relative to the project folder.)
+ * @property {string | null} developer
+ * @property {string | null} releaseStatus Free text such as "Early access, summer 2027"; null to use the project's status.
+ * @property {string[] | null} platforms Null to use the game's `platforms`.
+ * @property {string | null} price Null to use the game's `price`.
+ * @property {{ text: string, line: number } | null} shortDescription Markdown, and the line of `project.yaml` it starts on.
+ * @property {{ text: string, line: number } | null} longDescription Markdown, and the line of `project.yaml` it starts on.
+ * @property {PressKitAsset[]} logos
+ * @property {PressKitAsset[]} screenshots
+ */
+
+/**
+ * Checks the `pressKit` of a game: a mapping of facts, two descriptions and
+ * two lists of picture files. Every file has to exist inside the project
+ * folder, also when symbolic links are followed; an SVG logo has to pass
+ * {@link inspectSvg}. All problems are reported together.
+ *
+ * @param {unknown} value
+ * @param {FieldContext} context
+ * @returns {FieldResult}
+ */
+function checkPressKit(value, { dir, lineOf }) {
+  if (!isMapping(value)) {
+    return {
+      problem: `must be a mapping with some of: ${PRESS_KIT_KEYS.join(', ')} (see the documentation of projects)`,
+    };
+  }
+  /** @type {string[]} */
+  const problems = [];
+  for (const key of Object.keys(value)) {
+    if (!PRESS_KIT_KEYS.includes(key)) problems.push(`${key}: unknown key (expected one of: ${PRESS_KIT_KEYS.join(', ')})`);
+  }
+  /**
+   * @param {string} key
+   * @returns {string | null}
+   */
+  const text = (key) => {
+    const raw = value[key];
+    if (raw === undefined || raw === null) return null;
+    if (typeof raw !== 'string' || raw.trim() === '') {
+      problems.push(`${key}: must be a non-empty string`);
+      return null;
+    }
+    return raw.trim();
+  };
+  /**
+   * @param {string} key
+   * @returns {{ text: string, line: number } | null}
+   */
+  const markdown = (key) => {
+    const found = text(key);
+    return found === null ? null : { text: found, line: lineOf?.(['pressKit', key]) ?? 1 };
+  };
+
+  /** @type {string | null} */
+  let kitDir = null;
+  let base = dir;
+  if (value.dir !== undefined && value.dir !== null) {
+    if (typeof value.dir !== 'string' || value.dir.trim() === '') {
+      problems.push('dir: must be a non-empty path');
+    } else {
+      const target = resolve(dir, value.dir.trim());
+      const inside = relative(dir, target);
+      let isFolder = false;
+      try {
+        isFolder = statSync(target).isDirectory();
+      } catch {
+        // Reported below.
+      }
+      if (!staysInside(inside)) {
+        problems.push('dir: must name a folder inside the project folder');
+      } else if (!isFolder) {
+        problems.push(`dir: the folder "${value.dir}" does not exist in the project folder`);
+      } else if (!realPathStaysInside(dir, target)) {
+        problems.push('dir: must name a folder inside the project folder (a link that leads out of it is not accepted)');
+      } else {
+        kitDir = inside.split(sep).join('/');
+        base = target;
+      }
+    }
+  }
+
+  const developer = text('developer');
+  const releaseStatus = text('releaseStatus');
+  const price = text('price');
+  const shortDescription = markdown('shortDescription');
+  const longDescription = markdown('longDescription');
+  /** @type {string[] | null} */
+  let platforms = null;
+  if (value.platforms !== undefined && value.platforms !== null) {
+    const listed = FIELD_TYPES['string-list'].check(value.platforms, { dir });
+    if ('problem' in listed) problems.push(`platforms: ${listed.problem}`);
+    else platforms = /** @type {string[]} */ (listed.value);
+  }
+
+  /**
+   * @param {'logos' | 'screenshots'} key
+   * @returns {PressKitAsset[]}
+   */
+  const assets = (key) => {
+    const raw = value[key];
+    if (raw === undefined || raw === null) return [];
+    if (!Array.isArray(raw)) {
+      problems.push(`${key}: must be a list of picture files`);
+      return [];
+    }
+    if (raw.length > MAX_PRESS_KIT_ASSETS) {
+      problems.push(`${key}: at most ${MAX_PRESS_KIT_ASSETS} files`);
+      return [];
+    }
+    const extensions = key === 'logos' ? PRESS_KIT_LOGO_EXTENSIONS : IMAGE_EXTENSIONS;
+    /** @type {PressKitAsset[]} */
+    const found = [];
+    for (const [index, item] of raw.entries()) {
+      const label = `${key}: item ${index + 1}`;
+      /** @type {Record<string, unknown>} */
+      const entry = isMapping(item) ? item : { file: item };
+      if (isMapping(item)) {
+        const unknown = Object.keys(item).filter((name) => name !== 'file' && name !== 'alt');
+        if (unknown.length > 0) {
+          problems.push(`${label}: unknown key ${unknown.map((name) => `"${name}"`).join(', ')} (expected file and alt)`);
+          continue;
+        }
+      }
+      const checked = fileInProject(entry.file, base, extensions, key === 'logos' ? 'a logo file' : 'a screenshot file');
+      if ('problem' in checked) {
+        problems.push(`${label}: ${checked.problem}`);
+        continue;
+      }
+      const relativeFile = /** @type {string} */ (checked.value);
+      const absolute = resolve(base, relativeFile);
+      if (!realPathStaysInside(dir, absolute)) {
+        problems.push(`${label}: "${relativeFile}" must be a file inside the project folder (a link that leads out of it is not accepted)`);
+        continue;
+      }
+      const file = relative(dir, absolute).split(sep).join('/');
+      if (found.some((asset) => asset.file.toLowerCase() === file.toLowerCase())) {
+        problems.push(`${label}: "${file}" is listed twice`);
+        continue;
+      }
+      let alt = '';
+      if (entry.alt !== undefined && entry.alt !== null) {
+        if (typeof entry.alt !== 'string') {
+          problems.push(`${label}: alt must be text`);
+          continue;
+        }
+        alt = entry.alt.trim();
+      }
+      const kind = extname(file).toLowerCase() === '.svg' ? 'svg' : 'raster';
+      if (kind === 'svg') {
+        let svg;
+        try {
+          svg = inspectSvg(readFileSync(absolute));
+        } catch (error) {
+          problems.push(`${label}: "${file}" cannot be read: ${error instanceof Error ? error.message : String(error)}`);
+          continue;
+        }
+        if (svg.problems.length > 0) {
+          problems.push(`${label}: "${file}" ${svg.problems.join('; ')}`);
+          continue;
+        }
+      }
+      found.push({ file, alt, kind });
+    }
+    return found;
+  };
+  const logos = assets('logos');
+  const screenshots = assets('screenshots');
+
+  if (problems.length > 0) return { problem: problems.join('; ') };
+  if (
+    developer === null &&
+    releaseStatus === null &&
+    platforms === null &&
+    price === null &&
+    shortDescription === null &&
+    longDescription === null &&
+    logos.length === 0 &&
+    screenshots.length === 0
+  ) {
+    return { value: null };
+  }
+  /** @type {PressKit} */
+  const kit = { dir: kitDir, developer, releaseStatus, platforms, price, shortDescription, longDescription, logos, screenshots };
+  return { value: kit };
 }
 
 /** File extensions of the local videos a `trailer` can be, with their media types. */
@@ -275,6 +511,11 @@ export const FIELD_TYPES = Object.freeze({
       return { value: entries };
     },
   },
+  'press-kit': {
+    describe: 'a mapping of the facts, descriptions, logos and screenshots of the press kit',
+    empty: () => null,
+    check: checkPressKit,
+  },
   mapping: {
     describe: 'a mapping',
     empty: () => null,
@@ -425,7 +666,7 @@ registerProjectKind({
     stores: { type: 'url-map' },
     platforms: { type: 'string-list' },
     price: { type: 'string' },
-    pressKit: { type: 'directory' },
+    pressKit: { type: 'press-kit' },
     accent: { type: 'color' },
     displayFont: { type: 'font-name' },
     displayFontFile: { type: 'font-file' },

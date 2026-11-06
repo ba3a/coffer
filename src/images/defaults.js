@@ -4,6 +4,9 @@ export const DEFAULT_WIDTHS = Object.freeze([480, 800, 1200, 1600, 2400]);
 /** Longest edge, in pixels, of the full-size viewer JPEG unless the site says otherwise. */
 export const DEFAULT_VIEWER_MAX_EDGE = 3200;
 
+/** JPEG quality (1 to 100) of the full-resolution downloads of JPEG and HEIC originals, such as the screenshots of a press kit. */
+export const DEFAULT_DOWNLOAD_JPEG_QUALITY = 95;
+
 /** WebP quality (1 to 100) of the variants unless the site says otherwise. */
 export const DEFAULT_WEBP_QUALITY = 80;
 

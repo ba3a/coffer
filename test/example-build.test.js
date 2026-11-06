@@ -5,6 +5,8 @@ import { existsSync, mkdtempSync, readFileSync, readdirSync, rmSync } from 'node
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import exifr from 'exifr';
+import sharp from 'sharp';
 
 import { MANIFEST_FILE_NAME, buildSites } from '../src/build.js';
 import { loadConfig } from '../src/config.js';
@@ -156,8 +158,12 @@ test('the manifest is written and lists the pages and the posts', async () => {
         ['content/journal/photos/ridge.jpg', '/journal/ridge-walk/', 'body'],
         ['content/projects/kerfcalc/card.jpg', '/made/kerfcalc/', 'card'],
         ['content/projects/tenon-tumble/card.jpg', '/made/tenon-tumble/', 'card'],
+        ['content/projects/tenon-tumble/press-kit/logo.png', '/made/tenon-tumble/', 'press-kit'],
+        ['content/projects/tenon-tumble/press-kit/on-the-bench.jpg', '/made/tenon-tumble/', 'press-kit'],
         ['content/projects/tenon-tumble/screenshot-1.jpg', '/made/tenon-tumble/', 'body'],
+        ['content/projects/tenon-tumble/screenshot-1.jpg', '/made/tenon-tumble/', 'press-kit'],
         ['content/projects/tenon-tumble/screenshot-2.jpg', '/made/tenon-tumble/', 'body'],
+        ['content/projects/tenon-tumble/screenshot-2.jpg', '/made/tenon-tumble/', 'press-kit'],
       ],
     );
     assert.equal(manifest.site.id, 'workshop');
@@ -335,5 +341,46 @@ test('the example projects page lists both projects and the project pages resolv
     assert.doesNotMatch(game, /game-store|project-fact-repo|Source code/);
     assert.match(game, /<section class="carousel" aria-label="Screenshots"/);
     assert.match(game, /<dt>Platforms<\/dt>\s*<dd>Linux, Windows, Web<\/dd>/);
+  });
+});
+
+test('the example game has a press kit whose downloads are full resolution and carry no location', async () => {
+  await withExample({}, async (site, manifest) => {
+    const game = page(site, '/made/tenon-tumble/');
+    const section = /<section class="press-kit"[\s\S]*?<\/section>/.exec(game)?.[0] ?? '';
+    assert.match(section, /id="press-kit"/);
+    assert.match(section, /<dt>Developer<\/dt>\s*<dd>Tove Marlowe<\/dd>/);
+    assert.match(section, /<dt>Release status<\/dt>\s*<dd>In development, no release date yet<\/dd>/);
+    assert.match(section, /<dt>Platforms<\/dt>\s*<dd>Linux, Windows, Web<\/dd>/);
+    assert.match(section, /<dt>Price<\/dt>\s*<dd>Free<\/dd>/);
+    assert.match(section, /<h3>Short description<\/h3>\s*<p>A relaxed puzzle game/);
+    assert.match(section, /<h3>Description<\/h3>[\s\S]*<li>Short rounds that fit the minutes between jobs\.<\/li>/);
+    assert.equal((section.match(/<a class="press-download" /g) ?? []).length, 5);
+
+    assert.deepEqual(
+      manifest.projects.find((project) => project.slug === 'tenon-tumble')?.downloads.map((entry) => [entry.fileName, entry.type, entry.width, entry.height]),
+      [
+        ['tenon-tumble-logo-01.png', 'image/png', 512, 512],
+        ['tenon-tumble-logo-02.svg', 'image/svg+xml', 512, 512],
+        ['tenon-tumble-screenshot-01.jpg', 'image/jpeg', 1280, 720],
+        ['tenon-tumble-screenshot-02.jpg', 'image/jpeg', 1280, 720],
+        ['tenon-tumble-screenshot-03.jpg', 'image/jpeg', 1200, 800],
+      ],
+    );
+
+    // The photograph has a made-up position and camera; the published download has neither.
+    const original = readFileSync(join(root, 'example', 'content', 'projects', 'tenon-tumble', 'press-kit', 'on-the-bench.jpg'));
+    const before = await exifr.parse(original, { gps: true, mergeOutput: true });
+    assert.ok(before.latitude > 52 && before.Make === 'Examplecam', 'the original is geotagged');
+    const published = readFileSync(join(site, 'made', 'tenon-tumble', 'press-kit', 'tenon-tumble-screenshot-03.jpg'));
+    const after = await exifr.parse(published, { gps: true, mergeOutput: true });
+    assert.equal(after?.latitude, undefined);
+    assert.equal(after?.Make, undefined);
+    assert.deepEqual(
+      [(await sharp(published).metadata()).width, (await sharp(published).metadata()).height],
+      [1200, 800],
+    );
+    const logo = await sharp(join(site, 'made', 'tenon-tumble', 'press-kit', 'tenon-tumble-logo-01.png')).metadata();
+    assert.deepEqual([logo.format, logo.hasAlpha, logo.width], ['png', true, 512]);
   });
 });

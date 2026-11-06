@@ -177,14 +177,24 @@ test('yaml syntax errors and non-mappings are reported with the file', () => {
 test('game fields: stores with a link are kept, platforms, price, accent, font and press kit are checked', () => {
   const game = 'name: G\npitch: P.\nkind: game\nstatus: idea\ncard: card.png\n';
   parse(
-    `${game}stores:\n  itch: https://a.itch.example/g\n  steam:\n  gog: ""\nplatforms: [Linux, Web]\nprice: Free\naccent: "#ABC"\ndisplayFont: Handjet\npressKit: press\n`,
+    `${game}stores:\n  itch: https://a.itch.example/g\n  steam:\n  gog: ""\nplatforms: [Linux, Web]\nprice: Free\naccent: "#ABC"\ndisplayFont: Handjet\npressKit:\n  dir: press\n  logos: [logo.png]\n`,
     (project, errors) => {
       assert.deepEqual(errors, []);
       assert.deepEqual(project?.fields, {
         stores: { itch: 'https://a.itch.example/g' },
         platforms: ['Linux', 'Web'],
         price: 'Free',
-        pressKit: 'press',
+        pressKit: {
+          dir: 'press',
+          developer: null,
+          releaseStatus: null,
+          platforms: null,
+          price: null,
+          shortDescription: null,
+          longDescription: null,
+          logos: [{ file: 'press/logo.png', alt: '', kind: 'raster' }],
+          screenshots: [],
+        },
         accent: '#abc',
         displayFont: 'Handjet',
         displayFontFile: null,
@@ -217,21 +227,21 @@ test('game fields: stores with a link are kept, platforms, price, accent, font a
     });
   });
   parse(
-    `${game}stores:\n  itch: ftp://x\n  Steam: https://s.example\nplatforms: [Linux, Linux]\naccent: red\npressKit: missing\nprice: 5\n`,
+    `${game}stores:\n  itch: ftp://x\n  Steam: https://s.example\nplatforms: [Linux, Linux]\naccent: red\npressKit:\n  dir: missing\nprice: 5\n`,
     (_project, errors, file) => {
       assert.deepEqual(errors, [
         `${file}: stores: itch: must be an absolute http(s) URL, or empty while it is not set`,
         `${file}: platforms: "Linux" is listed twice`,
         `${file}: price: must be a non-empty string`,
-        `${file}: pressKit: the folder "missing" does not exist in the project folder`,
+        `${file}: pressKit: dir: the folder "missing" does not exist in the project folder`,
         `${file}: accent: must be a colour written as #rgb or #rrggbb`,
       ]);
     },
   );
-  parse(`${game}pressKit: ../elsewhere\nstores:\n  Steam: https://s.example\n`, (_project, errors, file) => {
+  parse(`${game}pressKit:\n  dir: ../elsewhere\nstores:\n  Steam: https://s.example\n`, (_project, errors, file) => {
     assert.deepEqual(errors, [
       `${file}: stores: "Steam" is not a usable name (use lower-case letters, digits, "-" and "_")`,
-      `${file}: pressKit: must name a folder inside the project folder`,
+      `${file}: pressKit: dir: must name a folder inside the project folder`,
     ]);
   });
 });

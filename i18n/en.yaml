@@ -71,6 +71,23 @@ projects:
     status: Status
     platforms: Platforms
     price: Price
+  press:
+    title: Press kit
+    facts: Factsheet
+    developer: Developer
+    release_status: Release status
+    platforms: Platforms
+    price: Price
+    short_description: Short description
+    long_description: Description
+    logos: Logos
+    screenshots: Screenshots
+    logo_n: "Logo {n}"
+    screenshot_n: "Screenshot {n}"
+    download: "Download {name} ({format}, {size})"
+    download_sized: "Download {name} ({format}, {width} × {height} px, {size})"
+    size_kb: "{value} KB"
+    size_mb: "{value} MB"
   kind:
     tool: Tool
     game: Game
