@@ -11,6 +11,7 @@ nav:
   tags: Tags
   series: Series
   search: Search
+  search_blog: "Search: {title}"
   feeds: Feeds
 post:
   published: "Published {date}"
@@ -117,6 +118,15 @@ reference:
   sections: Sections
   not_documented: Not documented
   empty: Nothing to show here.
+search:
+  title: Search
+  label: "Search {title}"
+  needs_js: "Search needs JavaScript, which is switched off or not available in this browser."
+  browse_tags: Browse the posts by tag instead
+  searching: Searching...
+  found: "Results: {count}"
+  none: "Nothing found for {query}. Try another word."
+  error: Search could not be loaded. Browse the posts by tag instead.
 feeds:
   title: Feeds
   subscribe: Subscribe

@@ -435,7 +435,7 @@ test('the report file lists errors, warnings and info, outside the output', asyn
       ]);
       assert.equal(report.warnings.length, 1);
       assert.match(report.warnings[0].message, /cover: "missing\.jpg" does not exist/);
-      assert.deepEqual(report.info, [{ site: 'demo', message: '1 post(s), 6 page(s) built' }]);
+      assert.deepEqual(report.info, [{ site: 'demo', message: '1 post(s), 7 page(s) built' }]);
       assert.ok(!existsSync(join(root, 'out', '.coffer')));
     },
   );

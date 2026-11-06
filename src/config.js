@@ -177,6 +177,7 @@ export const RESERVED_OUTPUT_NAMES = Object.freeze([
   'assets',
   'img',
   'cards',
+  'pagefind',
   '404.html',
   '_redirects',
   'robots.txt',

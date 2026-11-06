@@ -10,6 +10,7 @@ nav:
   tags: Теги
   series: Серии
   search: Поиск
+  search_blog: "Поиск: {title}"
   feeds: Ленты
 post:
   published: "Опубликовано {date}"
@@ -122,6 +123,15 @@ reference:
   sections: Разделы
   not_documented: Без описания
   empty: Здесь пока нечего показать.
+search:
+  title: Поиск
+  label: "Искать: {title}"
+  needs_js: "Для поиска нужен JavaScript, а в этом браузере он выключен или недоступен."
+  browse_tags: Вместо поиска можно просмотреть записи по меткам
+  searching: Ищу...
+  found: "Найдено: {count}"
+  none: "По запросу {query} ничего не найдено. Попробуйте другое слово."
+  error: Не удалось загрузить поиск. Просмотрите записи по меткам.
 feeds:
   title: Ленты
   subscribe: Подписаться

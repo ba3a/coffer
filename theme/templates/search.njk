@@ -1,0 +1,27 @@
+{# The search page of a blog. It is plain text and a link to the tag tree until search.js has started Pagefind (which needs JavaScript); the form, the status line and the results appear only then. When nothing is indexed yet (no published post or guide on the site) it says so and loads no script. Expects `blog`, `searchable`, `tagsUrl`, `searchUrl` and `searchData`. Every part is a block a theme can replace. #}
+{% extends "base.njk" %}
+
+{% block main %}
+<section class="search"{% if searchable %} data-search="{{ searchData | dump }}"{% endif %}>
+<h1>{{ page.title }}</h1>
+{% if searchable %}
+{% block search_nojs %}
+<div class="search-nojs">
+<p>{{ 'search.needs_js' | t({ title: blog.title }) }}</p>
+<p><a href="{{ tagsUrl | url }}">{{ 'search.browse_tags' | t }}</a></p>
+</div>
+{% endblock %}
+{% block search_form %}
+<form class="search-form" role="search" action="{{ searchUrl | url }}" method="get">
+<label for="search-q">{{ 'search.label' | t({ title: blog.title }) }}</label>
+<input id="search-q" class="search-input" type="search" name="q" autocomplete="off" autocapitalize="none" enterkeyhint="search" spellcheck="false">
+</form>
+<p class="search-status" role="status" aria-live="polite"></p>
+<ol class="search-results"></ol>
+{% endblock %}
+{% else %}
+<p class="empty">{{ 'blog.empty' | t }}</p>
+<p><a href="{{ tagsUrl | url }}">{{ 'search.browse_tags' | t }}</a></p>
+{% endif %}
+</section>
+{% endblock %}

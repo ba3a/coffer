@@ -31,7 +31,7 @@
 {% endblock %}
 {% if toc.length %}{% block toc %}{% include "partials/toc.njk" %}{% endblock %}{% endif %}
 {% block docs_body %}
-<div class="post-body docs-body">
+<div class="post-body docs-body" data-pagefind-body data-pagefind-filter="guides:{{ project.slug }}">
 {{ page.content | safe }}
 {% if docs.generated %}<ul class="docs-index-list">
 {% for item in docs.sidebar %}{% if not item.current %}<li><a href="{{ item.url | url }}">{{ item.title }}</a></li>

@@ -98,7 +98,7 @@ test('the post page shows title, date, reading time, the table of contents and t
     assert.match(html, /<time datetime="2025-03-14">Published Mar 14, 2025<\/time>/);
     assert.match(html, /\d+ minutes?/);
     const toc = html.indexOf('<details class="toc">');
-    const body = html.indexOf('<div class="post-body">');
+    const body = html.indexOf('<div class="post-body"');
     assert.ok(toc !== -1 && body !== -1 && toc < body, 'the TOC comes before the body');
     assert.match(html, /<a href="#marking-out">Marking out<\/a>/);
     assert.match(html, /<h2 id="marking-out">/);
@@ -121,6 +121,7 @@ test('the manifest is written and lists the pages and the posts', async () => {
         '/journal/mountain-weekend/',
         '/journal/photo-notes/',
         '/journal/ridge-walk/',
+        '/journal/search/',
         '/journal/series/boxes-by-hand/',
         '/journal/tags/',
         '/journal/tags/projects/',
@@ -207,7 +208,7 @@ test('coffer build with --out, --now and --drafts builds the example from the co
       { encoding: 'utf8', cwd: tmpdir() },
     );
     assert.equal(result.status, 0, result.stderr);
-    assert.match(result.stdout, /workshop: 5 post\(s\), 25 page\(s\)/);
+    assert.match(result.stdout, /workshop: 5 post\(s\), 26 page\(s\)/);
     assert.equal(existsSync(join(out, 'workshop', 'journal', 'spring-open-house')), false);
 
     const preview = spawnSync(
@@ -216,7 +217,7 @@ test('coffer build with --out, --now and --drafts builds the example from the co
       { encoding: 'utf8', cwd: tmpdir() },
     );
     assert.equal(preview.status, 0, preview.stderr);
-    assert.match(preview.stdout, /workshop: 7 post\(s\), 29 page\(s\)/);
+    assert.match(preview.stdout, /workshop: 7 post\(s\), 30 page\(s\)/);
     assert.ok(existsSync(join(out, 'workshop', 'journal', 'spring-open-house', 'index.html')));
   } finally {
     rmSync(out, { recursive: true, force: true });

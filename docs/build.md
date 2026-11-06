@@ -29,12 +29,14 @@ For a site `workshop` with a blog whose `prefix` is `journal`:
   journal/tags/index.html             the tag tree of the blog
   journal/tags/{tag path}/index.html  one page per tag
   journal/series/{series}/index.html  one page per series
+  journal/search/index.html           the search page of the blog
   journal/{slug}/index.html           one page per published post
   journal/{alias}/index.html          a redirect page for each old slug (see below)
   _redirects                          redirect rules for hosts that read them
   cards/{hash}.png                    generated 1200 by 630 title cards for link previews
   img/{key}/{name}-{width}.webp       resized WebP variants of every image a page uses
   img/{key}/{name}-full.jpg           the full-size JPEG for the viewer (the originals are never published)
+  pagefind/                           the full-text search index and Pagefind's scripts
   sitemap.xml                         the published canonical pages
   robots.txt                          allows crawling and names the sitemap
   assets/                             the static files of the theme
@@ -46,6 +48,7 @@ For a site `workshop` with a blog whose `prefix` is `journal`:
 - **Old slugs** declared as `aliases` in a post's front matter get a `301` rule in `_redirects` and a fallback page; an alias that collides with a live address fails the build. See [URLs, redirects and hosting](urls.md), which also covers `coffer serve`.
 - **Tags**: the tree of the blog's tags and one page per tag, listing the posts with the tag or any tag below it. See [Tags](tags.md).
 - **Series**: a navigation block (name, "part n of m", previous and next) at the top and the end of every post of a series, computed from all published posts, and one page per series listing its parts in order. See [Series](series.md).
+- **Search**: a search page at `{blog}/search/` for every blog, linked from the navigation, which finds the blog's posts (in other word forms too) with snippets; the index is built by Pagefind after the HTML is written and lands in `pagefind/`. Searching needs JavaScript, and the page says so without it. See [Search](search.md).
 - **The blog index** lists the published posts, newest first, with the date, the summary and the reading time of each.
 - **A post page** shows the title, the date, the reading time, the table of contents and the body. The table of contents is built from the `h2` and `h3` headings of posts with enough of them (see [Markdown](markdown.md)). It comes before the body in the page. On a narrow screen it is a collapsible block; on a wide screen the stylesheet puts it beside the body.
 - **Projects**: a site with `projects.dir` gets a projects page with a card for every project folder, a page per project, and the showcase of featured projects on the home page. Adding a folder adds a project; an unknown kind or a missing field fails the build with the path of `project.yaml`. See [Projects](projects.md).

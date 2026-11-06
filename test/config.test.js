@@ -23,6 +23,7 @@ import {
 } from '../src/config.js';
 import { FEED_FILE_NAME } from '../src/feeds.js';
 import { IMAGES_OUT_DIR } from '../src/images/pipeline.js';
+import { SEARCH_DIR_NAME } from '../src/search.js';
 import { REDIRECTS_FILE_NAME } from '../src/redirects.js';
 import { ROBOTS_FILE_NAME, SITEMAP_FILE_NAME } from '../src/sitemap.js';
 import { NOT_FOUND_URL } from '../src/build.js';
@@ -799,7 +800,7 @@ test('feeds.limit is a positive integer', () => {
 });
 
 test('urls.projects cannot be a name the build writes itself', () => {
-  for (const name of ['assets', 'img', 'cards', 'robots.txt', 'sitemap.xml', 'assets/more']) {
+  for (const name of ['assets', 'img', 'cards', 'pagefind', 'robots.txt', 'sitemap.xml', 'assets/more']) {
     assert.deepEqual(
       normalizeErrors(oneSite({ projects: { dir: 'content/projects' }, urls: { projects: name } })),
       [
@@ -818,6 +819,7 @@ test('the reserved output names are the ones the build writes', () => {
   for (const name of [
     IMAGES_OUT_DIR,
     CARDS_OUT_DIR,
+    SEARCH_DIR_NAME,
     'assets',
     REDIRECTS_FILE_NAME,
     ROBOTS_FILE_NAME,

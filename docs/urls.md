@@ -8,6 +8,7 @@ Every page has one address, and every other spelling of it redirects there. Visi
 - **A post address depends on the blog prefix and the slug only.** Not the date, not the tags. Retagging a post or moving its date never breaks a link. See [Posts](posts.md) for how the slug is chosen.
 - **The same address without the slash redirects.** `/journal/first-dovetail` answers `308` and sends the visitor to `/journal/first-dovetail/`. So does `/journal/first-dovetail/index.html`.
 - **Unknown addresses** answer `404` with the site's own `404.html`, in the site's language and style (see [The home page, the 404 page and the footer](home.md)).
+- **The search page** of a blog is `/journal/search/` (`/search/` for a blog at the root), so a post cannot have the slug `search`. The search index is written to `/pagefind/` at the root of the site. See [Search](search.md).
 - Files with an extension, such as `/assets/coffer.css` or a feed, are not redirected; they have no slash form.
 
 The hosts below do the slash redirects by themselves when they find `a/index.html`. coffer only has to write the files.

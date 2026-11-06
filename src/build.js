@@ -58,6 +58,7 @@ import {
 } from './redirects.js';
 import { createTemplates, siteUrl } from './render/templates.js';
 import { REPORT_DIR_NAME, REPORT_FILE_NAME, Report, ReportError, writeReport } from './report.js';
+import { BLOG_FILTER, SEARCH_DIR_NAME, SEARCH_URL_NAME, buildSearchIndex, searchPageUrl } from './search.js';
 import { ROBOTS_FILE_NAME, SITEMAP_FILE_NAME, renderRobots, renderSitemap } from './sitemap.js';
 import { readVersion } from './version.js';
 import { VIEWER_SCRIPTS, VIEWER_STYLES, viewerJson } from './viewer.js';
@@ -128,7 +129,7 @@ export class BuildError extends Error {
  * @typedef {object} ManifestPage
  * @property {string} url Site-relative URL, ending in a slash.
  * @property {string} file Path of the HTML file, relative to the site's output directory.
- * @property {'home' | 'not-found' | 'blog-index' | 'post' | 'tag-index' | 'tag' | 'series' | 'project-index' | 'project' | 'docs'} type
+ * @property {'home' | 'not-found' | 'blog-index' | 'post' | 'tag-index' | 'tag' | 'search' | 'series' | 'project-index' | 'project' | 'docs'} type
  * @property {string} title
  */
 
@@ -377,6 +378,7 @@ export class BuildError extends Error {
  * @property {{ generated: number, reused: number }} cards Title cards drawn by this build, and cards found in the cache.
  * @property {{ generated: number, reused: number }} images Images processed by this build, and images found in the cache.
  * @property {import('./report.js').ExactLocation[]} exactLocations The posts (and other pages) whose published images carry exact positions, by file.
+ * @property {{ pages: number }} search Pages put in the full-text search index.
  */
 
 /**
@@ -564,6 +566,13 @@ async function buildSite(config, site, options, outRoot, version, report) {
     { key: 'nav.home', url: '/' },
     ...(projectsIndexUrl ? [{ key: 'nav.projects', url: projectsIndexUrl }] : []),
     ...site.blogs.map((blog) => ({ label: blog.title, url: blogUrl(blog) })),
+    ...site.blogs.map((blog) => ({
+      label:
+        site.blogs.length > 1
+          ? templates.translator.t('nav.search_blog', { title: blog.title })
+          : templates.translator.t('nav.search'),
+      url: searchPageUrl(blogUrl(blog)),
+    })),
   ];
 
   const t = (/** @type {string} */ key, /** @type {Record<string, unknown>} */ params = {}) =>
@@ -1944,6 +1953,9 @@ async function buildSite(config, site, options, outRoot, version, report) {
    */
   const projectFeedEntries = new Map(projectSlugs.map((slug) => [slug, []]));
 
+  /** @type {((searchable: boolean) => void)[]} */
+  const searchPageWriters = [];
+
   for (const blog of site.blogs) {
     const { selected, rendered: renderedPosts, tagMeta } = /** @type {{ selected: Post[], rendered: Map<Post, RenderedPost>, tagMeta: ReturnType<typeof loadTagMeta> }} */ (
       prepared.get(blog.id)
@@ -1954,6 +1966,16 @@ async function buildSite(config, site, options, outRoot, version, report) {
     if (clash) {
       throw new BuildError(
         `${clash.file}: slug: "${clash.slug}" is the address of the tag pages of the blog "${blog.id}" (${tagUrl(blogBase, site.urls.tags)}); rename the post or change "urls.tags"`,
+      );
+    }
+    if (selected.some((post) => post.slug === SEARCH_URL_NAME)) {
+      throw new BuildError(
+        `a post with the slug "${SEARCH_URL_NAME}" in the blog "${blog.id}" would collide with the blog's search page (${searchPageUrl(blogBase)}); rename the post`,
+      );
+    }
+    if (site.urls.tags === SEARCH_URL_NAME || site.urls.series === SEARCH_URL_NAME) {
+      throw new BuildError(
+        `"urls.${site.urls.tags === SEARCH_URL_NAME ? 'tags' : 'series'}" is "${SEARCH_URL_NAME}", the address of the search page of the blog "${blog.id}" (${searchPageUrl(blogBase)}); choose another name`,
       );
     }
     if (selected.some((post) => post.slug === FEED_FILE_NAME)) {
@@ -2237,6 +2259,43 @@ async function buildSite(config, site, options, outRoot, version, report) {
     const tagsIndexFile = fileForUrl(tagsIndexUrl);
     writeOutput(outDir, tagsIndexFile, tagsIndexHtml);
     pages.push({ url: tagsIndexUrl, file: tagsIndexFile, type: 'tag-index', title: tagsTitle });
+
+    // The search page is written once every page that goes into the index is known: an index
+    // with nothing in it cannot be searched, so then the page says there is nothing yet.
+    searchPageWriters.push((searchable) => {
+      const searchUrl = searchPageUrl(blogBase);
+      const searchTitle = t('search.title');
+      const searchHtml = templates.render('search.njk', {
+        site,
+        nav,
+        blog,
+        feedLinks: feedLinksFor(blog),
+        meta: metaFor({
+          title: `${searchTitle}: ${blog.title}`,
+          description: site.description,
+          url: searchUrl,
+          image: cardFor(`${searchTitle}: ${blog.title}`),
+        }),
+        tagsUrl: tagsIndexUrl,
+        searchUrl,
+        searchable,
+        searchData: {
+          bundle: `${templates.basePath}/${SEARCH_DIR_NAME}/`,
+          filters: { [BLOG_FILTER]: blog.id },
+          text: {
+            searching: t('search.searching'),
+            found: t('search.found'),
+            none: t('search.none'),
+            error: t('search.error'),
+          },
+        },
+        scripts: searchable ? [`/${SEARCH_DIR_NAME}/pagefind-modular-ui.js`, '/assets/search.js'] : [],
+        page: { title: searchTitle, description: '', content: '' },
+      });
+      const searchFile = fileForUrl(searchUrl);
+      writeOutput(outDir, searchFile, searchHtml);
+      pages.push({ url: searchUrl, file: searchFile, type: 'search', title: searchTitle });
+    });
 
     for (const node of tagTree.all) {
       const view = treeView(node);
@@ -2662,6 +2721,13 @@ async function buildSite(config, site, options, outRoot, version, report) {
   );
   pages.push({ url: NOT_FOUND_URL, file: NOT_FOUND_FILE, type: 'not-found', title: notFoundTitle });
 
+  // What the full-text index covers: the published posts and the guides.
+  const searchPages = [
+    ...manifestPosts.filter((entry) => entry.published).map((entry) => ({ url: entry.url, file: entry.file })),
+    ...pages.filter((entry) => entry.type === 'docs').map((entry) => ({ url: entry.url, file: entry.file })),
+  ];
+  for (const write of searchPageWriters) write(searchPages.length > 0);
+
   // Two pages written to the same file overwrite each other without a trace.
   // A project page is the one the author can move, so the error names its
   // project.yaml.
@@ -2719,6 +2785,7 @@ async function buildSite(config, site, options, outRoot, version, report) {
   const hasPublished = (/** @type {string[]} */ urls) => urls.some((url) => publishedUrls.has(url));
   const hiddenUrls = new Set([
     NOT_FOUND_URL,
+    ...pages.filter((entry) => entry.type === 'search').map((entry) => entry.url),
     ...manifestPosts.filter((entry) => !entry.published).map((entry) => entry.url),
     ...manifestTags.filter((entry) => !hasPublished(entry.posts)).map((entry) => entry.url),
     ...manifestSeries.filter((entry) => !hasPublished(entry.posts)).map((entry) => entry.url),
@@ -2734,6 +2801,14 @@ async function buildSite(config, site, options, outRoot, version, report) {
   for (const issue of linkCheck.verifyOutput((path) => outputServes(outDir, path))) {
     report.addError({ site: site.id, ...issue });
   }
+
+  // The full-text index covers the published posts and the guides, once the HTML is final.
+  const search = await buildSearchIndex({
+    outDir,
+    lang: site.lang,
+    basePath: templates.basePath,
+    pages: searchPages,
+  });
 
   pages.sort((a, b) => (a.url < b.url ? -1 : a.url > b.url ? 1 : 0));
   manifestPosts.sort((a, b) => (a.url < b.url ? -1 : a.url > b.url ? 1 : 0));
@@ -2785,6 +2860,7 @@ async function buildSite(config, site, options, outRoot, version, report) {
     cards: { ...cards.stats },
     images: { ...images.stats },
     exactLocations,
+    search,
   };
 }
 
@@ -2813,6 +2889,8 @@ async function buildSite(config, site, options, outRoot, version, report) {
  *   and `title`, description, canonical, Open Graph and Twitter card tags on every page;
  * - for every post, tag, series and blog index without a picture of its own, a 1200 by 630 title card in `cards/{hash}.png`, cached in `.cache/cards/`
  *   (see `docs/seo.md`); a post's `cover` is the preview image of a post that has one;
+ * - for every blog, a search page at `{blogPrefix}/search/` and, in `pagefind/`, the full-text index of the published posts
+ *   and guides (Pagefind, built for the site's language; see `docs/search.md`);
  * - the assets of the default theme, then of the site's theme, in `assets/`;
  * - the build manifest `.coffer-manifest.json`.
  *

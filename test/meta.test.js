@@ -333,7 +333,7 @@ test('the sitemap lists exactly the published canonical pages, and robots.txt po
     const { manifest } = result;
     const listed = sitemapLocations(readFileSync(join(result.outDir, 'sitemap.xml'), 'utf8'));
     const expected = manifest.pages
-      .filter((entry) => entry.type !== 'not-found')
+      .filter((entry) => entry.type !== 'not-found' && entry.type !== 'search')
       .map((entry) => `${SITE}${entry.url}`)
       .sort();
     assert.deepEqual([...listed].sort(), expected);

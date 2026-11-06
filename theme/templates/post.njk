@@ -40,7 +40,7 @@
 {% if toc.length %}
 {% block toc %}{% include "partials/toc.njk" %}{% endblock %}
 {% endif %}
-<div class="post-body">
+<div class="post-body" data-pagefind-body data-pagefind-filter="blog:{{ blog.id }}">
 {% block body %}{{ page.content | safe }}{% endblock %}
 </div>
 </div>

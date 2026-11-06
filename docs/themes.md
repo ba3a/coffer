@@ -183,6 +183,7 @@ Font files in `fonts/` replace the bundled font; the template should use `fontFa
 | `blog-index.njk` | the list of posts   | `heading` (title and link to the tags), `feed_link` (the visible link to the page's feed), `item` (one entry of the list) |
 | `tag.njk`        | a tag page          | extends `blog-index.njk`; `heading`, `breadcrumbs`, `children`          |
 | `tag-index.njk`  | the tag tree        | `tree`                                                                  |
+| `search.njk`     | a blog's search page | `search_nojs` (what a visitor without JavaScript reads), `search_form` (see [Search](search.md)) |
 | `series.njk`     | a series page       | extends `blog-index.njk`; `heading`, `breadcrumbs`, `item` (see [Series](series.md)) |
 | `series-nav.njk` | macro used by `post.njk` | `seriesNav(series, where)`, called by the `series_top` and `series_bottom` blocks of `post.njk` |
 | `docs.njk`       | a page of a project's documentation | `docs_breadcrumbs`, `docs_sidebar`, `docs_header`, `toc`, `docs_body`, `docs_pager`, `docs_source` (see [Project documentation](project-docs.md#the-template)); the table of contents is the partial `partials/toc.njk`, shared with `post.njk` |

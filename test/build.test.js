@@ -86,7 +86,7 @@ test('the blog index lists published posts newest first with date, summary and r
       assert.match(html, /<link rel="stylesheet" href="\/assets\/coffer\.css">/);
       assert.deepEqual(
         result.manifest.pages.map((entry) => entry.url),
-        ['/', '/404.html', '/log/', '/log/middle/', '/log/new/', '/log/old/', '/log/tags/'],
+        ['/', '/404.html', '/log/', '/log/middle/', '/log/new/', '/log/old/', '/log/search/', '/log/tags/'],
       );
     },
   );

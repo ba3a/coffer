@@ -15,6 +15,7 @@ import { FontError } from './font-metrics.js';
 import { MarkdownError } from './markdown/render.js';
 import { I18nError } from './render/i18n.js';
 import { ReportError, formatExactLocations } from './report.js';
+import { SearchError } from './search.js';
 import { DEFAULT_PORT, startServer } from './serve.js';
 import { readVersion } from './version.js';
 
@@ -289,7 +290,8 @@ const commands = {
         error instanceof CardError ||
         error instanceof FontError ||
         error instanceof MarkdownError ||
-        error instanceof I18nError
+        error instanceof I18nError ||
+        error instanceof SearchError
       ) {
         io.err(`${error.message}\n`);
         return 1;

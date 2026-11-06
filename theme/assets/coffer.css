@@ -591,6 +591,80 @@ main > article > .post-layout {
   font-size: 0.875em;
 }
 
+/* Search: the page explains itself until search.js (which needs Pagefind) sets
+   data-search-ready on it; only then do the form and the results show. */
+.search-form,
+.search-status,
+.search-results {
+  display: none;
+}
+
+.search[data-search-ready] .search-form {
+  display: block;
+}
+
+.search[data-search-ready] .search-status {
+  display: block;
+}
+
+.search[data-search-ready] .search-results {
+  display: block;
+}
+
+.search[data-search-ready] .search-nojs {
+  display: none;
+}
+
+.search-form label {
+  display: block;
+  margin-bottom: 0.35rem;
+  font-weight: 600;
+}
+
+.search-input {
+  width: 100%;
+  max-width: var(--coffer-measure);
+  padding: 0.5rem 0.75rem;
+  border: 1px solid var(--coffer-border);
+  border-radius: 4px;
+  background: var(--coffer-bg);
+  color: var(--coffer-text);
+  font: inherit;
+}
+
+.search-status {
+  min-height: 1.5em;
+  margin: 0.75rem 0;
+  color: var(--coffer-muted);
+}
+
+.search-results {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.search-result {
+  margin: 0 0 1.5rem;
+  max-width: var(--coffer-measure);
+}
+
+.search-result-title {
+  margin: 0 0 0.25rem;
+  font-size: 1.125rem;
+}
+
+.search-result-excerpt {
+  margin: 0;
+}
+
+.search-result-excerpt mark {
+  background: transparent;
+  color: inherit;
+  font-weight: 700;
+  text-decoration: underline;
+}
+
 /* Small screens ---------------------------------------------------------- */
 
 @media (max-width: 30rem) {
