@@ -1,5 +1,6 @@
 import { spawn } from 'node:child_process';
-import { accessSync, constants, lstatSync, mkdirSync, realpathSync, rmSync, statSync, writeFileSync } from 'node:fs';
+import { accessSync, constants, lstatSync, mkdirSync, mkdtempSync, realpathSync, rmSync, statSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 import { delimiter, isAbsolute, join, relative, resolve, sep } from 'node:path';
 
 import { checkGlobPattern } from './glob.js';
@@ -994,7 +995,7 @@ function describeSource(source) {
  * @param {unknown} address
  * @returns {string}
  */
-function displayAddress(address) {
+export function displayAddress(address) {
   return typeof address === 'string' && 'value' in checkGitUrl(address) ? redactUrl(address.trim()) : '(an address that is not usable)';
 }
 
@@ -1192,6 +1193,112 @@ async function fetchGit(slug, source, where, context) {
     }
     throw error;
   }
+}
+
+/**
+ * The commit a branch or tag of a remote repository is at, from `git ls-remote`
+ * output. A branch wins over a tag of the same name (as it does for `git clone
+ * --branch`), and an annotated tag is peeled to the commit it points at, which
+ * is the commit a clone of it is at.
+ *
+ * @param {string} output
+ * @param {string} ref A branch or tag name.
+ * @returns {string | null} The commit id; null when the repository has no such branch or tag.
+ */
+export function commitFromLsRemote(output, ref) {
+  /** @type {Map<string, string>} */
+  const found = new Map();
+  for (const line of output.split(/\r?\n/)) {
+    const match = /^([0-9a-f]{40}|[0-9a-f]{64})\t(\S+)$/.exec(line);
+    if (match !== null) found.set(match[2], match[1]);
+  }
+  return found.get(`refs/heads/${ref}`) ?? found.get(`refs/tags/${ref}^{}`) ?? found.get(`refs/tags/${ref}`) ?? null;
+}
+
+/**
+ * Asks the remote repositories of some projects which commit their configured
+ * branch or tag is at now, with `git ls-remote`: nothing is cloned, and no
+ * token is needed for a public repository. It goes through the same safety
+ * layer as {@link fetchDocsSources}: git by its absolute path, an argument list,
+ * the address after `--`, a controlled environment, only the transport of the
+ * address, no hooks or credential helpers, a time limit, and no credentials
+ * in any message.
+ *
+ * @param {readonly { slug: string, source: { git: string, ref: string } }[]} projects
+ * @param {Pick<FetchOptions, 'timeoutMs' | 'exec' | 'env'>} [options]
+ * @returns {Promise<Map<string, string>>} The commit by project slug.
+ * @throws {DocsSourceError} When any cannot be read; every failure is listed.
+ */
+export async function readRemoteCommits(projects, options = {}) {
+  const timeoutMs = options.timeoutMs ?? 30_000;
+  const exec = options.exec ?? runGit;
+  /** @type {Map<string, string>} */
+  const commits = new Map();
+  /** @type {string[]} */
+  const errors = [];
+  if (projects.length === 0) return commits;
+  // git needs a folder to run in and files for its controlled configuration; both are made new for the call and removed after it.
+  let work;
+  /** @type {{ emptyConfig: string, hooksDir: string }} */
+  let sandbox;
+  try {
+    work = mkdtempSync(join(tmpdir(), 'coffer-remote-'));
+    sandbox = prepareSandbox(work);
+  } catch (error) {
+    throw new DocsSourceError(
+      projects.map(({ slug, source }) => `project "${slug}": cannot read the commit of ${displayAddress(source.git)} (ref ${displayRef(source.ref)}): cannot prepare a work folder: ${fsMessage(error)}`),
+    );
+  }
+  try {
+    for (const { slug, source } of projects) {
+      const where = displayAddress(source.git);
+      const fail = (/** @type {string} */ reason) =>
+        errors.push(`project "${slug}": cannot read the commit of ${where} (ref ${displayRef(source.ref)}): ${reason}`);
+      const checked = checkGitUrl(source.git);
+      if ('problem' in checked) {
+        fail(`source.git ${checked.problem}`);
+        continue;
+      }
+      const checkedRef = checkRef(source.ref);
+      if ('problem' in checkedRef) {
+        fail(`source.ref ${checkedRef.problem}`);
+        continue;
+      }
+      const ref = checkedRef.value;
+      const result = await exec(
+        [
+          ...gitConfigArguments(sandbox),
+          'ls-remote',
+          '--',
+          checked.value,
+          `refs/heads/${ref}`,
+          `refs/tags/${ref}`,
+          `refs/tags/${ref}^{}`,
+        ],
+        {
+          cwd: work,
+          env: gitEnvironment(sandbox, checked.transport, options.env ?? process.env),
+          timeoutMs,
+          maxOutputBytes: MAX_GIT_OUTPUT_BYTES,
+        },
+      );
+      if (result.code !== 0 || result.spawnError !== undefined || result.timedOut) {
+        fail(`ls-remote: ${failureOf(result, timeoutMs)}`);
+        continue;
+      }
+      const sha = commitFromLsRemote(result.stdout, ref);
+      if (sha === null) fail('the branch or tag does not exist in the repository');
+      else commits.set(slug, sha);
+    }
+  } finally {
+    try {
+      rmSync(work, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
+    } catch {
+      // A leftover in the temporary folder is not worth failing for.
+    }
+  }
+  if (errors.length > 0) throw new DocsSourceError(errors);
+  return commits;
 }
 
 /**

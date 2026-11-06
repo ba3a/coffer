@@ -3,6 +3,7 @@ import { copyFileSync, cpSync, existsSync, mkdirSync, readFileSync, readdirSync,
 import { dirname, extname, isAbsolute, join, relative, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
+import { BUILD_INFO_FILE_NAME, createBuildInfo, renderBuildInfo } from './build-info.js';
 import { CARDS_CACHE_DIR, createCardMaker } from './cards.js';
 import { DEFAULT_LATEST_POSTS, loadHome } from './content/home.js';
 import { discoverPosts, isPublished, resolveNow } from './content/posts.js';
@@ -114,6 +115,7 @@ export class BuildError extends Error {
  * @property {string} [out] Output root, absolute or relative to `cwd` (default `dist`). Each site is written to `{out}/{siteId}`.
  * @property {boolean} [drafts] Preview mode: build drafts and future-dated posts too.
  * @property {Date} [now] The moment that decides which posts are already published. Wins over `nowFlag` and the environment.
+ * @property {() => Date} [clock] The clock that gives `builtAt` in `build-info.json` (default the system clock). It is not the "now" that decides which posts are published.
  * @property {string} [nowFlag] Value of `--now`; a date or a date and time, read in the site's time zone when it has no offset.
  * @property {Record<string, string | undefined>} [env] Environment for `COFFER_NOW` (default `process.env`).
  * @property {string} [cwd] Directory that a relative `out` resolves against (default the working directory).
@@ -262,6 +264,7 @@ export class BuildError extends Error {
  * @property {{ id: string, baseUrl: string, lang: string, timezone: string }} site
  * @property {string} now ISO 8601 moment used to decide which posts are published.
  * @property {boolean} drafts True for a preview build.
+ * @property {import('./build-info.js').BuildInfo} buildInfo What `build-info.json` says (see `docs/scheduling.md`).
  * @property {ManifestPage[]} pages
  * @property {ManifestPost[]} posts
  * @property {ManifestTag[]} tags Every tag page, with the posts it lists.
@@ -1021,8 +1024,14 @@ async function buildSite(config, site, options, outRoot, version, report) {
   const postTracks = new Map();
   /** @type {import('./check/source-links.js').SourcePost[]} */
   const sourcePosts = [];
+  /**
+   * Every post of the site, whatever its state, for `build-info.json`.
+   * @type {Post[]}
+   */
+  const everyPost = [];
   for (const blog of site.blogs) {
     const found = discoverPosts(blog.dir, { timezone: site.timezone });
+    everyPost.push(...found);
     const selected = found.filter((post) => isPublished(post, { now, drafts }));
     // The tags decide the metadata policy of the images, so they are read
     // before the first image is processed.
@@ -2860,6 +2869,17 @@ async function buildSite(config, site, options, outRoot, version, report) {
       (a.use < b.use ? -1 : a.use > b.use ? 1 : 0),
   );
 
+  // What the deployed site says about itself, for the scheduled job that decides whether to rebuild (see docs/scheduling.md). The posts waiting
+  // for their date are judged against the same "now" that decided which posts this build published.
+  const buildInfo = createBuildInfo({
+    builtAt: (options.clock ?? (() => new Date()))(),
+    engineVersion: version,
+    docs: docsFetched,
+    posts: everyPost,
+    now,
+  });
+  writeOutput(outDir, BUILD_INFO_FILE_NAME, renderBuildInfo(buildInfo));
+
   /** @type {Manifest} */
   const manifest = {
     manifestVersion: MANIFEST_VERSION,
@@ -2867,6 +2887,7 @@ async function buildSite(config, site, options, outRoot, version, report) {
     site: { id: site.id, baseUrl: site.baseUrl, lang: site.lang, timezone: site.timezone },
     now: now.toISOString(),
     drafts,
+    buildInfo,
     pages,
     posts: manifestPosts,
     tags: manifestTags,
@@ -2930,6 +2951,7 @@ async function buildSite(config, site, options, outRoot, version, report) {
  * - for every blog, a search page at `{blogPrefix}/search/` and, in `pagefind/`, the full-text index of the published posts
  *   and guides (Pagefind, built for the site's language; see `docs/search.md`);
  * - the assets of the default theme, then of the site's theme, in `assets/`;
+ * - `build-info.json`, the build time, the commits of the documentation sources and the time of the next scheduled post (see `docs/scheduling.md`);
  * - the build manifest `.coffer-manifest.json`.
  *
  * Before any page is written, every Markdown link and image of every post is resolved (see

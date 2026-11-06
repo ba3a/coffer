@@ -9,12 +9,13 @@ import { DEFAULT_DEV_PORT, startDev } from './dev.js';
 import { HomeError } from './content/home.js';
 import { PostError } from './content/posts.js';
 import { loadProjects, ProjectError } from './content/projects.js';
-import { describeFetched, DocsSourceError, fetchDocsSources, planDocsFetch } from './docs/sources.js';
+import { describeFetched, DocsSourceError, fetchDocsSources, planDocsFetch, redactUrl } from './docs/sources.js';
 import { SeriesError } from './content/series.js';
 import { TagsError } from './content/tags.js';
 import { FontError } from './font-metrics.js';
 import { MarkdownError } from './markdown/render.js';
 import { createPost, NewPostError, splitTags } from './new-post.js';
+import { formatRebuildAnswer, rebuildNeeded, RebuildUsageError } from './rebuild-needed.js';
 import { I18nError } from './render/i18n.js';
 import { ReportError, formatExactLocations } from './report.js';
 import { SearchError } from './search.js';
@@ -49,6 +50,14 @@ Commands:
                   (git repositories into the cache, folders in place) and
                   print the commit of each; exits 1 if any cannot be fetched
                   (--config <path>, --project <slug> for one project)
+  rebuild-needed  Say whether a deployed site is out of date: fetch its
+                  build-info.json, ask each git docs source for its current
+                  commit (git ls-remote, no token for public repositories)
+                  and check for a scheduled post that is due; prints yes or
+                  no and the reasons, and exits 0 either way (1 when a
+                  source cannot be asked, 2 for a usage error)
+                  (--url <build-info.json address>, --config <path>,
+                  --site <id> [needed when there are several sites], --json)
   config          Check coffer.yaml and list the configured sites
                   (--config <path> selects another file)
   help            Show this help text
@@ -70,7 +79,8 @@ Run "coffer help" to see this message again.
  * @property {import('./check/w3c.js').W3cOptions} [w3c] Replaces the network and the clock of `check --w3c`.
  * @property {Partial<Pick<import('./docs/sources.js').FetchOptions, 'exec' | 'timeoutMs' | 'env'>>} [docs] Replaces git, the time limit and the environment of `docs fetch`.
  * @property {{ signal?: AbortSignal, out?: string, watch?: boolean }} [dev] Lets a test stop `dev` (the signal), keep its build elsewhere (`out`) or not watch.
- * @property {Date} [now] Replaces the clock of `new`.
+ * @property {Date} [now] Replaces the clock of `new` and `rebuild-needed`.
+ * @property {import('./build-info.js').HttpOptions} [http] Replaces the limits (and `fetch`) of `rebuild-needed`.
  */
 
 /**
@@ -188,6 +198,37 @@ export function parseDocsFetchArgs(args) {
     options[valued[flag]] = value;
   }
   return options;
+}
+
+/**
+ * Reads the options of `coffer rebuild-needed`.
+ *
+ * @param {string[]} args
+ * @returns {{ url: string, configPath?: string, site?: string, json: boolean } | { error: string }}
+ */
+export function parseRebuildNeededArgs(args) {
+  /** @type {{ url?: string, configPath?: string, site?: string, json: boolean }} */
+  const options = { json: false };
+  /** @type {Record<string, 'url' | 'configPath' | 'site'>} */
+  const valued = { '--url': 'url', '--config': 'configPath', '--site': 'site' };
+  for (let i = 0; i < args.length; i += 1) {
+    const arg = args[i];
+    if (arg === '--json') {
+      options.json = true;
+      continue;
+    }
+    const [flag, inline] = arg.startsWith('--') && arg.includes('=')
+      ? [arg.slice(0, arg.indexOf('=')), arg.slice(arg.indexOf('=') + 1)]
+      : [arg, undefined];
+    // A stray argument could be an address with a password in it.
+    if (!Object.hasOwn(valued, flag)) return { error: `unexpected argument "${redactUrl(arg)}"` };
+    const value = inline ?? args[i + 1];
+    if (value === undefined || value === '') return { error: `${flag} needs a value` };
+    if (inline === undefined) i += 1;
+    options[valued[flag]] = value;
+  }
+  if (options.url === undefined) return { error: '--url is required: the address of the deployed build-info.json' };
+  return { ...options, url: options.url };
 }
 
 /**
@@ -564,6 +605,37 @@ const commands = {
       if (fetched.length === 0) io.out('no project has a docs source\n');
       return 0;
     } catch (error) {
+      if (error instanceof ConfigError || error instanceof ProjectError || error instanceof DocsSourceError) {
+        io.err(`${error.errors.join('\n')}\n`);
+        return 1;
+      }
+      throw error;
+    }
+  },
+  'rebuild-needed': async (args, io, services) => {
+    const parsed = parseRebuildNeededArgs(args);
+    if ('error' in parsed) {
+      io.err(`coffer: ${parsed.error}
+`);
+      return 2;
+    }
+    try {
+      const config = loadConfig({ configPath: parsed.configPath });
+      const answer = await rebuildNeeded({
+        config,
+        url: parsed.url,
+        site: parsed.site,
+        now: services.now,
+        http: services.http,
+        git: services.docs,
+      });
+      io.out(parsed.json ? `${JSON.stringify(answer, null, 2)}\n` : formatRebuildAnswer(answer));
+      return 0;
+    } catch (error) {
+      if (error instanceof RebuildUsageError) {
+        io.err(`coffer: ${error.message}\n`);
+        return 2;
+      }
       if (error instanceof ConfigError || error instanceof ProjectError || error instanceof DocsSourceError) {
         io.err(`${error.errors.join('\n')}\n`);
         return 1;

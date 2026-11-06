@@ -12,6 +12,7 @@ import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
+import { BUILD_INFO_FILE_NAME } from '../src/build-info.js';
 import { run } from '../src/cli.js';
 import { CARDS_OUT_DIR } from '../src/cards.js';
 import {
@@ -804,7 +805,7 @@ test('feeds.limit is a positive integer', () => {
 });
 
 test('urls.projects cannot be a name the build writes itself', () => {
-  for (const name of ['assets', 'img', 'cards', 'pagefind', 'robots.txt', 'sitemap.xml', 'assets/more']) {
+  for (const name of ['assets', 'img', 'cards', 'pagefind', 'robots.txt', 'sitemap.xml', 'build-info.json', 'assets/more']) {
     assert.deepEqual(
       normalizeErrors(oneSite({ projects: { dir: 'content/projects' }, urls: { projects: name } })),
       [
@@ -829,6 +830,7 @@ test('the reserved output names are the ones the build writes', () => {
     ROBOTS_FILE_NAME,
     SITEMAP_FILE_NAME,
     FEED_FILE_NAME,
+    BUILD_INFO_FILE_NAME,
     NOT_FOUND_URL.slice(1),
   ]) {
     assert.ok(RESERVED_OUTPUT_NAMES.includes(name), `${name} is reserved`);

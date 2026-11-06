@@ -194,6 +194,7 @@ export const RESERVED_OUTPUT_NAMES = Object.freeze([
   'robots.txt',
   'sitemap.xml',
   'feed.xml',
+  'build-info.json',
 ]);
 
 /** Preview image used by pages without one, unless the site says otherwise. It ships with the default theme. */

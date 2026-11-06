@@ -2,6 +2,7 @@ import { existsSync, readFileSync, readdirSync } from 'node:fs';
 import { isAbsolute, join, resolve } from 'node:path';
 
 import { DEFAULT_OUT_DIR, MANIFEST_FILE_NAME } from '../build.js';
+import { BUILD_INFO_FILE_NAME, checkBuildInfo, renderBuildInfo } from '../build-info.js';
 import { absoluteUrl } from '../feeds.js';
 import { listHtmlUrls } from '../html-urls.js';
 import { XmlError, parseXml } from '../xml.js';
@@ -188,6 +189,29 @@ function checkSitemap(outDir, manifest, resolver) {
 }
 
 /**
+ * Checks `build-info.json`: it must exist, have the documented shape and say what the manifest says.
+ *
+ * @param {string} outDir
+ * @param {Manifest} manifest
+ * @returns {string[]}
+ */
+function checkBuildInfoFile(outDir, manifest) {
+  // A manifest from an older engine has no copy to compare with.
+  if (manifest.buildInfo === undefined) return [];
+  const file = join(outDir, BUILD_INFO_FILE_NAME);
+  if (!existsSync(file)) return [`${BUILD_INFO_FILE_NAME} is missing`];
+  let text;
+  try {
+    text = readFileSync(file, 'utf8');
+    const checked = checkBuildInfo(JSON.parse(text));
+    if ('problem' in checked) return [`${BUILD_INFO_FILE_NAME} is not usable: ${checked.problem}`];
+  } catch (error) {
+    return [`${BUILD_INFO_FILE_NAME} cannot be read: ${error instanceof Error ? error.message : error}`];
+  }
+  return text === renderBuildInfo(manifest.buildInfo) ? [] : [`${BUILD_INFO_FILE_NAME} differs from the build manifest`];
+}
+
+/**
  * Says what is wrong with the shape of a parsed build manifest.
  *
  * @param {any} manifest
@@ -289,6 +313,7 @@ export async function checkSite(outDir, siteId, options = {}) {
   }
 
   for (const message of checkSitemap(outDir, manifest, resolver)) fail('sitemap.xml', message);
+  for (const message of checkBuildInfoFile(outDir, manifest)) fail(BUILD_INFO_FILE_NAME, message);
 
   const imageCheck = await checkImages(outDir, manifest, { rootDir: options.rootDir });
   checked.images = imageCheck.checked;

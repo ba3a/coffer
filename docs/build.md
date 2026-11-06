@@ -40,6 +40,7 @@ For a site `workshop` with a blog whose `prefix` is `journal`:
   img/{key}/{name}-full.jpg           the full-size JPEG for the viewer (the originals are never published)
   pagefind/                           the full-text search index and Pagefind's scripts
   sitemap.xml                         the published canonical pages
+  build-info.json                     when and from what the site was built (see Scheduled rebuilds below)
   robots.txt                          allows crawling and names the sitemap
   assets/                             the static files of the theme
   .coffer-manifest.json               the build manifest
@@ -51,6 +52,7 @@ For a site `workshop` with a blog whose `prefix` is `journal`:
 - **Tags**: the tree of the blog's tags and one page per tag, listing the posts with the tag or any tag below it. See [Tags](tags.md).
 - **Series**: a navigation block (name, "part n of m", previous and next) at the top and the end of every post of a series, computed from all published posts, and one page per series listing its parts in order. See [Series](series.md).
 - **Search**: a search page at `{blog}/search/` for every blog, linked from the navigation, which finds the blog's posts (in other word forms too) with snippets; the index is built by Pagefind after the HTML is written and lands in `pagefind/`. Searching needs JavaScript, and the page says so without it. See [Search](search.md).
+- **Build information**: `build-info.json` at the root of the site says when the site was built, with which coffer, which commit of each git documentation source was used and when the next scheduled post is due. `coffer rebuild-needed` compares it with the live repositories and the clock, so that a scheduled job rebuilds only when something changed. It is a public file of the site, not a page: it is not in the sitemap. See [Scheduled rebuilds](scheduling.md).
 - **Analytics**: an optional snippet (the Cloudflare Web Analytics beacon, or a snippet of the site's own) at the end of every themed page of a production build, never in a preview build and never unless `analytics` is configured. See [Analytics](analytics.md).
 - **Share summary**: on a blog with `shareSummary: true`, every post gets a `share.txt` (title, summary, address, optionally hashtags) next to its page and a collapsed "Share summary" block at its end with a copy button. The file is in the manifest, not in the sitemap, the feeds or the search index. See [Share summary](sharing.md).
 - **The blog index** lists the published posts, newest first, with the date, the summary and the reading time of each.
@@ -90,6 +92,7 @@ Each site's output contains `.coffer-manifest.json`, which records what the buil
 | `redirects`        | Every alias redirect: `from`, `to` (site-relative URLs) and `status`.                                          |
 | `feeds`            | Every Atom feed: `type` (`blog`, `tag`, `series` or `project`), blog id (null for a project feed), `url`, `selfUrl` (absolute), `file`, the `page` it belongs to, `title`, number of `entries`, and the `tag` path, `series` slug or `project` slug. See [Feeds](feeds.md). |
 | `sitemap`          | The site-relative URLs listed in `sitemap.xml`, sorted. See [SEO and link previews](seo.md). |
+| `buildInfo`        | The content of `build-info.json`: `builtAt`, `engineVersion`, `sources` and `nextScheduledAt`. See [Scheduled rebuilds](scheduling.md). |
 | `projects`         | Every project: `slug`, `url`, `file`, `kind`, `status`, the posts about it, its feed, its card, its `files` and press-kit `downloads`, and `docs`, where a tool's documentation comes from (the source with the commit that was built, the GitHub repository, the guides and `pages`, the pages built from them (`url`, `file`, `source`, `title`); null without a `docs` block). See [Projects](projects.md) and [Where a project's documentation comes from](docs-sources.md#in-the-manifest). |
 | `images`           | Every image a page uses: the `source` file, the `post` (page) that uses it, `use` (`body` or `cover`), the hash and upright size of the original, the metadata `policy` it was published under, the published `gps` position and `camera` fields, and the `outputs` made from it. See [Images](images.md). |
 

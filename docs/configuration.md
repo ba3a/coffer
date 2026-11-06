@@ -120,7 +120,7 @@ Prefixes of generated sections. All four are optional.
 | `tags`     | `tags`    | Segment under a blog that holds the tag pages (see [Tags](tags.md)). |
 | `series`   | `series`  | Segment under a blog that holds the series pages.                |
 
-Values are single or nested path segments without a slash at either end. `tags` and `series` must differ, and `projects` must not equal the prefix of a blog. When the site has projects, `projects` must also not start with a name the build writes itself: `assets`, `img`, `cards`, `404.html`, `_redirects`, `robots.txt`, `sitemap.xml` or `feed.xml`. A project page that would be written to the same file as another page (for example the folder `journal` under `made` when a blog has the prefix `made/journal`) fails the build and the message names the `project.yaml`.
+Values are single or nested path segments without a slash at either end. `tags` and `series` must differ, and `projects` must not equal the prefix of a blog. When the site has projects, `projects` must also not start with a name the build writes itself: `assets`, `img`, `cards`, `404.html`, `_redirects`, `robots.txt`, `sitemap.xml`, `feed.xml` or `build-info.json`. A project page that would be written to the same file as another page (for example the folder `journal` under `made` when a blog has the prefix `made/journal`) fails the build and the message names the `project.yaml`.
 
 ## `images`
 
