@@ -48,6 +48,7 @@ A file can list several sites. Each site is built on its own, with its own langu
 | Key     | Required | Description                                     |
 | ------- | -------- | ----------------------------------------------- |
 | `sites` | yes      | A non-empty list of sites, built in file order. |
+| `media` | no       | Where the original photos and videos are kept when they stay out of git, and which files they are (see [`media`](#media) below and [Media originals](media.md)). Without it nothing changes. |
 
 Unknown keys are errors everywhere in the file, so a misspelled key never passes silently.
 
@@ -212,6 +213,38 @@ A setting that does not fit its provider (no token for `cloudflare`, no `html` f
 | `latestPosts` | no       | `5`     | How many of its latest devlog posts a project's page lists, a whole number from 0 to 50. With `0` the list is left out. It does not limit the project's feed or the list in the manifest. See [Posts about a project](projects.md#posts-about-a-project). |
 
 See [Projects](projects.md) for what a project folder holds.
+
+## `media`
+
+`media` sits beside `sites`, not inside a site: one lock file, one store and one set of patterns cover the content folders of every site in the file. Without it nothing changes; the example site keeps its images in git.
+
+```yaml
+media:
+  store: { type: fs, dir: ../originals }
+  include: ["content/**/*.[jJ][pP][gG]", "content/**/*.mp4"]   # optional
+  lock: media.lock.json                                        # optional
+```
+
+| Key       | Required | Default                       | Description |
+| --------- | -------- | ----------------------------- | ----------- |
+| `store`   | yes      | -                             | Where the originals are kept: `{ type: fs, dir: <folder> }` or `{ type: s3, ... }` (see below). |
+| `include` | no       | images and videos under every content folder | Patterns of the files that are originals, relative to the configuration file, in the glob syntax described under [guides](docs-sources.md#guides) (`*`, `?`, `[...]`, `**`; case-sensitive; hidden files never match). The default matches `jpg`, `jpeg`, `png`, `webp`, `gif`, `avif`, `heic`, `heif`, `tiff`, `mp4`, `mov`, `webm`, `m4v` and `mkv` in any capitalisation below each `contentDir`. SVG is not included: it is small text and stays in git. A pattern that matches the lock file or the configuration file is an error. |
+| `lock`    | no       | `media.lock.json`             | Path of the lock file, relative to the configuration file. |
+
+Keys of `store`:
+
+| Key                  | Used by | Required | Description |
+| -------------------- | ------- | -------- | ----------- |
+| `type`               | both    | yes      | `fs` or `s3`. |
+| `dir`                | `fs`    | yes      | A folder (relative to the configuration file) that holds the objects. It must not be inside a content folder or contain one, must not be or contain the folder of the configuration file, and must not be inside `.coffer`. |
+| `endpoint`           | `s3`    | yes      | An `https` address, without credentials; `${NAME}` stands for an environment variable. |
+| `bucket`             | `s3`    | yes      | The bucket name. |
+| `region`             | `s3`    | no       | Default `auto`. |
+| `prefix`             | `s3`    | no       | A folder-like prefix in the bucket. |
+| `accessKeyIdEnv`     | `s3`    | no       | The NAME of the environment variable that carries the access key id. Default `COFFER_MEDIA_ACCESS_KEY_ID`. |
+| `secretAccessKeyEnv` | `s3`    | no       | The NAME of the environment variable that carries the secret access key. Default `COFFER_MEDIA_SECRET_ACCESS_KEY`. |
+
+Credentials are never read from the configuration file, and a key written in its place is an error. The `s3` block is checked, but the S3 client is not part of this build yet: using it fails with a clear message. See [Media originals](media.md).
 
 ## Validation
 

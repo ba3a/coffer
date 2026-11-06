@@ -14,6 +14,7 @@ import { SeriesError } from './content/series.js';
 import { TagsError } from './content/tags.js';
 import { FontError } from './font-metrics.js';
 import { MarkdownError } from './markdown/render.js';
+import { runMedia } from './media/command.js';
 import { createPost, NewPostError, splitTags } from './new-post.js';
 import { formatRebuildAnswer, rebuildNeeded, RebuildUsageError } from './rebuild-needed.js';
 import { I18nError } from './render/i18n.js';
@@ -50,6 +51,10 @@ Commands:
                   (git repositories into the cache, folders in place) and
                   print the commit of each; exits 1 if any cannot be fetched
                   (--config <path>, --project <slug> for one project)
+  media           Keep original photos and videos outside git, in a media store:
+                  status, lock, push, pull, gitignore (see docs/media.md)
+                  (--config <path>; status: --remote;
+                  pull: --force, --restore, --dry-run)
   rebuild-needed  Say whether a deployed site is out of date: fetch its
                   build-info.json, ask each git docs source for its current
                   commit (git ls-remote, no token for public repositories)
@@ -81,6 +86,7 @@ Run "coffer help" to see this message again.
  * @property {{ signal?: AbortSignal, out?: string, watch?: boolean }} [dev] Lets a test stop `dev` (the signal), keep its build elsewhere (`out`) or not watch.
  * @property {Date} [now] Replaces the clock of `new` and `rebuild-needed`.
  * @property {import('./build-info.js').HttpOptions} [http] Replaces the limits (and `fetch`) of `rebuild-needed`.
+ * @property {Record<string, string | undefined>} [env] Replaces the environment that `media` reads store credentials from.
  */
 
 /**
@@ -643,6 +649,7 @@ const commands = {
       throw error;
     }
   },
+  media: (args, io, services) => runMedia(args, io, services),
   config: (args, io) => {
     const parsed = parseConfigArgs(args);
     if ('error' in parsed) {

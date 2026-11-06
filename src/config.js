@@ -12,6 +12,7 @@ import {
 } from './images/defaults.js';
 import { DEFAULT_ELEVATION_THRESHOLD_METERS, DEFAULT_TOLERANCE_METERS } from './geo/gpx.js';
 import { CAMERA_POLICIES, LOCATION_POLICIES } from './images/policy.js';
+import { normalizeMediaConfig } from './media/config.js';
 import { DEFAULT_ATTRIBUTION, DEFAULT_MAX_ZOOM, DEFAULT_TILE_URL, isTileUrl } from './geo/map.js';
 
 /**
@@ -153,6 +154,7 @@ export const CONFIG_FILE_NAME = 'coffer.yaml';
  * @property {string} file Absolute path of the configuration file.
  * @property {string} dir Absolute path of the directory holding the configuration file.
  * @property {SiteConfig[]} sites The configured sites, in file order.
+ * @property {import('./media/config.js').MediaConfig} [media] Where the originals of the media are kept and which files they are; absent when the file has no `media` block (everything stays in git).
  */
 
 /**
@@ -1179,7 +1181,7 @@ export function normalizeConfig(raw, source) {
   if (!isMapping(raw)) {
     problems.add('', 'must be a mapping with a "sites" list');
   } else {
-    rejectUnknownKeys(raw, ['sites'], '', problems);
+    rejectUnknownKeys(raw, ['sites', 'media'], '', problems);
     const list = raw.sites;
     if (list === undefined || list === null) {
       problems.add('sites', 'is required');
@@ -1206,8 +1208,16 @@ export function normalizeConfig(raw, source) {
     }
   }
 
+  /** @type {import('./media/config.js').MediaConfig | undefined} */
+  let media;
+  if (isMapping(raw) && raw.media !== undefined && raw.media !== null) {
+    const checked = normalizeMediaConfig(raw.media, { dir, file, contentDirs: sites.map((site) => site.contentDir) });
+    for (const problem of checked.problems) problems.add(problem.path === '' ? 'media' : `media.${problem.path}`, problem.message);
+    media = checked.value;
+  }
+
   if (problems.list.length > 0) throw new ConfigError(problems.list);
-  return { file, dir, sites };
+  return media === undefined ? { file, dir, sites } : { file, dir, sites, media };
 }
 
 /**

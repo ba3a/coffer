@@ -712,6 +712,16 @@ test('docs/configuration.md documents every configuration key', () => {
     'analytics',
     'provider',
     'token',
+    'media',
+    'store',
+    'include',
+    'lock',
+    'type',
+    'endpoint',
+    'bucket',
+    'region',
+    'accessKeyIdEnv',
+    'secretAccessKeyEnv',
   ];
   for (const key of keys) {
     assert.ok(page.includes(`\`${key}\``), `configuration.md misses \`${key}\``);
