@@ -3,6 +3,7 @@ import { accessSync, constants, lstatSync, mkdirSync, realpathSync, rmSync, stat
 import { delimiter, isAbsolute, join, relative, resolve, sep } from 'node:path';
 
 import { checkGlobPattern } from './glob.js';
+import { checkReferenceConfig } from './reference-config.js';
 
 /**
  * Where the documentation of a tool project comes from.
@@ -84,7 +85,7 @@ const SANDBOX_DIR_NAME = '.coffer-git';
  * @property {DocsSource} source For a folder: `path` as written, and `dir`, the absolute path it resolves to (relative paths are relative to the project's folder).
  * @property {string | null} github `owner/repo` of the GitHub repository that links to files point at; null when the source is not on GitHub and none is given.
  * @property {DocsGuide[]} guides
- * @property {Record<string, unknown> | null} reference The generated reference; read but not used yet.
+ * @property {import('./reference-config.js').ReferenceConfig | null} reference The command that generates the reference, and what to do with its output; null when the project has none.
  */
 
 /**
@@ -482,7 +483,7 @@ function checkSource(source, projectDir, problems) {
  * - `source` (required): `{git: URL, ref: branch-or-tag}` or `{path: folder}`;
  * - `github`: `owner/repo`, inferred from a github.com address;
  * - `guides`: a list of `{dir, order, include, exclude}`;
- * - `reference`: a mapping, accepted and kept but not used yet.
+ * - `reference`: `{command, format, output, title, undocumented}` (see `reference-config.js`).
  *
  * @param {unknown} value
  * @param {{ dir: string }} context `dir` is the project's folder, which a relative `source.path` is relative to.
@@ -531,11 +532,16 @@ export function checkDocsConfig(value, { dir }) {
     }
   }
 
-  /** @type {Record<string, unknown> | null} */
+  /** @type {import('./reference-config.js').ReferenceConfig | null} */
   let reference = null;
   if (value.reference !== undefined && value.reference !== null) {
-    if (isMapping(value.reference)) reference = value.reference;
-    else problems.push('reference: must be a mapping');
+    if (!isMapping(value.reference)) {
+      problems.push('reference: must be a mapping');
+    } else {
+      const checked = checkReferenceConfig(value.reference);
+      if ('problems' in checked) problems.push(...checked.problems);
+      else reference = checked.value;
+    }
   }
 
   if (problems.length > 0 || source === undefined) return { problem: problems.join('; ') };
@@ -682,7 +688,7 @@ function gitExecutable(env) {
  *
  * @param {import('node:child_process').ChildProcess} child
  */
-function killTree(child) {
+export function killTree(child) {
   const pid = child.pid;
   if (pid === undefined) return;
   try {
@@ -845,17 +851,19 @@ const COMMIT_ID = /^(?:[0-9a-f]{40}|[0-9a-f]{64})$/;
  * characters, not too long.
  *
  * @param {string} text
+ * @param {number} [lineCount] How many of the last lines are kept.
+ * @param {number} [maxLength] The most characters kept (the end of the text).
  * @returns {string}
  */
-function tailOf(text) {
+export function tailOf(text, lineCount = 6, maxLength = 600) {
   const lines = redactUrl(text)
     // eslint-disable-next-line no-control-regex
     .replace(/[\u0000-\u0008\u000b-\u001f\u007f]/g, '')
     .split(/\r?\n/)
     .map((line) => line.trim())
     .filter((line) => line !== '');
-  const joined = lines.slice(-6).join(' | ');
-  return joined.length > 600 ? `...${joined.slice(-600)}` : joined;
+  const joined = lines.slice(-lineCount).join(' | ');
+  return joined.length > maxLength ? `...${joined.slice(-maxLength)}` : joined;
 }
 
 /**

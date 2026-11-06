@@ -1,6 +1,6 @@
 # Where a project's documentation comes from
 
-A tool project can publish documentation that lives in its own repository. The `docs` block of its `project.yaml` says where that repository is, which folders hold guides, and in what order they appear. This page covers describing the source and fetching it; how the guides are rendered is in [Project documentation](project-docs.md). The generated reference is a separate feature (see [What comes next](#what-comes-next)).
+A tool project can publish documentation that lives in its own repository. The `docs` block of its `project.yaml` says where that repository is, which folders hold guides, and in what order they appear. This page covers describing the source and fetching it; how the guides are rendered is in [Project documentation](project-docs.md). The generated reference is described in [Project documentation](project-docs.md#the-reference).
 
 ```yaml
 # content/projects/kerfcalc/project.yaml
@@ -23,7 +23,7 @@ Everything about where the guides come from, their order and what is left out is
 | `source`    | yes      | Where the files are: a git repository (`git` and `ref`) or a folder (`path`). Exactly one of the two. |
 | `github`    | no       | `owner/repo` of the GitHub repository that links to files point at. Taken from a `github.com` address (`https://github.com/o/r(.git)`, `git@github.com:o/r(.git)`, `ssh://git@github.com/o/r`) when not given; otherwise null. |
 | `guides`    | no       | A list of guides. Without any, no guide is published and the project has no documentation pages and no documentation link. |
-| `reference` | no       | The configuration of a generated reference. It is accepted and kept, but nothing uses it before the reference step. |
+| `reference` | no       | The command that generates a reference, and what to do with its output: `command`, `format`, `output`, `title`, optional `undocumented` (see [The reference](project-docs.md#the-reference)). |
 
 Unknown keys are refused. Every problem in the block is reported at once, with the path of `project.yaml` and the field, like any other field (`.../project.yaml: docs: source.git: the scheme "ext" is not allowed (...)`).
 
@@ -133,12 +133,12 @@ A path source is `{ "type": "path", "path": "sample-tool", "sha": "9a2b..." | nu
 
 ## The link to the documentation
 
-A tool's page and its project block link to `/{projects}/{slug}/{docs}/` **if and only if the build rendered documentation pages for the project**, so that the link never leads to a page that does not exist and `coffer check` stays green. A `docs` block without `guides` fetches the source and records it in the manifest but publishes no page and writes no link. The same holds for a block with only a `reference`, until the reference step adds pages of its own.
+A tool's page and its project block link to `/{projects}/{slug}/{docs}/` **if and only if the build rendered documentation pages for the project**, so that the link never leads to a page that does not exist and `coffer check` stays green. A `docs` block without `guides` and without `reference` fetches the source and records it in the manifest but publishes no page and writes no link. A block with only a `reference` publishes the reference and a docs index that lists it.
 
 ## What comes next
 
 - The guides are rendered from the fetched source; see [Project documentation](project-docs.md).
-- The reference step runs the command of `reference` in the checkout.
+- The command of `reference` runs in the fetched checkout, after the fetch; see [The reference](project-docs.md#the-reference).
 
 The fetch result (`FetchedDocs`) carries what they need: `root`, the folder the guides are read from, the `source` with the `sha`, the `github` repository and the normalized `guides`.
 

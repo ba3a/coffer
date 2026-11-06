@@ -186,6 +186,7 @@ Font files in `fonts/` replace the bundled font; the template should use `fontFa
 | `series.njk`     | a series page       | extends `blog-index.njk`; `heading`, `breadcrumbs`, `item` (see [Series](series.md)) |
 | `series-nav.njk` | macro used by `post.njk` | `seriesNav(series, where)`, called by the `series_top` and `series_bottom` blocks of `post.njk` |
 | `docs.njk`       | a page of a project's documentation | `docs_breadcrumbs`, `docs_sidebar`, `docs_header`, `toc`, `docs_body`, `docs_pager`, `docs_source` (see [Project documentation](project-docs.md#the-template)); the table of contents is the partial `partials/toc.njk`, shared with `post.njk` |
+| `reference.njk`  | the page of a generated reference in the `json` format; standalone (does not extend `base.njk`, deliberately not the site's look) | `reference_style`, `reference_body` (see [The reference](project-docs.md#the-reference)) |
 | `map.njk`        | partial for a map of a post | rendered by the build once per map and put into the text of the post (see [Maps and GPX tracks](maps.md#the-map)); receives `map` (`svg`, `data`, `tracks`) |
 | `home.njk`       | the home page       | `about`, `links`, `showcase`, `latest`, `secondary` (see [Home](home.md)) |
 | `404.njk`        | `404.html`          | `head` is extended with a `noindex` tag                                 |

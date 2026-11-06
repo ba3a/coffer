@@ -140,7 +140,7 @@ test('the sample tool: guides render in the site theme with a sidebar in the con
     // The configured order first (getting-started, usage), then the rest alphabetically (internals); the generated index leads.
     assert.equal(
       sidebarOf(start),
-      'Documentation@/made/kerfcalc/docs/|Getting started@/made/kerfcalc/docs/getting-started/|Usage@/made/kerfcalc/docs/usage/|Internals@/made/kerfcalc/docs/internals/',
+      'Documentation@/made/kerfcalc/docs/|Getting started@/made/kerfcalc/docs/getting-started/|Usage@/made/kerfcalc/docs/usage/|Internals@/made/kerfcalc/docs/internals/|Kerfcalc reference@/made/kerfcalc/docs/reference/',
     );
     assert.match(start, /<li><a href="\/made\/kerfcalc\/docs\/getting-started\/" aria-current="page">Getting started<\/a><\/li>/);
     assert.match(start, /<nav class="docs-sidebar" aria-label="Kerfcalc: documentation pages">/);
@@ -621,8 +621,8 @@ test('a guide folder that is a file, or that is gone, fails the build naming the
   });
 });
 
-test('a docs block without guides publishes no page and no link, and a project without docs is unchanged', async () => {
-  await inSite(siteWith({ 'docs/start.md': START }, 'docs:\n  source: { path: ../../../tool }\n  reference: { command: x }\n'), async (dir) => {
+test('a docs block without guides and without a reference publishes no page and no link, and a project without docs is unchanged', async () => {
+  await inSite(siteWith({ 'docs/start.md': START }, 'docs:\n  source: { path: ../../../tool }\n'), async (dir) => {
     const [result] = await build(dir);
     assert.deepEqual(/** @type {import('../src/build.js').ManifestProject} */ (result.manifest.projects[0]).docs?.pages, []);
     assert.doesNotMatch(readFileSync(join(dir, 'out', 'demo', 'made', 'lathe', 'index.html'), 'utf8'), /project-fact-docs/);

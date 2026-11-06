@@ -12,7 +12,9 @@ repo: https://github.example/tove-marlowe/kerfcalc
 # The documentation comes from a folder read in place; a git source is
 # `source: { git: <address>, ref: <branch or tag> }`. The folder is relative to
 # this project's folder. The guides below become the pages of the documentation;
-# the link to them appears on this page once they are built.
+# the link to them appears on this page once they are built. The reference is
+# made by a command that runs in that folder: here a small script that reads the
+# doc comments of the source and writes JSON ({out} is a folder made for the run).
 docs:
   source:
     path: ../../../sample-tool
@@ -20,3 +22,8 @@ docs:
   guides:
     - dir: docs
       order: [getting-started.md, usage.md]
+  reference:
+    command: [node, scripts/reference.js, "{out}/reference.json"]
+    format: json
+    output: "{out}/reference.json"
+    title: Kerfcalc reference

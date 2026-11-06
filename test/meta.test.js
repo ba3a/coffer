@@ -227,9 +227,13 @@ test('every built page has a title, description, canonical, Open Graph and Twitt
     const result = await build(root);
     const files = htmlFiles(result.outDir);
     const redirectStubs = new Set(result.manifest.redirects.map((entry) => `${entry.from.slice(1)}index.html`));
+    // A generated reference is a plain page of its own, not made by the theme, so it has no preview tags.
+    const referenceDirs = result.manifest.projects.flatMap((project) => (project.docs?.reference ? [project.docs.reference.url.slice(1)] : []));
+    assert.ok(referenceDirs.length > 0, 'the example has a reference');
+    const isReference = (/** @type {string} */ file) => referenceDirs.some((dir) => file.startsWith(dir));
     let checked = 0;
     for (const file of files) {
-      if (redirectStubs.has(file)) continue;
+      if (redirectStubs.has(file) || isReference(file)) continue;
       const html = readFileSync(join(result.outDir, file), 'utf8');
       const here = `${file}:`;
       assert.match(html, /<title>[^<]+<\/title>/, `${here} title`);
@@ -255,7 +259,7 @@ test('every built page has a title, description, canonical, Open Graph and Twitt
       checked += 1;
     }
     assert.ok(checked >= 10, `expected many pages, checked ${checked}`);
-    assert.equal(checked, files.length - redirectStubs.size);
+    assert.equal(checked, files.filter((file) => !redirectStubs.has(file) && !isReference(file)).length);
   });
 });
 
@@ -377,7 +381,8 @@ test('the default image comes from the configuration', async () => {
       const html = readFileSync(join(result.outDir, 'index.html'), 'utf8');
       assert.deepEqual(metaContent(html, 'property', 'og:image'), ['https://images.example/share.png']);
       assert.deepEqual(metaContent(html, 'name', 'twitter:image'), ['https://images.example/share.png']);
-      assert.deepEqual(result.warnings, []);
+      // The only warning is the undocumented item of the sample tool's reference, which is there on purpose.
+      assert.deepEqual(result.warnings, ['content/projects/kerfcalc/project.yaml: docs.reference: "Kerf.spacing" (Functions) has no documentation']);
     },
     (root) => editConfig(root, '    lang: en\n', '    lang: en\n    defaultImage: https://images.example/share.png\n'),
   );
@@ -387,8 +392,9 @@ test('a default image that is not in the output is a warning', async () => {
   await withExampleCopy(
     async (root) => {
       const result = await build(root);
-      assert.equal(result.warnings.length, 1);
-      assert.match(result.warnings[0], /defaultImage: "\/assets\/missing\.png" is not in the output/);
+      const warnings = result.warnings.filter((warning) => !warning.includes('docs.reference'));
+      assert.equal(warnings.length, 1);
+      assert.match(warnings[0], /defaultImage: "\/assets\/missing\.png" is not in the output/);
     },
     (root) => editConfig(root, '    lang: en\n', '    lang: en\n    defaultImage: /assets/missing.png\n'),
   );

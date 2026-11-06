@@ -116,6 +116,12 @@ docs:
   previous: Назад
   next: Вперёд
   view_source: Открыть эту страницу на GitHub
+  reference: Справочник
+reference:
+  back: "назад к проекту {project} на сайте {site}"
+  sections: Разделы
+  not_documented: Без описания
+  empty: Здесь пока нечего показать.
 feeds:
   title: Ленты
   subscribe: Подписаться

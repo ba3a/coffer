@@ -518,7 +518,7 @@ export const FIELD_TYPES = Object.freeze({
     check: checkPressKit,
   },
   docs: {
-    describe: 'a mapping with the source of the documentation (a git repository or a folder), the guides to publish and, later, a reference',
+    describe: 'a mapping with the source of the documentation (a git repository or a folder), the guides to publish and a reference to generate',
     empty: () => null,
     check: checkDocsConfig,
   },

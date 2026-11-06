@@ -1,0 +1,65 @@
+{#- The page of a generated reference in the json format: a plain page with a generic stylesheet of its own, on purpose not the site's theme (the reference is generated content and looks the same on every site). It does not extend the base template. Expects `lang`, `heading`, `project` ({ name, url }), `bar` (the bar that leads back to the site, ready HTML), `sections` ({ id, title, items }), `itemCount` and `undocumentedCount`. Every part is a block a theme can replace. -#}
+<!doctype html>
+<html lang="{{ lang }}">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{{ heading }}: {{ project.name }}</title>
+{% block reference_style %}
+<style>
+:root { color-scheme: light dark; --fg: #1f2328; --bg: #ffffff; --muted: #59636e; --line: #d1d9e0; --code-bg: #f6f8fa; --link: #0969da; --warn: #9a6700; }
+@media (prefers-color-scheme: dark) { :root { --fg: #e6edf3; --bg: #0d1117; --muted: #9198a1; --line: #3d444d; --code-bg: #151b23; --link: #4493f8; --warn: #d29922; } }
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); color: var(--fg); font: 16px/1.55 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+a { color: var(--link); }
+.ref { max-width: 56rem; margin: 0 auto; padding: 1.5rem 1rem 4rem; }
+.ref h1 { margin: 0 0 1rem; font-size: 1.8rem; line-height: 1.2; }
+.ref h2 { margin: 2.5rem 0 1rem; padding-bottom: .3rem; border-bottom: 1px solid var(--line); font-size: 1.35rem; }
+.ref h3 { margin: 0 0 .4rem; font-size: 1.05rem; overflow-wrap: anywhere; }
+.ref-index ul { margin: 0; padding-left: 1.25rem; }
+.ref-count { color: var(--muted); font-size: .9rem; }
+.ref-item { margin: 0 0 1.25rem; padding: .75rem 1rem; border: 1px solid var(--line); border-radius: 6px; }
+.ref-item:target { outline: 2px solid var(--link); }
+.ref-name { color: inherit; text-decoration: none; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+.ref-name:hover { text-decoration: underline; }
+.ref-kind { margin-left: .5rem; color: var(--muted); font-size: .85rem; font-weight: normal; }
+.ref-signature { margin: .4rem 0; padding: .5rem .75rem; overflow-x: auto; background: var(--code-bg); border-radius: 4px; font: .9rem/1.45 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+.ref-item p { margin: .4rem 0 0; }
+.ref-note { color: var(--warn); font-size: .9rem; }
+</style>
+{% endblock %}
+</head>
+<body>
+{{ bar | safe }}
+<main class="ref">
+{% block reference_body %}
+<h1>{{ heading }}</h1>
+{% if sections.length %}
+<nav class="ref-index" aria-label="{{ 'reference.sections' | t }}">
+<ul>
+{% for section in sections %}<li><a href="#{{ section.id }}">{{ section.title }}</a> <span class="ref-count">({{ section.items.length }})</span></li>
+{% endfor %}
+</ul>
+</nav>
+{% for section in sections %}
+<section class="ref-section" aria-labelledby="{{ section.id }}">
+<h2 id="{{ section.id }}">{{ section.title }}</h2>
+{% for item in section.items %}
+<article class="ref-item{% if item.undocumented %} ref-undocumented{% endif %}" id="{{ item.id }}">
+<h3><a class="ref-name" href="#{{ item.id }}">{{ item.name }}</a>{% if item.kind %}<span class="ref-kind">{{ item.kind }}</span>{% endif %}</h3>
+{% if item.signature %}<pre class="ref-signature"><code>{{ item.signature }}</code></pre>
+{% endif %}
+{% if item.undocumented %}<p class="ref-note">{{ 'reference.not_documented' | t }}</p>
+{% else %}{% for paragraph in item.paragraphs %}<p>{{ paragraph }}</p>
+{% endfor %}{% endif %}
+</article>
+{% endfor %}
+</section>
+{% endfor %}
+{% else %}
+<p>{{ 'reference.empty' | t }}</p>
+{% endif %}
+{% endblock %}
+</main>
+</body>
+</html>

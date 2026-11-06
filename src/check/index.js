@@ -257,6 +257,9 @@ export async function checkSite(outDir, siteId, options = {}) {
   );
   const stubs = new Set(manifest.redirects.map((redirect) => `${redirect.from.replace(/^\//, '')}index.html`));
 
+  // A generated reference is not made by the theme, so it has no preview metadata; its links are checked all the same.
+  const referenceDirs = (manifest.projects ?? []).flatMap((project) => (project.docs?.reference ? [project.docs.reference.url.replace(/^\//, '')] : []));
+
   for (const file of listFiles(outDir, '.html')) {
     checked.pages += 1;
     const html = readFileSync(join(outDir, ...file.split('/')), 'utf8');
@@ -264,7 +267,7 @@ export async function checkSite(outDir, siteId, options = {}) {
     for (const message of checkHtmlLinks(html, { baseUrl, pageUrl, resolver })) {
       fail(file, message);
     }
-    if (stubs.has(file)) continue;
+    if (stubs.has(file) || referenceDirs.some((dir) => file.startsWith(dir))) continue;
     const head = readPageHead(html);
     for (const message of pagePreviewProblems(head, canonicalOf.get(file))) fail(file, message);
     for (const image of head.meta.get('og:image') ?? []) {

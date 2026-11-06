@@ -111,6 +111,12 @@ docs:
   previous: Previous
   next: Next
   view_source: View this page on GitHub
+  reference: Reference
+reference:
+  back: "back to {project} on {site}"
+  sections: Sections
+  not_documented: Not documented
+  empty: Nothing to show here.
 feeds:
   title: Feeds
   subscribe: Subscribe

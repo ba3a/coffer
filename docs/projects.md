@@ -304,4 +304,4 @@ The UI strings are `home.projects`, `post.projects`, `projects.title`, `projects
 
 ## Not yet
 
-A tool's guides are rendered as pages of the site (see [Project documentation](project-docs.md)); its generated reference is a separate feature. `docs` is validated and its source is fetched (see [Where a project's documentation comes from](docs-sources.md)).
+A tool's guides are rendered as pages of the site (see [Project documentation](project-docs.md)); its generated reference is described there as well. `docs` is validated and its source is fetched (see [Where a project's documentation comes from](docs-sources.md)).

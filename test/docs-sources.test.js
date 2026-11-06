@@ -331,10 +331,10 @@ test('guides are checked: paths stay inside the repository, counts and lengths a
   assert.ok('problem' in cleanRelativePath('a\u0000b'));
 });
 
-test('reference is accepted but not used yet; every problem is reported at once', () => {
-  const ok = checkDocsConfig({ source: { path: '.' }, reference: { command: 'x', format: 'json' } }, { dir: root });
+test('a reference is checked with the rest of the block; every problem is reported at once', () => {
+  const ok = checkDocsConfig({ source: { path: '.' }, reference: { command: 'x', format: 'json', output: 'o.json', title: 'T' } }, { dir: root });
   assert.ok('value' in ok);
-  assert.deepEqual(ok.value.reference, { command: 'x', format: 'json' });
+  assert.deepEqual(ok.value.reference, { command: 'x', format: 'json', output: 'o.json', title: 'T', undocumented: null });
   const bad = checkDocsConfig({ source: { git: '-x', ref: '..' }, github: 'no', guides: 'x', reference: 5, colour: 1 }, { dir: root });
   assert.ok('problem' in bad);
   assert.deepEqual(

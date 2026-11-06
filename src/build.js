@@ -11,6 +11,7 @@ import { PROJECT_BLOCK_POSTS, newestFirst, projectsOfPost, unknownProjectMessage
 import { projectStyle } from './content/project-style.js';
 import { loadProjects, projectUrl, showcaseOf } from './content/projects.js';
 import { finishGuidePage, githubRefOf, githubUrl, locateGuideImage, planGuides, resolveGuideLinks } from './docs/guides.js';
+import { ReferenceFailure, backBarHtml, generateReference, publishReferenceFolder, viewOfReference } from './docs/reference.js';
 import { fetchDocsSources, manifestDocs } from './docs/sources.js';
 import {
   FEED_FILE_NAME,
@@ -53,7 +54,7 @@ import {
   renderRedirectPage,
   renderRedirectsFile,
 } from './redirects.js';
-import { createTemplates } from './render/templates.js';
+import { createTemplates, siteUrl } from './render/templates.js';
 import { REPORT_DIR_NAME, REPORT_FILE_NAME, Report, ReportError, writeReport } from './report.js';
 import { ROBOTS_FILE_NAME, SITEMAP_FILE_NAME, renderRobots, renderSitemap } from './sitemap.js';
 import { readVersion } from './version.js';
@@ -64,6 +65,9 @@ export const ENGINE_ASSETS_DIR = fileURLToPath(new URL('../theme/assets/', impor
 
 /** Folder of the cache that holds the checkouts of documentation sources, `{cache}/repos/{slug}`. */
 export const DOCS_REPOS_CACHE_DIR = 'repos';
+
+/** Name of the folder, inside the cache, that holds the generated references of projects. */
+export const DOCS_REFERENCE_CACHE_DIR = 'reference';
 
 /** Output root used when none is given. */
 export const DEFAULT_OUT_DIR = 'dist';
@@ -112,6 +116,7 @@ export class BuildError extends Error {
  * @property {string[]} [siteIds] Build only these sites (default all).
  * @property {string} [cacheDir] Directory for work that is worth keeping between builds, such as title cards (default `.cache` beside the configuration file; an absolute path, or relative to the working directory).
  * @property {{ timeoutMs?: number, exec?: import('./docs/sources.js').FetchOptions['exec'], env?: Record<string, string | undefined> }} [docsFetch] How the documentation sources of tool projects are fetched: the time one git call can take, a replacement for running git, and the environment git's is made from. Used by tests.
+ * @property {{ timeoutMs?: number, env?: Record<string, string | undefined> }} [reference] How the reference commands of tool projects are run: the time one command can take, and the environment it gets (default the process's). Used by tests.
  * @property {string} [reportDir] Directory that receives `report.json`, the errors, warnings and notes of the build (default `.coffer` beside the configuration file; an absolute path, or relative to the working directory). It is never inside the output.
  */
 
@@ -288,9 +293,25 @@ export class BuildError extends Error {
 
 /**
  * The documentation of a project in the manifest: the source and guides as
- * configured (see `ManifestDocs`), and the pages built from them.
+ * configured (see `ManifestDocs`), the pages built from them, and the
+ * generated reference.
  *
- * @typedef {import('./docs/sources.js').ManifestDocs & { pages: ManifestDocsPage[] }} ManifestProjectDocs
+ * @typedef {import('./docs/sources.js').ManifestDocs & { pages: ManifestDocsPage[], reference: ManifestReference | null }} ManifestProjectDocs
+ */
+
+/**
+ * The generated reference of a project. Its pages are not in the manifest's
+ * `pages` or in the sitemap: they are generated content, outside the theme.
+ *
+ * @typedef {object} ManifestReference
+ * @property {string} url Site-relative URL of the reference, ending in a slash.
+ * @property {string} file Path of its index page, relative to the site's output directory.
+ * @property {'html' | 'json'} format
+ * @property {string} title The configured title.
+ * @property {number} files The number of files published; 1 for a json reference.
+ * @property {number | null} items The number of elements of a json reference; null for html.
+ * @property {string[]} undocumented The names of the elements without documentation, in the order found.
+ * @property {boolean} cached Whether the result came from the cache of this build (the command did not run).
  */
 
 /**
@@ -1365,9 +1386,23 @@ async function buildSite(config, site, options, outRoot, version, report) {
    * @property {PreparedDocsPage[]} pages In sidebar order, the index first.
    * @property {string | null} github
    * @property {string} ref
+   * @property {{ title: string, url: string } | null} reference The generated reference, which the sidebar and the generated index list after the guides.
    */
   /** @type {Map<string, PreparedDocs>} */
   const docsPrepared = new Map();
+
+  /**
+   * The generated reference of a project, ready to be written.
+   *
+   * @typedef {object} PreparedReference
+   * @property {import('./docs/reference.js').ReferenceResult} result
+   * @property {string} url Site-relative address, ending in a slash.
+   * @property {string} title The configured title.
+   * @property {ReturnType<typeof viewOfReference> | null} view What the template shows of a json reference; null for html.
+   * @property {string[]} undocumented The names of the elements without documentation.
+   */
+  /** @type {Map<string, PreparedReference>} */
+  const referencePrepared = new Map();
 
   /**
    * Splits the location off a Markdown error, which carries it in its message.
@@ -1390,13 +1425,14 @@ async function buildSite(config, site, options, outRoot, version, report) {
    * @param {string} projectPageUrl
    * @param {import('./docs/sources.js').FetchedDocs} fetched
    * @param {ReturnType<typeof createResolver>} resolver
-   * @returns {Promise<PreparedDocs | null>} Null when the project publishes no guide page.
+   * @param {PreparedReference | undefined} reference The generated reference of the project, if it has one.
+   * @returns {Promise<PreparedDocs | null>} Null when the project publishes no guide page and has no reference.
    */
-  const prepareDocs = async (project, projectPageUrl, fetched, resolver) => {
+  const prepareDocs = async (project, projectPageUrl, fetched, resolver, reference) => {
     const plan = planGuides(fetched);
     for (const issue of plan.issues) report.addError({ site: site.id, ...issue });
     for (const warning of plan.warnings) warnings.push(warning);
-    if (plan.pages.length === 0) return null;
+    if (plan.pages.length === 0 && !reference) return null;
     const indexUrl = `${projectPageUrl}${site.urls.docs}/`;
     /** @param {import('./docs/guides.js').GuidePage} page */
     const urlOf = (page) => (page.slug === '' ? indexUrl : `${indexUrl}${page.slug}/`);
@@ -1464,7 +1500,7 @@ async function buildSite(config, site, options, outRoot, version, report) {
         page: guide,
       });
     }
-    if (pagesOut.length === 0) return null;
+    if (pagesOut.length === 0 && (plan.pages.length > 0 || !reference)) return null;
     // Without a README or an index file the docs index lists the pages.
     if (!pagesOut.some((entry) => entry.page?.isIndex)) {
       pagesOut.unshift({
@@ -1478,7 +1514,57 @@ async function buildSite(config, site, options, outRoot, version, report) {
         page: null,
       });
     }
-    return { indexUrl, pages: pagesOut, github: fetched.github, ref };
+    return { indexUrl, pages: pagesOut, github: fetched.github, ref, reference: reference ? { title: reference.title, url: reference.url } : null };
+  };
+
+  /**
+   * Generates the references of the projects that configure one (running the
+   * commands that are not answered by the cache), and lists the elements without
+   * documentation in the report. A reference that cannot be generated is an
+   * error of the project's file.
+   *
+   * @param {readonly import('./content/projects.js').Project[]} loaded
+   */
+  const prepareReferences = async (loaded) => {
+    for (const project of loaded) {
+      const docs = /** @type {import('./docs/sources.js').DocsConfig | null | undefined} */ (project.fields.docs);
+      const fetched = docsFetched.get(project.slug);
+      if (!docs?.reference || !fetched) continue;
+      const shown = posix(relative(config.dir, project.file));
+      /** @type {import('./docs/reference.js').ReferenceResult} */
+      let result;
+      try {
+        result = await generateReference({
+          slug: project.slug,
+          reference: docs.reference,
+          fetched,
+          siteDir: config.dir,
+          cacheDir: join(cacheRoot, DOCS_REFERENCE_CACHE_DIR),
+          timeoutMs: options.reference?.timeoutMs,
+          env: options.reference?.env,
+        });
+      } catch (error) {
+        if (!(error instanceof ReferenceFailure)) throw error;
+        report.addError({ site: site.id, file: shown, message: `docs.reference: ${error.message}` });
+        continue;
+      }
+      const view = result.model ? viewOfReference(result.model, result.undocumentedNames) : null;
+      const undocumented = [...new Set([...(view?.undocumented.map((entry) => entry.name) ?? []), ...result.undocumentedNames])];
+      for (const entry of view?.undocumented ?? []) {
+        warnings.push(`${shown}: docs.reference: "${entry.name}" (${entry.section}) has no documentation`);
+      }
+      for (const name of result.undocumentedNames) {
+        if (!view?.undocumented.some((entry) => entry.name === name)) warnings.push(`${shown}: docs.reference: "${name}" has no documentation`);
+      }
+      for (const name of result.skipped) warnings.push(`${shown}: docs.reference: the link "${name}" in the generated folder is not published`);
+      referencePrepared.set(project.slug, {
+        result,
+        url: `${projectUrl(site.urls.projects, project.slug)}${site.urls.docs}/reference/`,
+        title: docs.reference.title,
+        view,
+        undocumented,
+      });
+    }
   };
 
   if (site.projects) {
@@ -1491,6 +1577,7 @@ async function buildSite(config, site, options, outRoot, version, report) {
       ),
       { cacheDir: join(cacheRoot, DOCS_REPOS_CACHE_DIR), ...options.docsFetch },
     );
+    await prepareReferences(loadedProjects);
     for (const project of loadedProjects) {
       const url = projectUrl(site.urls.projects, project.slug);
       const page = pageImagesOf(project.pageFile, null, projectResolver);
@@ -1544,7 +1631,7 @@ async function buildSite(config, site, options, outRoot, version, report) {
       });
       const fetchedDocs = docsFetched.get(project.slug);
       if (fetchedDocs) {
-        const prepared = await prepareDocs(project, url, fetchedDocs, projectResolver);
+        const prepared = await prepareDocs(project, url, fetchedDocs, projectResolver, referencePrepared.get(project.slug));
         if (prepared) docsPrepared.set(project.slug, prepared);
       }
     }
@@ -2292,8 +2379,11 @@ async function buildSite(config, site, options, outRoot, version, report) {
       const docs = docsPrepared.get(project.slug);
       /** @type {ManifestDocsPage[]} */
       const docsManifestPages = [];
+      /** @type {ManifestReference | null} */
+      let referenceManifest = null;
       if (docs) {
         const sidebar = docs.pages.map((entry) => ({ title: entry.title, url: entry.url }));
+        if (docs.reference) sidebar.push({ title: docs.reference.title, url: docs.reference.url });
         for (const [position, entry] of docs.pages.entries()) {
           const previous = docs.pages[position - 1];
           const next = docs.pages[position + 1];
@@ -2338,6 +2428,36 @@ async function buildSite(config, site, options, outRoot, version, report) {
             title: entry.title,
           });
         }
+
+        // The generated reference: a folder of HTML copied as it is, or the page made of a json file. Both lead back to the site.
+        const generated = referencePrepared.get(project.slug);
+        if (generated) {
+          const bar = backBarHtml(
+            siteUrl(url, templates.basePath),
+            t('reference.back', { project: project.name, site: site.title }),
+          );
+          const referenceFile = fileForUrl(generated.url);
+          if (generated.result.format === 'html') {
+            const published = publishReferenceFolder(generated.result.dataDir, join(outDir, ...dirname(referenceFile).split('/')), bar);
+            referenceManifest = { url: generated.url, file: referenceFile, format: 'html', title: generated.title, files: published.files, items: null, undocumented: generated.undocumented, cached: generated.result.cached };
+          } else {
+            const view = /** @type {NonNullable<typeof generated.view>} */ (generated.view);
+            writeOutput(
+              outDir,
+              referenceFile,
+              templates.render('reference.njk', {
+                lang: site.lang,
+                heading: view.title ?? generated.title,
+                project: { name: project.name, url },
+                bar,
+                sections: view.sections,
+                itemCount: view.itemCount,
+                undocumentedCount: view.undocumented.length,
+              }),
+            );
+            referenceManifest = { url: generated.url, file: referenceFile, format: 'json', title: generated.title, files: 1, items: view.itemCount, undocumented: generated.undocumented, cached: generated.result.cached };
+          }
+        }
       }
       manifestProjects.push({
         slug: project.slug,
@@ -2356,7 +2476,7 @@ async function buildSite(config, site, options, outRoot, version, report) {
         card: posix(relative(config.dir, project.card)),
         files,
         docs: docsFetched.has(project.slug)
-          ? { ...manifestDocs(/** @type {import('./docs/sources.js').FetchedDocs} */ (docsFetched.get(project.slug)), config.dir), pages: docsManifestPages }
+          ? { ...manifestDocs(/** @type {import('./docs/sources.js').FetchedDocs} */ (docsFetched.get(project.slug)), config.dir), pages: docsManifestPages, reference: referenceManifest }
           : null,
         downloads: entry.pressKit?.downloads ?? [],
       });
