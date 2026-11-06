@@ -9,6 +9,7 @@ import { IMAGE_EXTENSIONS } from '../images/defaults.js';
 import { decodeEntities } from '../xml.js';
 import { GlobError, compileGlob, matchGlob } from './glob.js';
 import { resolveInside } from './sources.js';
+import { linkSymbolsInHtml, listCandidates } from './symbols.js';
 
 /**
  * The guides of a project's documentation.
@@ -46,6 +47,9 @@ export const RESERVED_PAGE_SLUGS = Object.freeze(['reference', 'search']);
 
 /** The links a guide can have besides links to files: these schemes only. */
 const ALLOWED_SCHEMES = new Set(['http', 'https', 'mailto']);
+
+/** The scheme of a link to a symbol of the project's reference: `ref:Name`, `ref:com.example.Name`. */
+export const REFERENCE_SCHEME = 'ref';
 
 /** The branch a link points at when the source is a folder that is not a repository of its own. */
 export const DEFAULT_GITHUB_REF = 'main';
@@ -466,6 +470,7 @@ function hasAnchor(ids, fragment) {
  * @property {(page: GuidePage) => string} urlOf Site-relative address of a published page.
  * @property {string} indexUrl Site-relative address of the docs index.
  * @property {ReadonlyMap<GuidePage, RenderedGuide>} rendered
+ * @property {import('./symbols.js').SymbolIndex | null} [symbols] The symbols of the project's reference, which `ref:` links name; null (the default) when the project has none to link to.
  */
 
 /**
@@ -489,6 +494,9 @@ function hasAnchor(ids, fragment) {
  *   file, `tree` for a folder); without a `github` setting that is an error;
  * - a link to something that does not exist, or that leaves the repository, is
  *   an error;
+ * - a `ref:Name` link (`ref:com.example.Name`) becomes the address of that symbol
+ *   in the project's reference; a name that is unknown or finds more than one
+ *   symbol is an error;
  * - `http:`, `https:` and `mailto:` links and `//host` links are left alone; any
  *   other scheme is refused;
  * - `#anchor` must be a heading or id of the page.
@@ -499,7 +507,7 @@ function hasAnchor(ids, fragment) {
  * @param {GuideLinkOptions} options
  * @returns {GuideLinkResult}
  */
-export function resolveGuideLinks(pages, { root, repo, github, ref, urlOf, indexUrl, rendered }) {
+export function resolveGuideLinks(pages, { root, repo, github, ref, urlOf, indexUrl, rendered, symbols = null }) {
   /** @type {Map<string, GuidePage>} */
   const byRel = new Map(pages.map((page) => [page.rel, page]));
   const index = pages.find((page) => page.isIndex);
@@ -573,6 +581,21 @@ export function resolveGuideLinks(pages, { root, repo, github, ref, urlOf, index
       const fail = (message) => issues.push({ file: page.label, line: link.line, column: link.column, message });
 
       const scheme = schemeOf(raw);
+      if (scheme === REFERENCE_SCHEME) {
+        const symbol = decodeSafe(compact(raw).slice(REFERENCE_SCHEME.length + 1));
+        const found = symbols === null || symbol === '' ? null : symbols.lookup(symbol);
+        if (found !== null && 'url' in found) {
+          map.set(raw, found.url);
+          continue;
+        }
+        refusedHere.add(raw);
+        if (symbol === '') fail(`broken link '${shown}' (a ref: link needs the name of a symbol of the reference, such as ref:Name)`);
+        else if (symbols === null) {
+          fail(`broken link '${shown}' (the project has no symbols to link to: configure "reference" in the "docs" block, and "index" when the reference is html)`);
+        } else if (found === null) fail(`broken link '${shown}' (the reference has no symbol "${symbol}")`);
+        else fail(`ambiguous link '${shown}' ("${symbol}" names ${listCandidates(found.ambiguous)}; write the qualified name)`);
+        continue;
+      }
       if (scheme !== null) {
         if (!ALLOWED_SCHEMES.has(scheme)) {
           refusedHere.add(raw);
@@ -721,9 +744,11 @@ const FIRST_H1 = /<h1(\s[^>]*)?>([\s\S]*?)<\/h1>\s*/i;
  * @param {ReadonlyMap<string, string> | undefined} input.rewrites
  * @param {ReadonlySet<string> | undefined} input.refused Links whose scheme is refused and already reported.
  * @param {string} input.indexTitle The title of the docs index when its file has no heading.
+ * @param {import('./symbols.js').SymbolIndex | null} [input.symbols] The symbols of the project's reference.
+ * @param {boolean} [input.autoLink] Whether inline code that is exactly the name of a symbol becomes a link to it (default true; needs `symbols`). Code in code blocks and inside links is never linked.
  * @returns {FinishedGuide}
  */
-export function finishGuidePage({ page, html, rewrites, refused, indexTitle }) {
+export function finishGuidePage({ page, html, rewrites, refused, indexTitle, symbols = null, autoLink = true }) {
   let body = html;
   let title = '';
   /** @type {string | null} */
@@ -737,6 +762,7 @@ export function finishGuidePage({ page, html, rewrites, refused, indexTitle }) {
   }
   if (title === '') title = page.isIndex ? indexTitle : titleFromName(posix.basename(page.inGuide));
   body = applyLinkRewrites(body, rewrites);
+  if (symbols !== null && autoLink) body = linkSymbolsInHtml(body, symbols).html;
   body = withoutMapPlaceholders(body);
   /** @type {GuideIssue[]} */
   const issues = [];

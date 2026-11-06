@@ -11,6 +11,7 @@ import { PROJECT_BLOCK_POSTS, newestFirst, projectsOfPost, unknownProjectMessage
 import { projectStyle } from './content/project-style.js';
 import { loadProjects, projectUrl, showcaseOf } from './content/projects.js';
 import { finishGuidePage, githubRefOf, githubUrl, locateGuideImage, planGuides, resolveGuideLinks } from './docs/guides.js';
+import { SymbolIndexError, indexOfHtmlReference, indexOfView } from './docs/symbols.js';
 import { ReferenceFailure, backBarHtml, generateReference, publishReferenceFolder, viewOfReference } from './docs/reference.js';
 import { fetchDocsSources, manifestDocs } from './docs/sources.js';
 import {
@@ -1400,6 +1401,8 @@ async function buildSite(config, site, options, outRoot, version, report) {
    * @property {string} title The configured title.
    * @property {ReturnType<typeof viewOfReference> | null} view What the template shows of a json reference; null for html.
    * @property {string[]} undocumented The names of the elements without documentation.
+   * @property {import('./docs/symbols.js').SymbolIndex | null} symbols The symbols that guides can link to; null for an html reference that configures no index.
+   * @property {boolean} autoLink Whether guides link inline code that names a symbol.
    */
   /** @type {Map<string, PreparedReference>} */
   const referencePrepared = new Map();
@@ -1470,6 +1473,7 @@ async function buildSite(config, site, options, outRoot, version, report) {
       urlOf,
       indexUrl,
       rendered: renderedPages,
+      symbols: reference?.symbols ?? null,
     });
     for (const issue of links.issues) report.addError({ site: site.id, ...issue });
     /** @type {PreparedDocsPage[]} */
@@ -1486,6 +1490,8 @@ async function buildSite(config, site, options, outRoot, version, report) {
         rewrites: links.rewrites.get(guide),
         refused: links.refused.get(guide),
         indexTitle: t('docs.title'),
+        symbols: reference?.symbols ?? null,
+        autoLink: reference?.autoLink ?? true,
       });
       for (const issue of finished.issues) report.addError({ site: site.id, ...issue });
       const url = urlOf(guide);
@@ -1557,12 +1563,25 @@ async function buildSite(config, site, options, outRoot, version, report) {
         if (!view?.undocumented.some((entry) => entry.name === name)) warnings.push(`${shown}: docs.reference: "${name}" has no documentation`);
       }
       for (const name of result.skipped) warnings.push(`${shown}: docs.reference: the link "${name}" in the generated folder is not published`);
+      const referenceUrl = `${projectUrl(site.urls.projects, project.slug)}${site.urls.docs}/reference/`;
+      /** @type {import('./docs/symbols.js').SymbolIndex | null} */
+      let symbols = null;
+      try {
+        if (view) symbols = indexOfView(view, referenceUrl);
+        else if (docs.reference.index) symbols = indexOfHtmlReference(docs.reference.index, result.dataDir, referenceUrl);
+      } catch (error) {
+        if (!(error instanceof SymbolIndexError)) throw error;
+        report.addError({ site: site.id, file: shown, message: `docs.reference.index: ${error.message}` });
+        continue;
+      }
       referencePrepared.set(project.slug, {
         result,
-        url: `${projectUrl(site.urls.projects, project.slug)}${site.urls.docs}/reference/`,
+        url: referenceUrl,
         title: docs.reference.title,
         view,
         undocumented,
+        symbols,
+        autoLink: docs.reference.autoLink,
       });
     }
   };

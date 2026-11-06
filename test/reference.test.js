@@ -183,7 +183,7 @@ function referenceFile(dir, path = 'index.html') {
 
 test('a reference needs a command, a format, an output and a title; every problem is reported at once', () => {
   const ok = checkReferenceConfig({ command: ['node', 'x.js', '{out}/r.json'], format: 'json', output: '{out}/r.json', title: 'Reference' });
-  assert.deepEqual(ok, { value: { command: ['node', 'x.js', '{out}/r.json'], format: 'json', output: '{out}/r.json', title: 'Reference', undocumented: null } });
+  assert.deepEqual(ok, { value: { command: ['node', 'x.js', '{out}/r.json'], format: 'json', output: '{out}/r.json', title: 'Reference', undocumented: null, index: null, autoLink: true } });
   const text = checkReferenceConfig({ command: './gradlew dokkaHtml', format: 'html', output: 'build/dokka', title: 'API', undocumented: { pattern: 'warning: (?<name>\\S+) is undocumented' } });
   assert.ok('value' in text);
   assert.equal(text.value.command, './gradlew dokkaHtml');
@@ -205,7 +205,7 @@ test('a reference needs a command, a format, an output and a title; every proble
 test('the docs block carries the checked reference, and a bad one is a problem of the block', () => {
   const ok = checkDocsConfig({ source: { path: '.' }, reference: { command: 'x', format: 'json', output: 'o.json', title: 'T' } }, { dir: root });
   assert.ok('value' in ok);
-  assert.deepEqual(ok.value.reference, { command: 'x', format: 'json', output: 'o.json', title: 'T', undocumented: null });
+  assert.deepEqual(ok.value.reference, { command: 'x', format: 'json', output: 'o.json', title: 'T', undocumented: null, index: null, autoLink: true });
   const bad = checkDocsConfig({ source: { path: '.' }, reference: { command: 'x' } }, { dir: root });
   assert.ok('problem' in bad);
   assert.match(bad.problem, /reference\.format: is required/);

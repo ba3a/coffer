@@ -38,6 +38,7 @@ A link is resolved from the folder of the page that holds it; a link that starts
 | `#anchor` | left as it is; it has to be a heading or an id of the page itself (`#top` always works) |
 | a file of the repository that is not published (a source file, `LICENSE`, `../CHANGELOG.md`, `../README.md`) | `https://github.com/{owner}/{repo}/blob/{ref}/{path}` |
 | a folder of the repository | `https://github.com/{owner}/{repo}/tree/{ref}/{path}` (the root is `.../tree/{ref}`) |
+| `ref:Name`, `ref:com.example.Name` | the address of that symbol in the project's reference; an unknown or ambiguous name is an **error** (see [Links to the reference](#links-to-the-reference)) |
 | `https:`, `http:`, `mailto:`, `//host/...` | left alone |
 | any other scheme (`javascript:`, `data:`, `vbscript:`, `file:`) | **error**; the page carries `#` instead |
 | a file that does not exist, or one that exists with other capitalisation | **error** |
@@ -47,6 +48,10 @@ A link is resolved from the folder of the page that holds it; a link that starts
 Path segments of GitHub addresses are percent-encoded. The `{ref}` is the configured `ref` for a git source (a branch or tag). For a folder source it is the full commit when the folder is itself the root of a git repository (it has a `.git`) and the commit is known, because a commit never moves; otherwise `main`, because the commit of a larger repository that merely contains the folder is not a commit of the GitHub repository.
 
 Links written as raw HTML are not rewritten (they are left as written and the output check reports the ones that lead nowhere), but every address in raw HTML is checked for a refused scheme.
+
+### Links to the reference
+
+A guide can name a symbol of the project's reference instead of writing the address of its page: `[text](ref:Name)` or `[text](ref:com.example.Name)`. The link becomes the address of that symbol in the reference, and inline code that is exactly the name of a symbol is linked without any markup. How the symbols are found is described in [Linking guides to the reference](#linking-guides-to-the-reference).
 
 ### Images
 
@@ -92,6 +97,8 @@ docs:
 | `output` | Required. Where the command leaves its result: a folder for `html`, a file for `json`. Relative to the checkout; the placeholders are replaced here too. |
 | `title` | Required. The name of the reference, in the sidebar and on the docs index. |
 | `undocumented` | Optional. `{pattern}`: a regular expression with a named group `name` (`(?<name>...)`), matched line by line (flags `gm`) against the output of the command; every match names an element without documentation. |
+| `index` | Optional, `html` only. The index adapter that finds the symbols of the generated folder, so that guides can link to them: its name (`dokka`) or `{adapter, file}`. See [Linking guides to the reference](#linking-guides-to-the-reference). |
+| `autoLink` | Optional, `true` or `false` (default `true`). Whether inline code in guides that is exactly the name of a symbol becomes a link to it. |
 
 ### The command
 
@@ -146,6 +153,29 @@ It has to exist after the command succeeded and to be inside the checkout or in 
 | `items[].undocumented` | Optional. `true` for an element that has no documentation. |
 
 Unknown fields are ignored, so a generator can carry more than coffer reads. Names and titles are at most 500 characters, a signature 5000, a description 50 000; there are at most 20 000 items. A file that does not fit the format fails the build, with the place of every problem (`sections[0].items[2].name: is required`). The page is rendered by `reference.njk`, a standalone template that does not extend `base.njk`; a theme can replace it, or extend the engine's copy and replace its blocks `reference_style` and `reference_body`. The template receives `lang`, `heading`, `project` (`name`, `url`), `bar`, `sections` (`id`, `title`, `items` with `id`, `name`, `kind`, `signature`, `paragraphs`, `undocumented`), `itemCount` and `undocumentedCount`.
+
+### Linking guides to the reference
+
+Guides and the reference are linked through a **symbol index**, made for each project from its reference. A symbol has a name, which may be qualified (`com.example.Tool`, `Kerf.waste`), and an address. Its **simple name** is the part after the last dot (`Tool`, `waste`). The index finds a symbol by either name, written exactly (case matters).
+
+Where the symbols come from:
+
+- **`json` reference:** every item. Its name is the item's `name`; its address is the reference page with the anchor of the item (`/made/kerfcalc/docs/reference/#kerf-waste`): the `anchor` of the file, else the one the page makes from the name.
+- **`html` reference:** the file of an **index adapter** in the generated folder, named by `index`. `index: dokka` reads Dokka's `scripts/pages.json`; `index: { adapter: dokka, file: other/pages.json }` reads another file of the folder. Without `index`, an `html` reference has no symbols.
+
+The `dokka` adapter reads a list of records `{name, description, location, searchKeys}`:
+
+- `location`, relative to the generated folder and with an anchor when the symbol has one, is the address;
+- the identifier in `name` (`Tool`, or `waste` for `fun waste(...)`) is the simple name;
+- a `searchKeys` entry, or the `description`, that ends in a dot and the identifier (`com.example.Tool`) is a qualified name; so is the `description` followed by the identifier when the description is a dotted owner (`com.example.Tool` and `spacing` give `com.example.Tool.spacing`);
+- a record without a usable identifier is left out.
+
+A file that is missing, is not valid JSON, or has a location that leaves the folder (an absolute address, a scheme, `..`) fails the build, with the place of the problem (`docs.reference.index: scripts/pages.json: [3].location: ...`). More adapters can be added in `src/docs/symbols.js` (`INDEX_ADAPTERS`): a default file name and a function from the text of the file to a list of `{name, url, keys}`.
+
+In guides:
+
+- **`[text](ref:Name)`**, also `ref:com.example.Name`, is replaced by the address of the symbol. **A name that is unknown, or that finds more than one symbol (two classes with one simple name, overloads with a page each), fails the build**, located at the link like every other link error: `sample-tool:docs/usage.md:12:3 broken link 'ref:Kerf.gone' (the reference has no symbol "Kerf.gone")`. A project with no symbols (no `reference`, or an `html` one without `index`) fails the same way.
+- **Inline code** that is exactly a simple or qualified name that finds one symbol is wrapped in a link to it. A name that finds several symbols is not linked, and nothing is reported; write the qualified name. Code blocks, code that is already inside a link, and code with markup inside it are never linked (a `<code>` element written as raw HTML is treated like inline code). `autoLink: false` turns the automatic links off; `ref:` links keep working.
 
 ### Undocumented elements
 

@@ -1,0 +1,11 @@
+[
+  { "name": "com.example", "description": "com.example", "location": "root/com.example/index.html", "searchKeys": ["com.example"] },
+  { "name": "Tool", "description": "com.example.Tool", "location": "root/com.example/-tool/index.html", "searchKeys": ["Tool"] },
+  { "name": "run", "description": "com.example.Tool.run", "location": "root/com.example/-tool/run.html", "searchKeys": ["run"] },
+  { "name": "fun spacing(width: Double, pins: Int)", "description": "com.example.Tool", "location": "root/com.example/-tool/spacing.html", "searchKeys": ["spacing"] },
+  { "name": "version", "description": "com.example.Tool", "location": "root/com.example/-tool/index.html#version", "searchKeys": ["version"] },
+  { "name": "parse", "description": "com.example.Tool.parse", "location": "root/com.example/-tool/parse.html", "searchKeys": ["parse"] },
+  { "name": "parse", "description": "com.example.Tool.parse", "location": "root/com.example/-tool/parse-1.html", "searchKeys": ["parse"] },
+  { "name": "Config", "description": "com.example.Config", "location": "root/com.example/-config/index.html", "searchKeys": ["Config"] },
+  { "name": "Config", "description": "com.other.Config", "location": "root/com.other/-config/index.html", "searchKeys": ["Config"] }
+]

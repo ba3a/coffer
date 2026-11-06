@@ -5,8 +5,10 @@
  * `checkDocsConfig`); running the command is {@link ./reference.js}.
  */
 
+import { INDEX_ADAPTERS } from './symbols.js';
+
 /** The keys a `docs.reference` mapping can have. */
-export const REFERENCE_KEYS = Object.freeze(['command', 'format', 'output', 'title', 'undocumented']);
+export const REFERENCE_KEYS = Object.freeze(['command', 'format', 'output', 'title', 'undocumented', 'index', 'autoLink']);
 
 /** The formats of a generated reference. */
 export const REFERENCE_FORMATS = Object.freeze(['html', 'json']);
@@ -35,6 +37,8 @@ export const MAX_PATTERN_LENGTH = 500;
  * @property {string} output A directory (`html`) or a file (`json`), relative to the checkout or to `{out}`.
  * @property {string} title The name of the reference, in the sidebar and in the breadcrumbs.
  * @property {{ pattern: string } | null} undocumented A regular expression with a named group `name`, applied to the output of the command to find the elements that have no documentation.
+ * @property {{ adapter: string, file: string | null } | null} index How the symbols of an `html` reference are found, so that guides can link to them: the adapter that reads the index file, and the file when it is not the adapter's usual one. Null for `json`, whose symbols are the items, and for an `html` reference without an index.
+ * @property {boolean} autoLink Whether inline code in guides that is exactly the name of a symbol is linked to the reference.
  */
 
 /**
@@ -69,7 +73,9 @@ function checkText(value, max) {
  * - `format` (required): `html` or `json`;
  * - `output` (required): where the command leaves its result;
  * - `title` (required): the name of the reference;
- * - `undocumented` (optional): `{pattern}`, a regular expression with a named group `name`.
+ * - `undocumented` (optional): `{pattern}`, a regular expression with a named group `name`;
+ * - `index` (optional, `html` only): the name of an index adapter (`dokka`), or `{adapter, file}`;
+ * - `autoLink` (optional, default true): `true` or `false`.
  *
  * @param {unknown} value
  * @returns {{ value: ReferenceConfig } | { problems: string[] }}
@@ -164,8 +170,41 @@ export function checkReferenceConfig(value) {
     }
   }
 
+  /** @type {{ adapter: string, file: string | null } | null} */
+  let index = null;
+  if (value.index !== undefined && value.index !== null) {
+    const adapters = Object.keys(INDEX_ADAPTERS).join(', ');
+    /** @type {unknown} */
+    let adapter = value.index;
+    /** @type {unknown} */
+    let file = null;
+    if (isMapping(value.index)) {
+      for (const key of Object.keys(value.index)) {
+        if (key !== 'adapter' && key !== 'file') problems.push(`reference.index.${key}: unknown key (expected: adapter, file)`);
+      }
+      adapter = value.index.adapter;
+      file = value.index.file ?? null;
+    }
+    if (typeof adapter !== 'string' || !Object.hasOwn(INDEX_ADAPTERS, adapter)) {
+      problems.push(`reference.index: must be the name of an adapter (${adapters}), or a mapping with adapter and optionally file`);
+    } else if (format === 'json') {
+      problems.push('reference.index: is only for the format html; the symbols of a json reference are its items');
+    } else if (file !== null && (typeof file !== 'string' || file.trim() === '' || file.length > MAX_REFERENCE_TEXT_LENGTH || CONTROL.test(file) || file.startsWith('/') || file.includes('\\') || file.split('/').includes('..'))) {
+      problems.push('reference.index.file: must be a path inside the generated folder (relative, with / and without ..)');
+    } else {
+      index = { adapter, file: file === null ? null : /** @type {string} */ (file).trim() };
+    }
+  }
+
+  /** @type {boolean} */
+  let autoLink = true;
+  if (value.autoLink !== undefined && value.autoLink !== null) {
+    if (typeof value.autoLink === 'boolean') autoLink = value.autoLink;
+    else problems.push('reference.autoLink: must be true or false');
+  }
+
   if (problems.length > 0 || command === undefined || format === undefined || output === undefined || title === undefined) {
     return { problems };
   }
-  return { value: { command, format, output, title, undocumented } };
+  return { value: { command, format, output, title, undocumented, index, autoLink } };
 }

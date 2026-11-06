@@ -334,7 +334,7 @@ test('guides are checked: paths stay inside the repository, counts and lengths a
 test('a reference is checked with the rest of the block; every problem is reported at once', () => {
   const ok = checkDocsConfig({ source: { path: '.' }, reference: { command: 'x', format: 'json', output: 'o.json', title: 'T' } }, { dir: root });
   assert.ok('value' in ok);
-  assert.deepEqual(ok.value.reference, { command: 'x', format: 'json', output: 'o.json', title: 'T', undocumented: null });
+  assert.deepEqual(ok.value.reference, { command: 'x', format: 'json', output: 'o.json', title: 'T', undocumented: null, index: null, autoLink: true });
   const bad = checkDocsConfig({ source: { git: '-x', ref: '..' }, github: 'no', guides: 'x', reference: 5, colour: 1 }, { dir: root });
   assert.ok('problem' in bad);
   assert.deepEqual(
@@ -1510,7 +1510,9 @@ test('coffer docs fetch clones a git source into .cache/repos next to the config
   await inTemp(async (parent) => {
     const repo = makeRepository(parent);
     const url = pathToFileURL(repo).href;
-    await inSite(siteFiles(`docs:\n  source: { git: "${url}", ref: v1 }\n  github: me/lathe\n  guides:\n    - { dir: docs }\n`), async (dir) => {
+    // The guides of the fixture link to symbols of its reference, so the project configures one.
+    const reference = '  reference: { command: [node, scripts/reference.js, "{out}/reference.json"], format: json, output: "{out}/reference.json", title: Reference }\n';
+    await inSite(siteFiles(`docs:\n  source: { git: "${url}", ref: v1 }\n  github: me/lathe\n  guides:\n    - { dir: docs }\n${reference}`), async (dir) => {
       const result = await runCli(['docs', 'fetch', '--config', join(dir, 'coffer.yaml')]);
       assert.equal(result.code, 0, result.err);
       assert.equal(result.out, `lathe: ${git(repo, ['rev-parse', 'HEAD'])} (${url}, ref v1)\n`);

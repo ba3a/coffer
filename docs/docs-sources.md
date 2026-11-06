@@ -23,7 +23,7 @@ Everything about where the guides come from, their order and what is left out is
 | `source`    | yes      | Where the files are: a git repository (`git` and `ref`) or a folder (`path`). Exactly one of the two. |
 | `github`    | no       | `owner/repo` of the GitHub repository that links to files point at. Taken from a `github.com` address (`https://github.com/o/r(.git)`, `git@github.com:o/r(.git)`, `ssh://git@github.com/o/r`) when not given; otherwise null. |
 | `guides`    | no       | A list of guides. Without any, no guide is published and the project has no documentation pages and no documentation link. |
-| `reference` | no       | The command that generates a reference, and what to do with its output: `command`, `format`, `output`, `title`, optional `undocumented` (see [The reference](project-docs.md#the-reference)). |
+| `reference` | no       | The command that generates a reference, and what to do with its output: `command`, `format`, `output`, `title`, optional `undocumented`, `index` and `autoLink` (see [The reference](project-docs.md#the-reference)). |
 
 Unknown keys are refused. Every problem in the block is reported at once, with the path of `project.yaml` and the field, like any other field (`.../project.yaml: docs: source.git: the scheme "ext" is not allowed (...)`).
 
