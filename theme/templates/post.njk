@@ -52,5 +52,9 @@
 {% include "partials/project-block.njk" %}
 {% endfor %}
 {% endblock %}
+{# The share summary, collapsed, at the very end of the post (only on a blog that has `shareSummary`). #}
+{% block share %}
+{% if share %}{% include "partials/share.njk" %}{% endif %}
+{% endblock %}
 </article>
 {% endblock %}

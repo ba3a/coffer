@@ -229,9 +229,9 @@ test('every image of a page links to its high-resolution file, which is publishe
     assert.equal(data.labels.close, 'Close (Esc)');
     assert.equal(data.labels.showOnMap, 'Show on map');
 
-    // The viewer and its files are loaded in this order, after the page.
+    // The viewer and its files are loaded in this order, after the page; the example blog also has a share summary, whose script comes last.
     const scripts = [...html.matchAll(/<script src="([^"]*)" defer><\/script>/g)].map((match) => match[1]);
-    assert.deepEqual(scripts, ['/assets/carousel.js', ...VIEWER_SCRIPTS]);
+    assert.deepEqual(scripts, ['/assets/carousel.js', ...VIEWER_SCRIPTS, '/assets/share.js']);
     for (const href of VIEWER_STYLES) assert.ok(html.includes(`<link rel="stylesheet" href="${href}">`), href);
     for (const file of [...VIEWER_SCRIPTS, ...VIEWER_STYLES]) {
       assert.ok(existsSync(join(result.outDir, ...file.slice(1).split('/'))), `${file} is published`);

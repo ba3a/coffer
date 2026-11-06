@@ -1356,3 +1356,52 @@ main > article > .post-layout {
 .press-download {
   overflow-wrap: anywhere;
 }
+
+/* The share summary at the end of a post: collapsed until the visitor opens it. The copy
+   button comes with the `hidden` attribute and is shown by share.js, so that it is only
+   there when it works. */
+.share {
+  margin: 2rem 0 0;
+  padding: 0.75rem 1rem;
+  border: 1px solid var(--coffer-border);
+  border-radius: 4px;
+  font-size: 0.9375rem;
+}
+
+.share summary {
+  cursor: pointer;
+  font-weight: 600;
+}
+
+.share-hint {
+  margin: 0.75rem 0 0.5rem;
+  color: var(--coffer-muted);
+}
+
+.share-text {
+  margin: 0;
+  padding: 0.75rem 1rem;
+  overflow-x: auto;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  background: var(--coffer-code-bg);
+  color: var(--coffer-code-fg);
+  font-family: var(--coffer-font-body);
+  font-size: 0.9375rem;
+}
+
+.share-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem 1rem;
+  margin: 0.75rem 0 0;
+}
+
+.share-copy[hidden] {
+  display: none;
+}
+
+.share-status {
+  color: var(--coffer-muted);
+}

@@ -1,0 +1,11 @@
+{# The share summary of a post: the text of share.txt, collapsed, for pasting into a post on a social network. #}
+<details class="share" data-pagefind-ignore>
+<summary>{{ 'share.title' | t }}</summary>
+<p class="share-hint">{{ 'share.hint' | t }}</p>
+<pre class="share-text" lang="{{ site.lang }}">{{ share.text }}</pre>
+<p class="share-actions">
+<button type="button" class="share-copy" hidden data-copied="{{ 'share.copied' | t }}" data-failed="{{ 'share.failed' | t }}">{{ 'share.copy' | t }}</button>
+<a class="share-download" href="{{ share.url | url }}" download>{{ 'share.download' | t }}</a>
+<span class="share-status" role="status"></span>
+</p>
+</details>

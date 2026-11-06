@@ -14,5 +14,5 @@ sites:
       - { label: GitHub, url: "https://github.example/tove-marlowe" }
       - { label: Email, url: "mailto:tove@tove-marlowe.example" }
     blogs:
-      - { id: journal, dir: content/journal, prefix: journal, title: Workshop journal }
+      - { id: journal, dir: content/journal, prefix: journal, title: Workshop journal, shareSummary: true, shareHashtags: true }
     projects: { dir: content/projects }

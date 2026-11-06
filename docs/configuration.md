@@ -105,6 +105,8 @@ A list of blogs. A site may have several, or none.
 | `prefix` | no       | the `id`       | URL prefix of the blog, such as `journal` or `notes/2024`. No slash at either end. Set it to the empty string (`prefix: ""`) to serve the blog at the site root. Unique within the site. |
 | `title`  | no       | the site title | Display title of the blog.                                                                                                                               |
 | `newPostTemplate` | no | none | Markdown file, relative to the configuration file, whose text `coffer new` puts below the front matter of a new post of this blog (see [Authoring](authoring.md#new-posts)). |
+| `shareSummary` | no | `false` | Give every post a `share.txt` and a collapsed "Share summary" block with a copy button (see [Share summary](sharing.md)). |
+| `shareHashtags` | no | `false` | End the share summary with hashtags made from the tags of the post. Needs `shareSummary: true`. |
 
 ## `urls`
 

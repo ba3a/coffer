@@ -128,6 +128,13 @@ search:
   found: "Results: {count}"
   none: "Nothing found for {query}. Try another word."
   error: Search could not be loaded. Browse the posts by tag instead.
+share:
+  title: Share summary
+  hint: "The text below is ready to copy into a post on a social network."
+  copy: Copy
+  copied: Copied
+  failed: "Copying did not work. Select the text and copy it by hand."
+  download: Download as text file
 feeds:
   title: Feeds
   subscribe: Subscribe

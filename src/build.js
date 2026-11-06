@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto';
-import { copyFileSync, cpSync, existsSync, mkdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
+import { copyFileSync, cpSync, existsSync, mkdirSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { dirname, extname, isAbsolute, join, relative, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -59,6 +59,7 @@ import {
 import { createTemplates, siteUrl } from './render/templates.js';
 import { REPORT_DIR_NAME, REPORT_FILE_NAME, Report, ReportError, writeReport } from './report.js';
 import { BLOG_FILTER, SEARCH_DIR_NAME, SEARCH_URL_NAME, buildSearchIndex, searchPageUrl } from './search.js';
+import { SHARE_FILE_NAME, SHARE_SCRIPT, hashtagsFor, renderShareText, shareUrlFor } from './share.js';
 import { ROBOTS_FILE_NAME, SITEMAP_FILE_NAME, renderRobots, renderSitemap } from './sitemap.js';
 import { readVersion } from './version.js';
 import { VIEWER_SCRIPTS, VIEWER_STYLES, viewerJson } from './viewer.js';
@@ -148,6 +149,7 @@ export class BuildError extends Error {
  * @property {boolean} draft True when the post is a draft.
  * @property {boolean} published False for a post that is only built because of preview mode.
  * @property {number} readingMinutes
+ * @property {{ url: string, file: string } | null} share The post's share summary text file (`share.txt`: address and path), or null when the blog has no share summary. It is an output file of the build, not a page: it is in neither the sitemap, the feeds nor the search index.
  * @property {{ slug: string, number: number, count: number } | null} series The series the post belongs to, with its place in it ("part number of count"), or null.
  * @property {ManifestTrack[]} tracks The GPX tracks published with the post, in the order they are shown; empty when it has none.
  * @property {import('./geo/post-maps.js').ManifestMap[]} maps The maps of the post in the order they appear; empty when the post has none.
@@ -2114,6 +2116,36 @@ async function buildSite(config, site, options, outRoot, version, report) {
       const projectBlocks = aboutProjects.map((slug) => projectBlockOf(slug, url));
       const previewImage = await previewImageOf(post, url);
       warnUnusedImageEntries(/** @type {PageImages} */ (pageImages.get(post.file)));
+      const file = fileForUrl(url);
+      const assets = pageAssetsFor(rendered, mapped.maps.length > 0);
+      /**
+       * The share summary of the post: its text, shown in the post and written to `share.txt`.
+       * @type {{ text: string, url: string, file: string } | null}
+       */
+      let share = null;
+      if (blog.shareSummary) {
+        if (post.kind === 'folder' && readdirSync(post.dir).some((name) => name.toLowerCase() === SHARE_FILE_NAME)) {
+          throw new BuildError(
+            `${shownFile}: the file "${SHARE_FILE_NAME}" in the folder of the post would collide with the share summary the blog "${blog.id}" writes at ${shareUrlFor(url)} ("shareSummary: true"); rename the file or switch the share summary off`,
+          );
+        }
+        share = {
+          text: renderShareText({
+            baseUrl: site.baseUrl,
+            url,
+            title: post.title,
+            summary: post.summary || excerptOf(mapped.feedHtml),
+            hashtags: blog.shareHashtags ? hashtagsFor(post.tags.map(nameOf)) : [],
+          }),
+          url: shareUrlFor(url),
+          file: `${posix(dirname(file))}/${SHARE_FILE_NAME}`,
+        };
+        if (existsSync(join(outDir, ...share.file.split('/')))) {
+          throw new BuildError(
+            `${shownFile}: the share summary of the post (${share.url}) would overwrite a file the build has already written there`,
+          );
+        }
+      }
       const html = templates.render('post.njk', {
         site,
         nav,
@@ -2136,15 +2168,17 @@ async function buildSite(config, site, options, outRoot, version, report) {
         projectBlocks,
         series: view.series,
         toc: rendered.toc,
-        ...pageAssetsFor(rendered, mapped.maps.length > 0),
+        ...assets,
+        scripts: share ? [...assets.scripts, SHARE_SCRIPT] : assets.scripts,
+        share,
         page: {
           title: post.title,
           description: post.summary ?? '',
           content: mapped.html,
         },
       });
-      const file = fileForUrl(url);
       writeOutput(outDir, file, html);
+      if (share) writeOutput(outDir, share.file, share.text);
       pages.push({ url, file, type: 'post', title: post.title });
       /** @type {ManifestTrack[]} */
       const manifestTracks = [];
@@ -2188,6 +2222,7 @@ async function buildSite(config, site, options, outRoot, version, report) {
         draft: post.draft,
         published: !unpublished,
         readingMinutes: rendered.readingMinutes,
+        share: share ? { url: share.url, file: share.file } : null,
         series: view.series
           ? { slug: view.series.slug, number: view.series.number, count: view.series.count }
           : null,

@@ -36,6 +36,8 @@ export const CONFIG_FILE_NAME = 'coffer.yaml';
  * @property {string} prefix URL prefix without slashes at either end; the empty string for a blog at the site root.
  * @property {string} title Display title of the blog.
  * @property {string} [newPostTemplate] Absolute path of the Markdown file whose text `coffer new` puts below the front matter of a new post; absent when the blog has none.
+ * @property {true} [shareSummary] Present when every post of the blog gets a copy-friendly share summary: a `share.txt` file and a collapsed block at the end of the post. Absent when the blog has none.
+ * @property {true} [shareHashtags] Present when the share summary ends with hashtags made from the tags of the post. Absent when it does not.
  */
 
 /**
@@ -314,6 +316,26 @@ function readString(mapping, key, path, problems, options = {}) {
 }
 
 /**
+ * Reads a yes/no switch. An absent key is `false`; a value that is not a
+ * boolean is reported and counts as `false`.
+ *
+ * @param {Record<string, unknown>} mapping
+ * @param {string} key
+ * @param {string} path Path of `mapping`.
+ * @param {Problems} problems
+ * @returns {boolean}
+ */
+function readFlag(mapping, key, path, problems) {
+  const value = mapping[key];
+  if (value === undefined || value === null) return false;
+  if (typeof value !== 'boolean') {
+    problems.add(path === '' ? key : `${path}.${key}`, 'must be true or false');
+    return false;
+  }
+  return value;
+}
+
+/**
  * Reads a string that may be empty (descriptions, license text).
  *
  * @param {Record<string, unknown>} mapping
@@ -540,7 +562,7 @@ function normalizeBlogs(list, path, baseDir, siteTitle, problems) {
       problems.add(here, 'must be a mapping');
       return;
     }
-    rejectUnknownKeys(entry, ['id', 'dir', 'prefix', 'title', 'newPostTemplate'], here, problems);
+    rejectUnknownKeys(entry, ['id', 'dir', 'prefix', 'title', 'newPostTemplate', 'shareSummary', 'shareHashtags'], here, problems);
     const id = readString(entry, 'id', here, problems, { required: true });
     if (id !== undefined) {
       if (!ID_RE.test(id)) {
@@ -589,6 +611,11 @@ function normalizeBlogs(list, path, baseDir, siteTitle, problems) {
       fallback: siteTitle,
     });
     const templateValue = readString(entry, 'newPostTemplate', here, problems);
+    const shareSummary = readFlag(entry, 'shareSummary', here, problems);
+    const shareHashtags = readFlag(entry, 'shareHashtags', here, problems);
+    if (shareHashtags && !shareSummary) {
+      problems.add(`${here}.shareHashtags`, 'only has an effect together with "shareSummary: true"');
+    }
     if (
       id !== undefined &&
       dir !== undefined &&
@@ -603,6 +630,8 @@ function normalizeBlogs(list, path, baseDir, siteTitle, problems) {
         ...(templateValue === undefined
           ? {}
           : { newPostTemplate: resolve(baseDir, templateValue) }),
+        ...(shareSummary ? { shareSummary: true } : {}),
+        ...(shareHashtags ? { shareHashtags: true } : {}),
       });
     }
   });

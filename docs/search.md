@@ -29,7 +29,7 @@ Pagefind indexes only what a page marks with `data-pagefind-body`. The default t
 
 The search page of a blog searches with the filter `blog` = its id, which is what keeps posts of other blogs and the guides out of its results. Guides sit under their own filter, `guides`, so a later search over documentation can use it.
 
-The navigation, the table of contents, the series blocks, the tag list and the project blocks are outside the marked element, so they are not indexed and do not make every post match every search.
+The navigation, the table of contents, the series blocks, the tag list, the project blocks and the [share summary](sharing.md) (which also carries `data-pagefind-ignore`) are outside the marked element, so they are not indexed and do not make every post match every search.
 
 A theme that replaces `post.njk` or `docs.njk` as a whole (instead of overriding blocks through `{% extends "coffer:post.njk" %}`) must keep these two attributes on the element that holds the text, or its pages are left out of the index.
 
