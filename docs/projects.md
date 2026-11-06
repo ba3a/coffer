@@ -87,10 +87,17 @@ The `kind` of a project decides which template renders its page and which furthe
 |        | `platforms`   | no       | A list of platform names.                                                                                            |
 |        | `price`       | no       | Text such as `Free` or `4.99 EUR`.                                                                                   |
 |        | `pressKit`    | no       | A folder inside the project folder that holds the press kit.                                                         |
-|        | `accent`      | no       | The game's accent colour, `#rgb` or `#rrggbb`.                                                                       |
-|        | `displayFont` | no       | A plain font family name such as `Fraunces` (letters, digits, spaces and `-`, up to 64 characters), or a comma-separated list of such names. Quotes, braces, semicolons, angle brackets and backslashes are rejected, so the value is safe in CSS. |
+|        | `accent`      | no       | The game's accent colour, `#rgb` or `#rrggbb`: buttons, the line under the heading and bullets on the game's page. |
+|        | `displayFont` | no       | A plain font family name such as `Fraunces` (letters, digits, spaces and `-`, up to 64 characters), or a comma-separated list of such names. Quotes, braces, semicolons, angle brackets and backslashes are rejected, so the value is safe in CSS. It restyles the headings and buttons on the game's page. |
+|        | `displayFontFile` | no  | A font file (`.woff2`, `.woff`, `.ttf` or `.otf`) inside the project folder. It is published with the page and declared with `@font-face` under the family name of `displayFont` (its first name), or under a fixed name when there is none. Without it `displayFont` is only a font stack: a font the reader has installed. |
+|        | `logo`        | no       | A picture in the project folder, shown above the heading. It goes through the [image pipeline](images.md). Its alt text is empty, as the name follows it. |
+|        | `keyArt`      | no       | A picture in the project folder, shown under the pitch. Its alt text is `keyArtAlt`.   |
+|        | `keyArtAlt`   | no       | Alternative text of the key art; empty when absent.                                                                  |
+|        | `trailer`     | no       | A video file (`.mp4` or `.webm`) in the project folder, or the `https` address of a YouTube or Vimeo video, see below. |
+|        | `trailerPoster` | no     | A picture in the project folder, shown before a local trailer plays (the `poster` of the video). Ignored for an embedded trailer. |
+|        | `features`    | no       | A list of short feature points.                                                                                      |
 
-The generic `project.njk` shows the name, the pitch, the kind and the status, the text of `index.md`, the license and a link to the projects page. `tool` has its own template, described below; `game` still uses the generic one. The kind-specific fields are read, validated and passed to the template as `project.fields`.
+The generic `project.njk` shows the name, the pitch, the kind and the status, the text of `index.md`, the license and a link to the projects page. `tool` and `game` have templates of their own, described below. The kind-specific fields are read, validated and passed to the template as `project.fields`.
 
 An unknown `kind`, a missing required field or a value of the wrong shape fails the build. Every problem is listed, each as `path-of-project.yaml: field: message`:
 
@@ -125,10 +132,16 @@ registerProjectKind({
    | `string`      | a non-empty text                                                                                    | the trimmed text                                          |
    | `url`         | an absolute `http(s)` address                                                                       | the address                                               |
    | `color`       | `#rgb` or `#rrggbb`                                                                                 | the colour in lower case                                  |
+   | `font-name`   | a font family name, or a comma-separated list of them (letters, digits, spaces and `-`)                | the names, joined with `, `                             |
+   | `image`       | the path of a picture (`.jpg`, `.png`, `.webp`, `.heic`) inside the project folder | the path relative to the project folder, with `/` |
+   | `font-file`   | the path of a `.woff2`, `.woff`, `.ttf` or `.otf` file inside the project folder     | the path relative to the project folder, with `/` |
+   | `trailer`     | a `.mp4` or `.webm` file inside the project folder, or an allowed video address                 | `{ type: 'file', file, mime }` or `{ type: 'embed', provider, url }` |
    | `directory`   | the path of an existing folder inside the project folder                                            | the path relative to the project folder, with `/`         |
    | `string-list` | a list of distinct non-empty texts                                                                  | the list (`[]` when absent)                               |
    | `url-map`     | a mapping of lower-case names to `http(s)` addresses; empty values are dropped                      | the mapping of the names that are set (`{}` when absent)  |
    | `mapping`     | any mapping                                                                                         | the mapping as written                                    |
+
+   The build publishes what a kind's `image`, `font-file` and `trailer` fields name and passes the result to the template as `project.media`, by field name, so a kind needs no build code for them (see [The page of a game](#the-page-of-a-game)).
 
    An absent optional field is `null`, `[]` or `{}`, according to the type, so a template never has to test whether a key exists. `FIELD_TYPES` in `src/content/project-kinds.js` holds the checks; a new type is one entry there.
 
@@ -148,6 +161,34 @@ A site that only needs another look for `tool` or `game` does not need a new kin
 
 Nothing renders empty. A fact that is not set has no row, a page whose `index.md` is empty has no text section, and the license is shown in the facts box only. A theme overrides `project-tool.njk`, or one of its blocks `project_facts`, `project_latest`, `project_footer`, like any other template.
 
+## The page of a game
+
+`project-game.njk` makes the page of a `game` a small promo page. From top to bottom:
+
+1. **The hero**: the `logo`, the kind and status, the name, the pitch (the one-line hook) and the `keyArt`.
+2. **Stores, or a call to follow**: a button for each of `stores.itch` ("Get it on itch.io") and `stores.steam` ("Wishlist on Steam") whose address is set, itch first; other store names are not shown. With none set, the page shows "Follow the devlog" instead: a button that links to the feed of the devlog. Until a project feed exists this is the feed of the project's `tag` when some post carries it, else the feed of the first blog; a site without a blog has no call to action. A store button never shows with an empty address, and the call to action never shows next to a store button.
+3. **The trailer**, when `trailer` is set (see below).
+4. **The text of `index.md`**, with the **screenshot gallery**: write the screenshots as a [carousel](carousels.md) in `index.md` (a `:::carousel[Screenshots]` block of Markdown images with alt text and optional captions). They go through the image pipeline like any image and open in the [image viewer](viewer.md), so the template has no gallery code of its own.
+5. **Features**: the `features` list, when it has items.
+6. **Game details**: the status, the platforms, the price and the license; a row is written only when its value is set (the status always is).
+
+A game page has **no link to a source repository**: the `game` kind has no `repo` field (a `repo:` key fails the build as an unknown key), and the template shows none for a kind that has one. Nothing renders empty: a part without data is not written.
+
+### The trailer
+
+`trailer` is either a video file in the project folder or an embedded video.
+
+- **A local file**, `.mp4` or `.webm`, is copied to the output unchanged as `/{projects}/{slug}/trailer.mp4` (or `.webm`; the name does not depend on the file name) and shown in a `<video controls muted loop playsinline preload="metadata">` with the `trailerPoster` as its poster and a download link inside for browsers that cannot play it. **It never starts by itself**: nothing on the page moves or makes sound until the reader presses play, following the rule that nothing animates or pops up. That is why it needs no `prefers-reduced-motion` handling. `muted` and `loop` are there for a short silent gameplay clip. The video is published exactly as given, so the [metadata policy](location-policy.md), which covers pictures, does not touch it: strip location and camera tags from the file yourself.
+- **An embedded video** is an `https` address from an allow-list: YouTube (`youtube.com/watch?v=ID`, `youtu.be/ID`, `youtube.com/embed/ID`, `youtube-nocookie.com/embed/ID`) and Vimeo (`vimeo.com/ID`, `player.vimeo.com/video/ID`). The page does not copy the address: it takes the checked video id and writes `https://www.youtube-nocookie.com/embed/ID` or `https://player.vimeo.com/video/ID?dnt=1` into a lazy, sandboxed `<iframe>` (`allow-scripts allow-same-origin allow-presentation`). Any other address, an `http` address, a playlist or a channel fails the build; for another host, use a file. An embed contacts the provider when the page is loaded, which a local file does not.
+
+A file that does not exist, has another extension or lies outside the project folder fails the build with the path of `project.yaml`. A published file is listed in the manifest (see below), and `coffer check` resolves the video, its poster and the font like any other file the page refers to.
+
+### Accent colour and display font
+
+`accent`, `displayFont` and `displayFontFile` restyle **the body of the page only**: the page is wrapped in `<div class="game-page">` inside `<main>`, so the site header, navigation, theme switch and footer keep the site's look. They reach the page through three CSS custom properties in the `style` attribute of that wrapper, `--project-accent`, `--project-on-accent` (black or white, whichever reads better on the accent) and `--project-font` (the font stack, ending in the theme's heading font), which the rules of `.game-page` in `coffer.css` use. A font file adds one `@font-face` rule in a `<style>` element in the head.
+
+The values are written into CSS, so they are checked twice: `project.yaml` accepts only `#rgb`/`#rrggbb` colours and plain family names, and `src/content/project-style.js`, which builds the CSS, checks them again and builds the text from nothing but the checked values. Family names are always in quotes (except generic ones such as `serif`), and the font's address is the one the build made, `/{projects}/{slug}/display-font-file.woff2` (the name comes from the field name and the extension, never from what was typed). The font file is published unchanged and declared with `font-display: swap`, so text shows at once. A font from the theme is not supported; put the file in the project folder.
+
 ## Templates
 
 
@@ -156,18 +197,19 @@ Nothing renders empty. A fact that is not set has no row, a page whose `index.md
 | `project-index.njk`    | the projects page; block `heading`                                   |
 | `project.njk`          | a project's page; blocks `project_header`, `project_body`, `project_footer` |
 | `project-tool.njk`     | the page of a `tool`; extends `project.njk`; blocks `project_facts`, `project_latest` |
+| `project-game.njk`     | the page of a `game`; extends `project.njk`; blocks `page_meta` (adds the font), `main` (the `.game-page` wrapper), `game_actions`, `game_trailer`, `game_features`, `game_details` |
 | `project-card.njk`     | one card, included by the projects page and the home page showcase   |
-| `project-picture.njk`  | the macro `card(picture, sizes)` that writes the card's `<picture>`   |
+| `project-picture.njk`  | the macro `card(picture, sizes, eager)` that writes a project picture's `<picture>`; `eager` loads it at once |
 | `home.njk`             | the `showcase` block lists the featured projects (see [The home page](home.md)) |
 
-A project, as templates see it (`project` on a project's page, one element of `projects` or `showcase` elsewhere): `slug`, `url`, `name`, `pitch`, `kind`, `kindLabel`, `status`, `statusLabel`, `featured`, `order`, `license`, `tag`, `fields`, `docsUrl` (the address of the project's guides when `docs` is configured, otherwise null) and `picture` (`src`, `width`, `height`, `srcset` as a list of `{ url, width }`, `alt`; null when the picture could not be made, which also fails the build). The card is included with `level` set to the heading level of the name: 2 on the projects page, 3 in the showcase.
+A project, as templates see it (`project` on a project's page, one element of `projects` or `showcase` elsewhere): `slug`, `url`, `name`, `pitch`, `kind`, `kindLabel`, `status`, `statusLabel`, `featured`, `order`, `license`, `tag`, `fields`, `docsUrl` (the address of the project's guides when `docs` is configured, otherwise null), `media` (what the kind's `image`, `trailer` and `font-file` fields publish, by field name: a picture like `picture` with `type: 'image'`, `{ type: 'video', url, mime }`, `{ type: 'embed', provider, url }` or `{ type: 'font', url, format }`; a field that is not set has no entry), `style` (`{ declarations, fontFace }` for a project with an accent or a font, otherwise null), `devlogUrl` (the feed that the call to follow links to, or null) and `picture` (`src`, `width`, `height`, `srcset` as a list of `{ url, width }`, `alt`; null when the picture could not be made, which also fails the build). The card is included with `level` set to the heading level of the name: 2 on the projects page, 3 in the showcase.
 
-The UI strings are `home.projects`, `projects.title`, `projects.empty`, `projects.all`, `projects.license`, `projects.facts.*` (`title`, `repo`, `docs`, `docs_link`, `license`), `projects.kind.*` and `projects.status.*`. The navigation gets a "Projects" entry (`nav.projects`) between Home and the blogs.
+The UI strings are `home.projects`, `projects.title`, `projects.empty`, `projects.all`, `projects.license`, `projects.facts.*` (`title`, `repo`, `docs`, `docs_link`, `license`), `projects.game.*` (`get`, `itch`, `steam`, `follow`, `follow_text`, `trailer`, `trailer_label`, `trailer_download`, `features`, `details`, `status`, `platforms`, `price`), `projects.kind.*` and `projects.status.*`. The navigation gets a "Projects" entry (`nav.projects`) between Home and the blogs.
 
 ## In the manifest
 
-`.coffer-manifest.json` lists the projects in showcase order under `projects` (`slug`, `url`, `file`, `source`, `name`, `pitch`, `kind`, `status`, `featured`, `order`, `tag`, `card`). Their pages are listed under `pages` and in `sitemap`. Their card pictures are among `images` with `use: "card"` and the project's URL as `post`, so the [checks](checks.md) verify their metadata like any other image.
+`.coffer-manifest.json` lists the projects in showcase order under `projects` (`slug`, `url`, `file`, `source`, `name`, `pitch`, `kind`, `status`, `featured`, `order`, `tag`, `card`, `files`). `files` lists the files that are copied unchanged for the project (a local trailer, a font file) as `{ field, source, url, file }`; it is empty for most projects. Their pages are listed under `pages` and in `sitemap`. Their card pictures are among `images` with `use: "card"` and the project's URL as `post`, so the [checks](checks.md) verify their metadata like any other image.
 
 ## Not yet
 
-Feeds of a project, the posts that carry its tag, the page of a `game` and the documentation pages are separate features; the `tag` field and the kind fields are read and validated now so that a project declaration is complete from the start.
+Feeds of a project, the posts that carry its tag, the press kit of a game (`pressKit`) and the documentation pages are separate features; the `tag` field and the kind fields are read and validated now so that a project declaration is complete from the start.

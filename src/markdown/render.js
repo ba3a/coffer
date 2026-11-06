@@ -90,6 +90,7 @@ export const DEFAULT_CAROUSEL_LABELS = Object.freeze({
  * @property {(request: ImageRequest) => Promise<ResponsiveImage | null>} resolve Finds the responsive variants of an image, or null to leave the image as it is (a remote image, a missing file). Called once per image, all at the same time.
  * @property {string} sizes The `sizes` attribute of the pictures.
  * @property {string} [carouselSizes] The `sizes` attribute of the pictures in carousels, where a slide is as wide as the carousel (default: `sizes`).
+ * @property {boolean} [leadingImage] Whether the page shows an image of its own before the text (a project's logo or key art); that one is the eager image of the page, so every image of the text is lazy.
  */
 
 /**
@@ -481,7 +482,7 @@ function responsiveImages({ images, lineOffset, onViewerImages }) {
       }),
     );
 
-    const first = found[0];
+    const first = images.leadingImage === true ? undefined : found[0];
     // The images that are already inside a link, which stays what it is.
     /** @type {Set<import('hast').Element>} */
     const linked = new Set();

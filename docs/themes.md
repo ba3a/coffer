@@ -61,7 +61,7 @@ Templates in the engine refer to each other by plain names (`{% extends "base.nj
 | `footer` | the content license and the credit line (inside `<footer>`)           |
 | `scripts`| scripts at the end of `<body>`; by default one `<script defer>` for each address in the page's `scripts` list, which holds the carousel script on pages with a carousel (see [Carousels](carousels.md)) and the scripts of the image viewer on pages with images (see [The image viewer](viewer.md)); before them, a `<script type="application/json" id="coffer-viewer">` element with the list of images when the page's `viewerData` is not empty |
 
-Besides the base templates, the theme layer has these for projects (see [Projects](projects.md#templates)): `project-index.njk`, `project.njk`, `project-card.njk` and `project-picture.njk`.
+Besides the base templates, the theme layer has these for projects (see [Projects](projects.md#templates)): `project-index.njk`, `project.njk`, `project-tool.njk`, `project-game.njk`, `project-card.njk` and `project-picture.njk`.
 
 To change only the footer, create `templates/page.njk` in the theme:
 

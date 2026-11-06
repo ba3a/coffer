@@ -581,6 +581,8 @@ test('the manifest records every image with its original, its page and its outpu
         ['content/journal/photos/ridge.jpg', '/journal/ridge-walk/', 'body'],
         ['content/projects/kerfcalc/card.jpg', '/made/kerfcalc/', 'card'],
         ['content/projects/tenon-tumble/card.jpg', '/made/tenon-tumble/', 'card'],
+        ['content/projects/tenon-tumble/screenshot-1.jpg', '/made/tenon-tumble/', 'body'],
+        ['content/projects/tenon-tumble/screenshot-2.jpg', '/made/tenon-tumble/', 'body'],
       ],
     );
     const [joint] = result.manifest.images;
@@ -603,16 +605,16 @@ test('a second build reuses the cached images', async () => {
   await withExampleCopy(async (root) => {
     const first = await build(root);
     // Three originals, each in the post that owns it and again in the carousel post, which has other settings,
-    // and the two card pictures of the example projects.
-    assert.deepEqual(first.images, { generated: 8, reused: 0 });
+    // the two card pictures of the example projects and the two screenshots of the example game.
+    assert.deepEqual(first.images, { generated: 10, reused: 0 });
     const cacheDir = join(root, '.cache', 'images');
     const cached = readdirSync(cacheDir).sort();
-    assert.equal(cached.length, 8);
+    assert.equal(cached.length, 10);
     const times = new Map(cached.map((name) => [name, statSync(join(cacheDir, name, 'info.json')).mtimeMs]));
     const published = listFiles(first.outDir).filter((name) => name.startsWith('img/'));
 
     const second = await build(root);
-    assert.deepEqual(second.images, { generated: 0, reused: 8 });
+    assert.deepEqual(second.images, { generated: 0, reused: 10 });
     assert.deepEqual(readdirSync(cacheDir).sort(), cached);
     for (const [name, time] of times) assert.equal(statSync(join(cacheDir, name, 'info.json')).mtimeMs, time, name);
     assert.deepEqual(listFiles(second.outDir).filter((name) => name.startsWith('img/')), published, 'the output is the same');
@@ -621,7 +623,7 @@ test('a second build reuses the cached images', async () => {
     // A replaced photo is processed again, once for each way it is published; the others stay cached.
     addFiles(root, { 'content/journal/first-dovetail/marking-gauge.jpg': await solidImage(1000, 600) });
     const third = await build(root);
-    assert.deepEqual(third.images, { generated: 2, reused: 6 });
+    assert.deepEqual(third.images, { generated: 2, reused: 8 });
   });
 });
 

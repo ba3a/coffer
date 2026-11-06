@@ -57,6 +57,20 @@ projects:
     docs: Documentation
     docs_link: Read the documentation
     license: License
+  game:
+    get: Get the game
+    itch: Get it on itch.io
+    steam: Wishlist on Steam
+    follow: Follow the devlog
+    follow_text: The game has no store page yet. Follow the devlog to hear when it does.
+    trailer: Trailer
+    trailer_label: "Trailer of {name}"
+    trailer_download: Download the trailer
+    features: Features
+    details: Game details
+    status: Status
+    platforms: Platforms
+    price: Price
   kind:
     tool: Tool
     game: Game

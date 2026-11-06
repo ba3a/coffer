@@ -187,6 +187,13 @@ test('game fields: stores with a link are kept, platforms, price, accent, font a
         pressKit: 'press',
         accent: '#abc',
         displayFont: 'Handjet',
+        displayFontFile: null,
+        logo: null,
+        keyArt: null,
+        keyArtAlt: null,
+        trailer: null,
+        trailerPoster: null,
+        features: [],
       });
     },
     { 'press/logo.png': TINY_PNG },
@@ -200,6 +207,13 @@ test('game fields: stores with a link are kept, platforms, price, accent, font a
       pressKit: null,
       accent: null,
       displayFont: null,
+      displayFontFile: null,
+      logo: null,
+      keyArt: null,
+      keyArtAlt: null,
+      trailer: null,
+      trailerPoster: null,
+      features: [],
     });
   });
   parse(
@@ -329,7 +343,15 @@ test('tool and game ship; a kind needs a name, a template and known field types'
     'pressKit',
     'accent',
     'displayFont',
+    'displayFontFile',
+    'logo',
+    'keyArt',
+    'keyArtAlt',
+    'trailer',
+    'trailerPoster',
+    'features',
   ]);
+  assert.equal(getProjectKind('game')?.template, 'project-game.njk');
   assert.throws(() => registerProjectKind({ name: 'Bad Name', template: 'x.njk', fields: {} }), /needs a name/);
   assert.throws(() => registerProjectKind({ name: 'ok', template: '', fields: {} }), /template/);
   assert.throws(() => registerProjectKind({ name: 'tool', template: 'x.njk', fields: {} }), /already registered/);

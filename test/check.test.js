@@ -84,7 +84,7 @@ test('coffer check passes on the example build', async () => {
     const result = await runCheck(['--out', out]);
     assert.equal(result.err, '');
     assert.equal(result.code, 0);
-    assert.match(result.out, /^workshop: \d+ page\(s\), 7 feed\(s\), 9 image\(s\) checked, no failures$/m);
+    assert.match(result.out, /^workshop: \d+ page\(s\), 7 feed\(s\), 11 image\(s\) checked, no failures$/m);
   });
 });
 

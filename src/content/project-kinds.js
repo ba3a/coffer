@@ -1,5 +1,7 @@
 import { statSync } from 'node:fs';
-import { isAbsolute, relative, resolve, sep } from 'node:path';
+import { extname, isAbsolute, relative, resolve, sep } from 'node:path';
+
+import { IMAGE_EXTENSIONS } from '../images/defaults.js';
 
 /**
  * The kinds of project a site can have, and the fields each kind adds to the
@@ -52,6 +54,94 @@ function webUrl(value) {
 }
 
 /**
+ * Whether a path, relative to the project folder, stays inside it.
+ *
+ * @param {string} inside The result of `relative(dir, target)`.
+ * @returns {boolean}
+ */
+function staysInside(inside) {
+  return inside !== '' && inside !== '..' && !inside.startsWith(`..${sep}`) && !isAbsolute(inside);
+}
+
+/**
+ * Checks a file in the project folder: a path that stays inside the folder,
+ * has one of the extensions and exists.
+ *
+ * @param {unknown} value
+ * @param {string} dir Absolute path of the project's folder.
+ * @param {readonly string[]} extensions Lower-case extensions with the dot.
+ * @param {string} what What the file is, for the message ("a picture").
+ * @returns {FieldResult}
+ */
+function fileInProject(value, dir, extensions, what) {
+  if (typeof value !== 'string' || value.trim() === '') return { problem: 'must be a non-empty path' };
+  const text = value.trim();
+  const target = resolve(dir, text);
+  const inside = relative(dir, target);
+  if (!staysInside(inside)) return { problem: `must be ${what} inside the project folder` };
+  if (!extensions.includes(extname(target).toLowerCase())) {
+    return { problem: `"${text}" must be ${what}: one of ${extensions.join(', ')}` };
+  }
+  try {
+    if (!statSync(target).isFile()) return { problem: `"${text}" is not a file` };
+  } catch {
+    return { problem: `the file "${text}" does not exist in the project folder` };
+  }
+  return { value: inside.split(sep).join('/') };
+}
+
+/** File extensions of the local videos a `trailer` can be, with their media types. */
+export const TRAILER_FILE_TYPES = Object.freeze({ '.mp4': 'video/mp4', '.webm': 'video/webm' });
+
+/** File extensions of the font files a `font-file` can be, with the `format()` name that CSS uses for each. */
+export const FONT_FILE_FORMATS = Object.freeze({ '.woff2': 'woff2', '.woff': 'woff', '.ttf': 'truetype', '.otf': 'opentype' });
+
+/** A YouTube video id. */
+const YOUTUBE_ID = /^[A-Za-z0-9_-]{11}$/;
+
+/**
+ * The embeddable address of a video on one of the sites that a `trailer` may
+ * come from. The address is built from the checked video id, never copied from
+ * the input, so nothing but a player of one of these sites can be embedded:
+ *
+ * - YouTube (`youtube.com/watch?v=ID`, `youtu.be/ID`, `youtube.com/embed/ID`, also `youtube-nocookie.com/embed/ID`) becomes `https://www.youtube-nocookie.com/embed/ID`;
+ * - Vimeo (`vimeo.com/ID`, `player.vimeo.com/video/ID`) becomes `https://player.vimeo.com/video/ID?dnt=1`.
+ *
+ * @param {string} text
+ * @returns {{ provider: 'youtube' | 'vimeo', url: string } | undefined} Undefined for anything else, including `http` addresses.
+ */
+export function embedOf(text) {
+  let parsed;
+  try {
+    parsed = new URL(text);
+  } catch {
+    return undefined;
+  }
+  if (parsed.protocol !== 'https:') return undefined;
+  const host = parsed.hostname.toLowerCase();
+  const parts = parsed.pathname.split('/').filter((part) => part !== '');
+  /** @type {string | null | undefined} */
+  let id;
+  if (host === 'youtu.be') {
+    id = parts.length === 1 ? parts[0] : undefined;
+  } else if (['youtube.com', 'www.youtube.com', 'm.youtube.com', 'youtube-nocookie.com', 'www.youtube-nocookie.com'].includes(host)) {
+    if (parts.length === 2 && parts[0] === 'embed') id = parts[1];
+    else if (parts.length === 1 && parts[0] === 'watch') id = parsed.searchParams.get('v');
+  }
+  if (id !== undefined && id !== null && YOUTUBE_ID.test(id)) {
+    return { provider: 'youtube', url: `https://www.youtube-nocookie.com/embed/${id}` };
+  }
+  /** @type {string | undefined} */
+  let number;
+  if (host === 'vimeo.com' || host === 'www.vimeo.com') number = parts.length === 1 ? parts[0] : undefined;
+  else if (host === 'player.vimeo.com') number = parts.length === 2 && parts[0] === 'video' ? parts[1] : undefined;
+  if (number !== undefined && /^[0-9]{1,12}$/.test(number)) {
+    return { provider: 'vimeo', url: `https://player.vimeo.com/video/${number}?dnt=1` };
+  }
+  return undefined;
+}
+
+/**
  * The field types a kind can use. Each one checks a raw YAML value and returns
  * the normalized value, or says what is wrong.
  *
@@ -98,6 +188,39 @@ export const FIELD_TYPES = Object.freeze({
         ? { value: value.trim().toLowerCase() }
         : { problem: 'must be a colour written as #rgb or #rrggbb' },
   },
+  image: {
+    describe: 'a picture in the project folder',
+    empty: () => null,
+    check: (value, { dir }) => fileInProject(value, dir, IMAGE_EXTENSIONS, 'a picture'),
+  },
+  'font-file': {
+    describe: 'a font file in the project folder',
+    empty: () => null,
+    check: (value, { dir }) => fileInProject(value, dir, Object.keys(FONT_FILE_FORMATS), 'a font file'),
+  },
+  trailer: {
+    describe: 'a video file (mp4 or webm) in the project folder, or the https address of a YouTube or Vimeo video',
+    empty: () => null,
+    check: (value, { dir }) => {
+      if (typeof value !== 'string' || value.trim() === '') {
+        return { problem: 'must be a video file in the project folder, or the https address of a YouTube or Vimeo video' };
+      }
+      const text = value.trim();
+      if (/^[a-z][a-z0-9+.-]*:/i.test(text)) {
+        const embed = embedOf(text);
+        return embed === undefined
+          ? {
+              problem:
+                'an address must be https and from youtube.com, youtu.be, youtube-nocookie.com or vimeo.com (a video, not a channel or a playlist); for any other video use a file in the project folder',
+            }
+          : { value: { type: 'embed', provider: embed.provider, url: embed.url } };
+      }
+      const file = fileInProject(text, dir, Object.keys(TRAILER_FILE_TYPES), 'a video file');
+      if ('problem' in file) return file;
+      const mime = TRAILER_FILE_TYPES[/** @type {keyof typeof TRAILER_FILE_TYPES} */ (extname(text).toLowerCase())];
+      return { value: { type: 'file', file: file.value, mime } };
+    },
+  },
   directory: {
     describe: 'a folder inside the project folder',
     empty: () => null,
@@ -105,7 +228,7 @@ export const FIELD_TYPES = Object.freeze({
       if (typeof value !== 'string' || value.trim() === '') return { problem: 'must be a non-empty path' };
       const target = resolve(dir, value.trim());
       const inside = relative(dir, target);
-      if (inside === '' || inside.startsWith('..') || isAbsolute(inside)) {
+      if (!staysInside(inside)) {
         return { problem: 'must name a folder inside the project folder' };
       }
       try {
@@ -297,7 +420,7 @@ registerProjectKind({
 
 registerProjectKind({
   name: 'game',
-  template: 'project.njk',
+  template: 'project-game.njk',
   fields: {
     stores: { type: 'url-map' },
     platforms: { type: 'string-list' },
@@ -305,5 +428,12 @@ registerProjectKind({
     pressKit: { type: 'directory' },
     accent: { type: 'color' },
     displayFont: { type: 'font-name' },
+    displayFontFile: { type: 'font-file' },
+    logo: { type: 'image' },
+    keyArt: { type: 'image' },
+    keyArtAlt: { type: 'string' },
+    trailer: { type: 'trailer' },
+    trailerPoster: { type: 'image' },
+    features: { type: 'string-list' },
   },
 });

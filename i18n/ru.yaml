@@ -62,6 +62,20 @@ projects:
     docs: Документация
     docs_link: Читать документацию
     license: Лицензия
+  game:
+    get: Получить игру
+    itch: Скачать на itch.io
+    steam: В список желаемого в Steam
+    follow: Следить за дневником
+    follow_text: Страницы игры в магазинах пока нет. Следите за дневником, чтобы узнать, когда она появится.
+    trailer: Трейлер
+    trailer_label: "Трейлер игры {name}"
+    trailer_download: Скачать трейлер
+    features: Особенности
+    details: Об игре
+    status: Статус
+    platforms: Платформы
+    price: Цена
   kind:
     tool: Инструмент
     game: Игра

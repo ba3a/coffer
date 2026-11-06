@@ -1,11 +1,12 @@
-import { cpSync, existsSync, mkdirSync, rmSync, statSync, writeFileSync } from 'node:fs';
+import { copyFileSync, cpSync, existsSync, mkdirSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { dirname, extname, isAbsolute, join, relative, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { CARDS_CACHE_DIR, createCardMaker } from './cards.js';
 import { DEFAULT_LATEST_POSTS, loadHome } from './content/home.js';
 import { discoverPosts, isPublished, resolveNow } from './content/posts.js';
-import { getProjectKind } from './content/project-kinds.js';
+import { FONT_FILE_FORMATS, getProjectKind } from './content/project-kinds.js';
+import { projectStyle } from './content/project-style.js';
 import { loadProjects, projectUrl, showcaseOf } from './content/projects.js';
 import {
   FEED_FILE_NAME,
@@ -268,6 +269,17 @@ export class BuildError extends Error {
  * @property {number | null} order
  * @property {string | null} tag The devlog tag that marks posts about the project.
  * @property {string} card Path of the card picture, relative to the configuration file.
+ * @property {ManifestProjectFile[]} files The files copied unchanged to the output for the project, such as a trailer video or a font; empty when it has none. Pictures are listed under `images`.
+ */
+
+/**
+ * A file of a project that is published as it is.
+ *
+ * @typedef {object} ManifestProjectFile
+ * @property {string} field The field of `project.yaml` that names it.
+ * @property {string} source Path of the original, relative to the configuration file.
+ * @property {string} url Site-relative address of the published file.
+ * @property {string} file Path of the published file, relative to the site's output directory.
  */
 
 /**
@@ -947,6 +959,68 @@ async function buildSite(config, site, options, outRoot, version, report) {
     }
   }
 
+  /**
+   * Makes one picture of a project (its card, logo or key art) through the
+   * image pipeline, under the policy of the project's page.
+   *
+   * @param {import('./content/projects.js').Project} project
+   * @param {string} field The field that names the picture; used in messages.
+   * @param {string} file Absolute path of the picture.
+   * @param {string} alt
+   * @param {string} url Site-relative URL of the project's page.
+   * @param {PageImages} page
+   * @returns {Promise<ProjectPicture | null>} Null when the picture cannot be made; the problem is reported.
+   */
+  const makeProjectPicture = async (project, field, file, alt, url, page) => {
+    try {
+      const policy = page.policyFor(posix(relative(project.dir, file)));
+      const processed = await images.process(file, {
+        location: policy.location.value,
+        camera: policy.camera.value,
+      });
+      const standIn = publishImage(processed, url, 'card', page, policy);
+      return {
+        src: imageFileUrl(processed, standIn),
+        width: standIn.width,
+        height: standIn.height,
+        srcset: processed.variants.map((entry) => ({ url: imageFileUrl(processed, entry), width: entry.width })),
+        alt,
+      };
+    } catch (error) {
+      if (!(error instanceof ImageError)) throw error;
+      report.addError({
+        site: site.id,
+        file: posix(relative(config.dir, project.file)),
+        message: `${field}: image '${posix(relative(project.dir, file))}': ${error.message}`,
+      });
+      return null;
+    }
+  };
+
+  /**
+   * Copies a file of a project (a trailer video, a font) to the output
+   * unchanged. It is published beside the project's page under a fixed name
+   * made from the field name and the extension, so nothing the author typed
+   * becomes part of a path.
+   *
+   * @param {import('./content/projects.js').Project} project
+   * @param {string} url Site-relative URL of the project's page.
+   * @param {string} field
+   * @param {string} file Path of the file relative to the project folder, with `/`.
+   * @param {ManifestProjectFile[]} files Receives the manifest entry.
+   * @returns {string} Site-relative address of the published file.
+   */
+  const publishProjectFile = (project, url, field, file, files) => {
+    const name = field.replace(/[A-Z]/g, (letter) => `-${letter.toLowerCase()}`) + extname(file).toLowerCase();
+    const address = `${url}${name}`;
+    const source = join(project.dir, ...file.split('/'));
+    const target = join(outDir, ...address.split('/').filter(Boolean));
+    mkdirSync(dirname(target), { recursive: true });
+    copyFileSync(source, target);
+    files.push({ field, source: posix(relative(config.dir, source)), url: address, file: address.slice(1) });
+    return address;
+  };
+
   // The projects: each one's page text is rendered, and its card picture goes
   // through the image pipeline, before the links are checked.
   /**
@@ -956,6 +1030,8 @@ async function buildSite(config, site, options, outRoot, version, report) {
    * @property {RenderedPost} rendered
    * @property {PageImages} page
    * @property {ProjectPicture | null} picture The card picture, or null when it could not be made (reported).
+   * @property {Record<string, ProjectMedium | null>} media What the kind's `image`, `trailer` and `font-file` fields publish, by field name; null for a picture that could not be made (reported). A field that is not set has no entry.
+   * @property {ManifestProjectFile[]} files The video and font files copied to the output for the project.
    * @property {import('./check/source-links.js').SourceFile} source The page as the link check sees it.
    */
   /**
@@ -968,6 +1044,12 @@ async function buildSite(config, site, options, outRoot, version, report) {
    * @property {{ url: string, width: number }[]} srcset
    * @property {string} alt
    */
+  /**
+   * What a media field of a project publishes: a picture, a local video or an
+   * embedded one for a `trailer`, or a font file.
+   *
+   * @typedef {(ProjectPicture & { type: 'image' }) | { type: 'video', url: string, mime: string } | { type: 'embed', provider: string, url: string } | { type: 'font', url: string, format: string }} ProjectMedium
+   */
   /** @type {PreparedProject[]} */
   const preparedProjects = [];
   if (site.projects) {
@@ -979,32 +1061,36 @@ async function buildSite(config, site, options, outRoot, version, report) {
       const rendered = await renderMarkdown(project.body, {
         file: project.pageFile,
         startLine: project.bodyLine,
-        images: imageOptionsFor(project.pageFile, url, page),
+        // A game page starts with its logo or key art, which is the eager image; the pictures of the text then are all lazy.
+        images: { ...imageOptionsFor(project.pageFile, url, page), leadingImage: Boolean(project.fields.logo || project.fields.keyArt) },
         carousel: carouselLabels,
       });
-      /** @type {ProjectPicture | null} */
-      let picture = null;
-      try {
-        const policy = page.policyFor(posix(relative(project.dir, project.card)));
-        const processed = await images.process(project.card, {
-          location: policy.location.value,
-          camera: policy.camera.value,
-        });
-        const standIn = publishImage(processed, url, 'card', page, policy);
-        picture = {
-          src: imageFileUrl(processed, standIn),
-          width: standIn.width,
-          height: standIn.height,
-          srcset: processed.variants.map((entry) => ({ url: imageFileUrl(processed, entry), width: entry.width })),
-          alt: project.cardAlt,
-        };
-      } catch (error) {
-        if (!(error instanceof ImageError)) throw error;
-        report.addError({
-          site: site.id,
-          file: posix(relative(config.dir, project.file)),
-          message: `card: image '${posix(relative(project.dir, project.card))}': ${error.message}`,
-        });
+      const makePicture = (/** @type {string} */ field, /** @type {string} */ file, /** @type {string} */ alt) =>
+        makeProjectPicture(project, field, file, alt, url, page);
+      const picture = await makePicture('card', project.card, project.cardAlt);
+      /** @type {Record<string, ProjectMedium | null>} */
+      const media = {};
+      /** @type {ManifestProjectFile[]} */
+      const files = [];
+      const kind = /** @type {import('./content/project-kinds.js').ProjectKind} */ (getProjectKind(project.kind));
+      for (const [field, spec] of Object.entries(kind.fields)) {
+        const value = project.fields[field];
+        if (value === null || value === undefined) continue;
+        if (spec.type === 'image') {
+          const alt = project.fields[`${field}Alt`];
+          const made = await makePicture(field, join(project.dir, ...String(value).split('/')), typeof alt === 'string' ? alt : '');
+          media[field] = made === null ? null : { type: 'image', ...made };
+        } else if (spec.type === 'trailer') {
+          const trailer = /** @type {{ type: 'file', file: string, mime: string } | { type: 'embed', provider: string, url: string }} */ (value);
+          media[field] =
+            trailer.type === 'embed'
+              ? trailer
+              : { type: 'video', url: publishProjectFile(project, url, field, trailer.file, files), mime: trailer.mime };
+        } else if (spec.type === 'font-file') {
+          const file = String(value);
+          const format = FONT_FILE_FORMATS[/** @type {keyof typeof FONT_FILE_FORMATS} */ (extname(file).toLowerCase())];
+          media[field] = { type: 'font', url: publishProjectFile(project, url, field, file, files), format };
+        }
       }
       preparedProjects.push({
         project,
@@ -1012,6 +1098,8 @@ async function buildSite(config, site, options, outRoot, version, report) {
         rendered,
         page,
         picture,
+        media,
+        files,
         source: { slug: project.slug, kind: 'folder', file: project.pageFile, dir: project.dir, draft: false },
       });
     }
@@ -1485,7 +1573,35 @@ async function buildSite(config, site, options, outRoot, version, report) {
   const manifestProjects = [];
   /** @param {string} kind */
   const kindLabelOf = (kind) => (templates.translator.has(`projects.kind.${kind}`) ? t(`projects.kind.${kind}`) : kind);
-  const projectViews = preparedProjects.map(({ project, url, picture }) => ({
+  /**
+   * The address of the feed that a call to follow a project's devlog links to:
+   * the feed of the project's tag when some post carries it, else the feed of
+   * the first blog; null when the site has no blog.
+   *
+   * @param {string | null} tag
+   * @returns {string | null}
+   */
+  const devlogFeedOf = (tag) =>
+    (tag === null ? undefined : manifestFeeds.find((feed) => feed.type === 'tag' && feed.tag === tag))?.url ??
+    manifestFeeds.find((feed) => feed.type === 'blog')?.url ??
+    null;
+  /**
+   * The accent colour and display font of a project's page, as safe CSS.
+   *
+   * @param {import('./content/projects.js').Project} project
+   * @param {Record<string, ProjectMedium | null>} media
+   */
+  const projectStyleOf = (project, media) => {
+    const accent = project.fields.accent;
+    const displayFont = project.fields.displayFont;
+    const font = media.displayFontFile;
+    return projectStyle({
+      accent: typeof accent === 'string' ? accent : null,
+      displayFont: typeof displayFont === 'string' ? displayFont : null,
+      font: font?.type === 'font' ? { url: font.url, format: font.format } : null,
+    });
+  };
+  const projectViews = preparedProjects.map(({ project, url, picture, media }) => ({
     slug: project.slug,
     url,
     name: project.name,
@@ -1501,10 +1617,13 @@ async function buildSite(config, site, options, outRoot, version, report) {
     fields: project.fields,
     docsUrl: project.fields.docs ? `${url}${site.urls.docs}/` : null,
     picture,
+    media,
+    style: projectStyleOf(project, media),
+    devlogUrl: devlogFeedOf(project.tag),
   }));
   if (projectsIndexUrl) {
     for (const entry of preparedProjects) {
-      const { project, url, rendered, page, picture } = entry;
+      const { project, url, rendered, page, picture, files } = entry;
       const shown = posix(relative(config.dir, project.pageFile));
       for (const directive of rendered.maps) {
         warnings.push(`${shown}:${directive.line ?? 1}: the ::map directive is only for posts and is left out`);
@@ -1543,6 +1662,7 @@ async function buildSite(config, site, options, outRoot, version, report) {
         order: project.order,
         tag: project.tag,
         card: posix(relative(config.dir, project.card)),
+        files,
       });
     }
     const projectsTitle = t('projects.title');

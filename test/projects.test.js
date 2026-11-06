@@ -500,6 +500,13 @@ test('the game fields are read: stores with a link are kept, the others are drop
         pressKit: null,
         accent: '#dd6b4d',
         displayFont: 'Handjet',
+        displayFontFile: null,
+        logo: null,
+        keyArt: null,
+        keyArtAlt: null,
+        trailer: null,
+        trailerPoster: null,
+        features: [],
       });
     },
   );
@@ -757,11 +764,12 @@ test('text from project.yaml is escaped in the facts box, and the repository mus
   }
 });
 
-test('a game keeps the generic project page for now', async () => {
+test('a game has its own page, with the license in its details box (see game-page.test.js)', async () => {
   await inSite(project('tumble', 'name: Tumble\npitch: Falling joints.\nkind: game\nstatus: idea\ncard: card.png\nlicense: MIT\n'), async (root) => {
     await build(root);
     const html = pageHtml(root, '/made/tumble/');
-    assert.doesNotMatch(html, /project-facts/);
-    assert.match(html, /<p class="project-license">License: MIT<\/p>/);
+    assert.match(html, /<div class="game-page">/);
+    assert.match(html, /<dt>License<\/dt>\s*<dd>MIT<\/dd>/);
+    assert.doesNotMatch(html, /project-license/);
   });
 });

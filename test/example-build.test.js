@@ -156,6 +156,8 @@ test('the manifest is written and lists the pages and the posts', async () => {
         ['content/journal/photos/ridge.jpg', '/journal/ridge-walk/', 'body'],
         ['content/projects/kerfcalc/card.jpg', '/made/kerfcalc/', 'card'],
         ['content/projects/tenon-tumble/card.jpg', '/made/tenon-tumble/', 'card'],
+        ['content/projects/tenon-tumble/screenshot-1.jpg', '/made/tenon-tumble/', 'body'],
+        ['content/projects/tenon-tumble/screenshot-2.jpg', '/made/tenon-tumble/', 'body'],
       ],
     );
     assert.equal(manifest.site.id, 'workshop');
@@ -325,6 +327,13 @@ test('the example projects page lists both projects and the project pages resolv
     assert.match(tool, /<div class="project-body">\s*<p>Kerfcalc answers the questions/);
     // The example tool configures no docs, so there is no docs link and no empty section.
     assert.doesNotMatch(tool, /project-fact-docs|\/made\/kerfcalc\/docs\//);
-    assert.match(page(site, '/made/tenon-tumble/'), /<h1>Tenon Tumble<\/h1>/);
+    // The example game has no store link, so it asks readers to follow the devlog; it has no repository link.
+    const game = page(site, '/made/tenon-tumble/');
+    assert.match(game, /<h1>Tenon Tumble<\/h1>/);
+    assert.match(game, /<div class="game-page" style="--project-accent:#dd6b4d;--project-on-accent:#000;--project-font:&quot;Fraunces&quot;, var\(--coffer-font-heading\)">/);
+    assert.match(game, /<a class="game-button game-follow-link" href="\/journal\/feed\.xml">Follow the devlog<\/a>/);
+    assert.doesNotMatch(game, /game-store|project-fact-repo|Source code/);
+    assert.match(game, /<section class="carousel" aria-label="Screenshots"/);
+    assert.match(game, /<dt>Platforms<\/dt>\s*<dd>Linux, Windows, Web<\/dd>/);
   });
 });

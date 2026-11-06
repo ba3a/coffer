@@ -11,6 +11,8 @@
 //   workshop. Its post says `location: coarse`, so the published file carries
 //   the position only rounded to about a kilometre.
 // - marking-gauge.jpg: a plain landscape picture.
+// - screenshot-1.jpg, screenshot-2.jpg: made-up screenshots of the example
+//   game Tenon Tumble, for the gallery on its page.
 // - ridge.jpg: a portrait picture stored sideways with the EXIF orientation 6,
 //   as phones do, with a made-up GPS position and a made-up camera. Its post
 //   is tagged `trips/mountains`, which says `location: keep` and
@@ -114,6 +116,36 @@ function ridgeSvg() {
 }
 
 /**
+ * A made-up screenshot of the example game: wooden blocks on a grid, one of
+ * them falling. Two variants, so that the game's page has a gallery.
+ *
+ * @param {1 | 2} variant
+ * @returns {string}
+ */
+function tumbleSvg(variant) {
+  const width = 1280;
+  const height = 720;
+  const cell = 80;
+  const colours = ['#dd6b4d', '#e0b04a', '#6a994e', '#4d7ea8'];
+  const blocks = (variant === 1
+    ? [[3, 8, 0], [4, 8, 1], [5, 8, 2], [4, 7, 3], [6, 8, 1]]
+    : [[2, 8, 2], [3, 8, 0], [4, 8, 1], [3, 7, 3], [3, 6, 0], [4, 7, 2], [5, 8, 3]]
+  )
+    .map(([column, row, tone]) => `<rect x="${160 + column * cell}" y="${row * cell - 80}" width="${cell - 6}" height="${cell - 6}" rx="6" fill="${colours[tone]}" stroke="#3a2a18" stroke-width="4"/>`)
+    .join('');
+  const falling = variant === 1 ? [[4, 2, 0]] : [[3, 1, 1]];
+  const dropping = falling
+    .map(([column, row, tone]) => `<rect x="${160 + column * cell}" y="${row * cell}" width="${cell - 6}" height="${cell - 6}" rx="6" fill="${colours[tone]}" stroke="#3a2a18" stroke-width="4"/>`)
+    .join('');
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}">
+    ${grain(width, height, '#4a3623', variant * 17)}
+    <rect x="160" y="0" width="${cell * 8}" height="${height}" fill="#1d1710" fill-opacity="0.55"/>
+    ${blocks}
+    ${dropping}
+  </svg>`;
+}
+
+/**
  * @param {string} relativePath Path below the content directory.
  * @param {Buffer} data
  */
@@ -131,6 +163,9 @@ function save(relativePath, data) {
 function jpegOf(svg) {
   return sharp(Buffer.from(svg)).jpeg({ quality: JPEG_QUALITY, mozjpeg: true }).toBuffer();
 }
+
+save('projects/tenon-tumble/screenshot-1.jpg', await jpegOf(tumbleSvg(1)));
+save('projects/tenon-tumble/screenshot-2.jpg', await jpegOf(tumbleSvg(2)));
 
 // The made-up position of the workshop is 52 deg 23' 31.7" N, 9 deg 43' 37.4" E.
 save(

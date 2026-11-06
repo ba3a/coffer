@@ -897,3 +897,90 @@ main > article > .post-layout {
   margin: 0;
   overflow-wrap: anywhere;
 }
+
+/* A game's page. Only the wrapper .game-page is restyled: the site header and
+   footer are outside it. A game may set --project-accent, --project-on-accent
+   (a readable text colour on the accent) and --project-font in the style
+   attribute of the wrapper; without them the theme's own colours and heading
+   font apply. */
+.game-page h1,
+.game-page h2,
+.game-page h3,
+.game-page .project-pitch {
+  font-family: var(--project-font, var(--coffer-font-heading));
+}
+
+.game-hero {
+  padding-bottom: 1rem;
+  border-bottom: 3px solid var(--project-accent, var(--coffer-border));
+}
+
+.game-logo {
+  margin: 0 0 0.75rem;
+}
+
+.game-logo img {
+  display: block;
+  max-width: min(100%, 20rem);
+  height: auto;
+}
+
+.game-key-art {
+  margin-top: 1rem;
+}
+
+.game-key-art img {
+  display: block;
+  width: 100%;
+  height: auto;
+  border-radius: 0.375rem;
+}
+
+.game-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.75rem 1rem;
+  margin: 1.25rem 0;
+}
+
+.game-actions p {
+  margin: 0;
+}
+
+.game-button {
+  display: inline-block;
+  padding: 0.55rem 1.1rem;
+  border-radius: 0.375rem;
+  background: var(--project-accent, var(--coffer-accent));
+  color: var(--project-on-accent, var(--coffer-bg));
+  font-family: var(--project-font, var(--coffer-font-body));
+  font-weight: 600;
+  text-decoration: none;
+}
+
+.game-button:hover {
+  text-decoration: underline;
+}
+
+.game-trailer video,
+.game-trailer .game-embed {
+  display: block;
+  width: 100%;
+  aspect-ratio: 16 / 9;
+  border: 0;
+  border-radius: 0.375rem;
+  background: var(--coffer-code-bg);
+}
+
+.game-features ul {
+  padding-left: 1.25rem;
+}
+
+.game-features li::marker {
+  color: var(--project-accent, var(--coffer-accent));
+}
+
+.game-details {
+  border-color: var(--project-accent, var(--coffer-border));
+}

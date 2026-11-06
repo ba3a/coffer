@@ -1,0 +1,113 @@
+{# The page of a game: a small promo page. Logo and key art, the hook, the stores (or a call to follow the devlog), the trailer, the text of index.md (screenshots go there, as a carousel), the feature points and the details. Extends the generic project page and fills its header, body and footer blocks; a part with nothing to show writes nothing. The accent colour and the display font of project.yaml restyle the wrapper `.game-page` only (custom properties in its style attribute, and an @font-face in the head, both made from checked values), so the site header and footer stay as they are. A game has no link to a source repository, whatever its project.yaml says. #}
+{% extends "project.njk" %}
+
+{% block page_meta %}
+{{ super() }}
+{% if project.style and project.style.fontFace %}<style>
+@font-face { font-family: "{{ project.style.fontFace.family }}"; src: url("{{ project.style.fontFace.src | url }}") format("{{ project.style.fontFace.format }}"); font-display: swap; }
+</style>
+{% endif %}
+{% endblock %}
+
+{% block main %}
+<div class="game-page"{% if project.style and project.style.declarations %} style="{{ project.style.declarations }}"{% endif %}>
+{{ super() }}
+</div>
+{% endblock %}
+
+{% block project_header %}
+{% import "project-picture.njk" as pictures %}
+<header class="project-header game-hero">
+{% if project.media.logo %}<p class="game-logo">{{ pictures.card(project.media.logo, '(min-width: 48rem) 20rem, 70vw', true) }}</p>
+{% endif %}
+<p class="project-meta"><span class="project-kind">{{ project.kindLabel }}</span> <span aria-hidden="true">&middot;</span> <span class="project-status">{{ project.statusLabel }}</span></p>
+<h1>{{ project.name }}</h1>
+<p class="project-pitch">{{ project.pitch }}</p>
+{% if project.media.keyArt %}<div class="game-key-art">
+{{ pictures.card(project.media.keyArt, '(min-width: 48rem) 44rem, calc(100vw - 2rem)', not project.media.logo) }}
+</div>
+{% endif %}
+</header>
+{% endblock %}
+
+{% block project_body %}
+{% block game_actions %}
+{% set itch = project.fields.stores.itch %}
+{% set steam = project.fields.stores.steam %}
+{% if itch or steam %}
+<div class="game-actions game-stores" role="group" aria-label="{{ 'projects.game.get' | t }}">
+{% if itch %}<a class="game-button game-store game-store-itch" href="{{ itch }}" rel="noopener">{{ 'projects.game.itch' | t }}</a>
+{% endif %}
+{% if steam %}<a class="game-button game-store game-store-steam" href="{{ steam }}" rel="noopener">{{ 'projects.game.steam' | t }}</a>
+{% endif %}
+</div>
+{% elif project.devlogUrl %}
+<div class="game-actions game-follow">
+<p>{{ 'projects.game.follow_text' | t }}</p>
+<p><a class="game-button game-follow-link" href="{{ project.devlogUrl | url }}">{{ 'projects.game.follow' | t }}</a></p>
+</div>
+{% endif %}
+{% endblock %}
+{% block game_trailer %}
+{% set trailer = project.media.trailer %}
+{% if trailer %}
+<section class="game-trailer" aria-labelledby="game-trailer-title">
+<h2 id="game-trailer-title">{{ 'projects.game.trailer' | t }}</h2>
+{% if trailer.type == 'video' %}
+{% set poster = project.media.trailerPoster %}
+<video controls muted loop playsinline preload="metadata"{% if poster %} poster="{{ poster.src | url }}"{% endif %} aria-label="{{ 'projects.game.trailer_label' | t({ name: project.name }) }}">
+<source src="{{ trailer.url | url }}" type="{{ trailer.mime }}">
+<a href="{{ trailer.url | url }}">{{ 'projects.game.trailer_download' | t }}</a>
+</video>
+{% elif trailer.type == 'embed' %}
+<iframe class="game-embed" src="{{ trailer.url }}" title="{{ 'projects.game.trailer_label' | t({ name: project.name }) }}" loading="lazy" allowfullscreen allow="fullscreen; picture-in-picture" referrerpolicy="strict-origin-when-cross-origin" sandbox="allow-scripts allow-same-origin allow-presentation"></iframe>
+{% endif %}
+</section>
+{% endif %}
+{% endblock %}
+{% if page.content %}<div class="project-body">
+{{ page.content | safe }}
+</div>
+{% endif %}
+{% block game_features %}
+{% if project.fields.features | length %}
+<section class="game-features" aria-labelledby="game-features-title">
+<h2 id="game-features-title">{{ 'projects.game.features' | t }}</h2>
+<ul>
+{% for feature in project.fields.features %}<li>{{ feature }}</li>
+{% endfor %}
+</ul>
+</section>
+{% endif %}
+{% endblock %}
+{% block game_details %}
+<section class="project-facts game-details" aria-labelledby="game-details-title">
+<h2 id="game-details-title">{{ 'projects.game.details' | t }}</h2>
+<dl>
+<div class="project-fact project-fact-status">
+<dt>{{ 'projects.game.status' | t }}</dt>
+<dd>{{ project.statusLabel }}</dd>
+</div>
+{% if project.fields.platforms | length %}<div class="project-fact project-fact-platforms">
+<dt>{{ 'projects.game.platforms' | t }}</dt>
+<dd>{{ project.fields.platforms | join(', ') }}</dd>
+</div>
+{% endif %}
+{% if project.fields.price %}<div class="project-fact project-fact-price">
+<dt>{{ 'projects.game.price' | t }}</dt>
+<dd>{{ project.fields.price }}</dd>
+</div>
+{% endif %}
+{% if project.license %}<div class="project-fact project-fact-license">
+<dt>{{ 'projects.facts.license' | t }}</dt>
+<dd>{{ project.license }}</dd>
+</div>
+{% endif %}
+</dl>
+</section>
+{% endblock %}
+{% endblock %}
+
+{% block project_footer %}
+<p class="all-projects"><a href="{{ projectsUrl | url }}">{{ 'projects.all' | t }}</a></p>
+{% endblock %}

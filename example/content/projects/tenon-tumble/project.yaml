@@ -4,6 +4,8 @@ kind: game
 status: in-development
 card: card.jpg
 cardAlt: Three wooden blocks in different colours, stacked in a staircase.
+keyArt: card.jpg
+keyArtAlt: Three wooden blocks in different colours, stacked in a staircase.
 featured: true
 order: 1
 tag: projects/tenon-tumble
@@ -12,7 +14,12 @@ platforms: [Linux, Windows, Web]
 price: Free
 accent: "#dd6b4d"
 displayFont: Fraunces
+features:
+  - Pieces fall, joints have to line up, and the glue is always a little faster than you.
+  - Short rounds that fit the minutes between jobs.
+  - Every joint is one you can make by hand in a real workshop.
 # Fill in a store link and its button appears; until then the page asks readers to follow the devlog.
+# `trailer` takes a video file in this folder or a YouTube or Vimeo address.
 stores:
   itch:
   steam:
