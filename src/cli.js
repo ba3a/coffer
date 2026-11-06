@@ -1,10 +1,11 @@
 import { existsSync, statSync } from 'node:fs';
-import { join, resolve } from 'node:path';
+import { join, relative, resolve, sep } from 'node:path';
 
 import { BuildError, buildSites, DEFAULT_OUT_DIR, DOCS_REPOS_CACHE_DIR } from './build.js';
 import { CardError } from './cards.js';
 import { checkOutput } from './check/index.js';
 import { ConfigError, loadConfig } from './config.js';
+import { DEFAULT_DEV_PORT, startDev } from './dev.js';
 import { HomeError } from './content/home.js';
 import { PostError } from './content/posts.js';
 import { loadProjects, ProjectError } from './content/projects.js';
@@ -13,6 +14,7 @@ import { SeriesError } from './content/series.js';
 import { TagsError } from './content/tags.js';
 import { FontError } from './font-metrics.js';
 import { MarkdownError } from './markdown/render.js';
+import { createPost, NewPostError, splitTags } from './new-post.js';
 import { I18nError } from './render/i18n.js';
 import { ReportError, formatExactLocations } from './report.js';
 import { SearchError } from './search.js';
@@ -30,6 +32,15 @@ Commands:
   serve [dir]     Serve one built site directory the way Cloudflare Pages does
                   (--port <number> [default: ${DEFAULT_PORT}], --host <address>;
                   dir defaults to the working directory)
+  dev             Preview every site with live reload, drafts and scheduled posts
+                  included, each site on its own port, built into .cache/dev
+                  (--config <path>, --port <number> for the first site
+                  [default: ${DEFAULT_DEV_PORT}], --host <address>)
+  new <blog> "Title"
+                  Create {blogDir}/{slug}/index.md as a draft, with the front
+                  matter filled in and a slug made from the title
+                  (--date <date>, --tags <a,b/c>, --slug <slug>,
+                  --config <path>; <blog> may be written site/blog)
   check           Check a finished build: links, anchors, preview metadata,
                   feeds and the sitemap; exits 1 on any failure
                   (--config <path>, --out <dir> [default: ${DEFAULT_OUT_DIR}],
@@ -58,6 +69,8 @@ Run "coffer help" to see this message again.
  * @typedef {object} Services
  * @property {import('./check/w3c.js').W3cOptions} [w3c] Replaces the network and the clock of `check --w3c`.
  * @property {Partial<Pick<import('./docs/sources.js').FetchOptions, 'exec' | 'timeoutMs' | 'env'>>} [docs] Replaces git, the time limit and the environment of `docs fetch`.
+ * @property {{ signal?: AbortSignal, out?: string, watch?: boolean }} [dev] Lets a test stop `dev` (the signal), keep its build elsewhere (`out`) or not watch.
+ * @property {Date} [now] Replaces the clock of `new`.
  */
 
 /**
@@ -214,8 +227,164 @@ export function parseServeArgs(args) {
   return options;
 }
 
+/**
+ * Reads the options of `coffer dev`.
+ *
+ * @param {string[]} args
+ * @returns {{ configPath?: string, port: number, host?: string } | { error: string }}
+ */
+export function parseDevArgs(args) {
+  /** @type {{ configPath?: string, port: number, host?: string }} */
+  const options = { port: DEFAULT_DEV_PORT };
+  for (let i = 0; i < args.length; i += 1) {
+    const arg = args[i];
+    const [flag, inline] = arg.startsWith('--') && arg.includes('=')
+      ? [arg.slice(0, arg.indexOf('=')), arg.slice(arg.indexOf('=') + 1)]
+      : [arg, undefined];
+    if (flag !== '--config' && flag !== '--port' && flag !== '--host') {
+      return { error: `unexpected argument "${arg}"` };
+    }
+    const value = inline ?? args[i + 1];
+    if (value === undefined || value === '') return { error: `${flag} needs a value` };
+    if (inline === undefined) i += 1;
+    if (flag === '--config') {
+      options.configPath = value;
+    } else if (flag === '--host') {
+      options.host = value;
+    } else {
+      if (!/^\d+$/.test(value) || Number(value) > 65535) {
+        return { error: '--port must be a number from 0 to 65535' };
+      }
+      options.port = Number(value);
+    }
+  }
+  return options;
+}
+
+/**
+ * Reads the options of `coffer new`.
+ *
+ * @param {string[]} args
+ * @returns {{ blog: string, title: string, configPath?: string, date?: string, tags: string[], slug?: string } | { error: string }}
+ */
+export function parseNewArgs(args) {
+  /** @type {string[]} */
+  const positional = [];
+  /** @type {{ configPath?: string, date?: string, tags: string[], slug?: string }} */
+  const options = { tags: [] };
+  /** @type {Record<string, 'configPath' | 'date' | 'tags' | 'slug'>} */
+  const valued = { '--config': 'configPath', '--date': 'date', '--tags': 'tags', '--slug': 'slug' };
+  for (let i = 0; i < args.length; i += 1) {
+    const arg = args[i];
+    if (!arg.startsWith('--')) {
+      positional.push(arg);
+      continue;
+    }
+    const [flag, inline] = arg.includes('=')
+      ? [arg.slice(0, arg.indexOf('=')), arg.slice(arg.indexOf('=') + 1)]
+      : [arg, undefined];
+    if (!Object.hasOwn(valued, flag)) return { error: `unexpected argument "${arg}"` };
+    const value = inline ?? args[i + 1];
+    if (value === undefined || value === '') return { error: `${flag} needs a value` };
+    if (inline === undefined) i += 1;
+    const key = valued[flag];
+    if (key === 'tags') options.tags.push(...splitTags(value));
+    else options[key] = value;
+  }
+  if (positional.length === 0) return { error: 'new needs a blog and a title: coffer new <blog> "Title"' };
+  if (positional.length === 1) return { error: 'new needs a title: coffer new <blog> "Title"' };
+  if (positional.length > 2) {
+    return { error: `unexpected argument "${positional[2]}" (put a title with spaces in quotes)` };
+  }
+  return { blog: positional[0], title: positional[1], ...options };
+}
+
 /** @type {Record<string, Command>} */
 const commands = {
+  dev: async (args, io, services) => {
+    const parsed = parseDevArgs(args);
+    if ('error' in parsed) {
+      io.err(`coffer: ${parsed.error}\n`);
+      return 1;
+    }
+    /** @type {import('./dev.js').RunningDev} */
+    let running;
+    try {
+      running = await startDev({
+        configPath: parsed.configPath,
+        port: parsed.port,
+        host: parsed.host,
+        out: services.dev?.out,
+        watch: services.dev?.watch,
+        io,
+      });
+    } catch (error) {
+      if (error instanceof ConfigError) {
+        io.err(`${error.errors.join('\n')}\n`);
+        return 1;
+      }
+      io.err(`coffer: cannot start the preview: ${error instanceof Error ? error.message : error}\n`);
+      return 1;
+    }
+    io.out('Press Ctrl+C to stop.\n');
+    const signal = services.dev?.signal;
+    await new Promise((done) => {
+      const stop = () => {
+        process.off('SIGINT', stop);
+        process.off('SIGTERM', stop);
+        signal?.removeEventListener('abort', stop);
+        done(undefined);
+      };
+      process.once('SIGINT', stop);
+      process.once('SIGTERM', stop);
+      if (signal?.aborted) stop();
+      signal?.addEventListener('abort', stop, { once: true });
+    });
+    await running.close();
+    return 0;
+  },
+  new: (args, io, services) => {
+    const parsed = parseNewArgs(args);
+    if ('error' in parsed) {
+      io.err(`coffer: ${parsed.error}\n`);
+      return 1;
+    }
+    try {
+      const config = loadConfig({ configPath: parsed.configPath });
+      const [siteId, blogId] = parsed.blog.includes('/') ? parsed.blog.split('/', 2) : [undefined, parsed.blog];
+      const matches = config.sites.flatMap((site) =>
+        site.id === (siteId ?? site.id)
+          ? site.blogs.filter((blog) => blog.id === blogId).map((blog) => ({ site, blog }))
+          : [],
+      );
+      if (matches.length !== 1) {
+        const known = config.sites.flatMap((site) => site.blogs.map((blog) => `${site.id}/${blog.id}`));
+        io.err(
+          `coffer: ${matches.length === 0 ? `no blog "${parsed.blog}"` : `"${parsed.blog}" names several blogs; write site/blog`} (known: ${known.join(', ') || 'none'})\n`,
+        );
+        return 1;
+      }
+      const { site, blog } = matches[0];
+      const post = createPost({
+        blog,
+        timezone: site.timezone,
+        title: parsed.title,
+        date: parsed.date,
+        tags: parsed.tags,
+        slug: parsed.slug,
+        now: services.now,
+      });
+      const shown = relative(process.cwd(), post.file).split(sep).join('/');
+      io.out(`Created ${shown.startsWith('..') ? post.file : shown} (a draft; remove "draft: true" to publish)\n`);
+      return 0;
+    } catch (error) {
+      if (error instanceof ConfigError || error instanceof NewPostError) {
+        io.err(`${error.errors.join('\n')}\n`);
+        return 1;
+      }
+      throw error;
+    }
+  },
   serve: async (args, io) => {
     const parsed = parseServeArgs(args);
     if ('error' in parsed) {

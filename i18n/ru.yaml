@@ -24,7 +24,8 @@ post:
     many: "{count} минут"
     other: "{count} минуты"
   contents: Содержание
-  unpublished: "Предпросмотр: эта запись ещё не опубликована."
+  banner_draft: Черновик
+  banner_scheduled: "Запланировано на {date}"
   projects: Проекты
 series:
   navigation: "Серия: {name}"

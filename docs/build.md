@@ -13,6 +13,8 @@ coffer build --config example/coffer.yaml --out example/dist
 | `--drafts`        | Preview mode: also build drafts and posts dated in the future (see below).                                                                                     |
 | `--now <date>`    | Pretend it is this moment. A date or a date and time, read in the site's time zone when it has no offset. The `COFFER_NOW` environment variable does the same. |
 
+Drafts and future posts built with `--drafts` carry a "Draft" or "Scheduled for ..." banner. To work on the sites rather than build them once, use `coffer dev`, a preview with live reload, and `coffer new` for a new post (see [Authoring](authoring.md)).
+
 The command prints one line per site, then the posts that publish exact locations (see [Location and camera metadata](location-policy.md#what-the-build-does-with-the-decision)), and exits 0, or prints every problem it found (with the file and the field) and exits 1. The same build is available in code as `buildSites(config, options)`.
 
 Before it renders anything, the build fetches the documentation source of every tool project that has a `docs` block (a git repository into `.cache/repos/{slug}`, or a folder in place) and fails with the project and the address when one cannot be fetched. `coffer docs fetch` does only that and prints the commit of each source (`--config <path>`, `--project <slug>`). See [Where a project's documentation comes from](docs-sources.md).

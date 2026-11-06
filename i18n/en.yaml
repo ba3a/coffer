@@ -23,7 +23,8 @@ post:
     one: "{count} minute"
     other: "{count} minutes"
   contents: Contents
-  unpublished: "Preview: this post is not published yet."
+  banner_draft: Draft
+  banner_scheduled: "Scheduled for {date}"
   projects: Projects
 series:
   navigation: "Series: {name}"

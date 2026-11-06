@@ -35,6 +35,7 @@ export const CONFIG_FILE_NAME = 'coffer.yaml';
  * @property {string} dir Absolute path of the directory holding the posts.
  * @property {string} prefix URL prefix without slashes at either end; the empty string for a blog at the site root.
  * @property {string} title Display title of the blog.
+ * @property {string} [newPostTemplate] Absolute path of the Markdown file whose text `coffer new` puts below the front matter of a new post; absent when the blog has none.
  */
 
 /**
@@ -539,7 +540,7 @@ function normalizeBlogs(list, path, baseDir, siteTitle, problems) {
       problems.add(here, 'must be a mapping');
       return;
     }
-    rejectUnknownKeys(entry, ['id', 'dir', 'prefix', 'title'], here, problems);
+    rejectUnknownKeys(entry, ['id', 'dir', 'prefix', 'title', 'newPostTemplate'], here, problems);
     const id = readString(entry, 'id', here, problems, { required: true });
     if (id !== undefined) {
       if (!ID_RE.test(id)) {
@@ -587,13 +588,22 @@ function normalizeBlogs(list, path, baseDir, siteTitle, problems) {
     const title = readString(entry, 'title', here, problems, {
       fallback: siteTitle,
     });
+    const templateValue = readString(entry, 'newPostTemplate', here, problems);
     if (
       id !== undefined &&
       dir !== undefined &&
       prefix !== undefined &&
       title !== undefined
     ) {
-      blogs.push({ id, dir, prefix, title });
+      blogs.push({
+        id,
+        dir,
+        prefix,
+        title,
+        ...(templateValue === undefined
+          ? {}
+          : { newPostTemplate: resolve(baseDir, templateValue) }),
+      });
     }
   });
   return blogs;

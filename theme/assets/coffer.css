@@ -370,6 +370,14 @@ main > article > .post-layout {
   border: 1px dashed var(--coffer-border);
 }
 
+.preview-banner {
+  display: inline-block;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  border-style: solid;
+  border-width: 1px 1px 1px 0.375rem;
+}
+
 .post-list {
   margin: 0;
   padding: 0;

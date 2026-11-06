@@ -33,8 +33,7 @@
 {% block series_top %}
 {% if series %}{{ seriesNav(series, 'top') }}{% endif %}
 {% endblock %}
-{% if post.unpublished %}<p class="preview-note">{{ 'post.unpublished' | t }}</p>
-{% endif %}
+{% include "partials/banner.njk" %}
 </header>
 <div class="post-layout{% if toc.length %} has-toc{% endif %}">
 {% if toc.length %}

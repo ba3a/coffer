@@ -1,0 +1,3 @@
+{# Marks a post that is only in the build because of preview mode: a draft, or a post dated in the future. Needs `post`. #}
+{% if post.unpublished %}<p class="preview-note preview-banner preview-banner-{{ 'draft' if post.draft else 'scheduled' }}" role="note">{% if post.draft %}{{ 'post.banner_draft' | t }}{% else %}{{ 'post.banner_scheduled' | t({ date: (post.date | date) }) }}{% endif %}</p>
+{% endif %}

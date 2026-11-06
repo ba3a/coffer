@@ -37,6 +37,7 @@
   },
   "dependencies": {
     "@resvg/resvg-js": "^2.6.2",
+    "chokidar": "^5.0.0",
     "exifr": "^7.1.3",
     "hast-util-to-string": "^3.0.1",
     "heic-decode": "^2.1.0",

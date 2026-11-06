@@ -84,7 +84,7 @@ Missing or unclosed front matter, YAML syntax errors (with the line), wrong type
 
 ## Which posts are published
 
-A post is published when it is not a draft and its date is not after "now". In **preview mode** (`drafts`), every post is included, drafts and future-dated posts alike.
+A post is published when it is not a draft and its date is not after "now". In **preview mode** (`drafts`), every post is included, drafts and future-dated posts alike, and each one is marked with a banner: "Draft" or "Scheduled for {date}". `coffer dev` builds in preview mode and reloads the pages when you save (see [Authoring](authoring.md)); `coffer new` creates a draft post.
 
 "Now" is decided once per run:
 

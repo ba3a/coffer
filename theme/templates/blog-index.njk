@@ -23,8 +23,7 @@
 </p>
 {% if post.summary %}<p class="post-summary">{{ post.summary }}</p>
 {% endif %}
-{% if post.unpublished %}<p class="preview-note">{{ 'post.unpublished' | t }}</p>
-{% endif %}
+{% include "partials/banner.njk" %}
 {% endblock %}
 </li>
 {% endfor %}

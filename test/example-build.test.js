@@ -77,7 +77,7 @@ test('preview mode builds the draft and the future-dated post and says so', asyn
     assert.equal(bySlug['planer-notes'].published, false);
     assert.equal(bySlug['spring-open-house'].published, false);
     assert.equal(bySlug['first-dovetail'].published, true);
-    assert.match(page(site, '/journal/planer-notes/'), /class="preview-note"/);
+    assert.match(page(site, '/journal/planer-notes/'), /preview-banner-draft" role="note">Draft<\/p>/);
     assert.doesNotMatch(page(site, '/journal/first-dovetail/'), /preview-note/);
   });
 });
@@ -274,7 +274,7 @@ test('preview mode lists unpublished posts on the home page and marks them', asy
   await withExample({ drafts: true }, (site) => {
     const html = readFileSync(join(site, 'index.html'), 'utf8');
     assert.match(html, /<a href="\/journal\/planer-notes\/">/);
-    assert.match(html, /class="preview-note"/);
+    assert.match(html, /preview-banner-scheduled" role="note">Scheduled for May 1, 2099<\/p>/);
   });
 });
 

@@ -222,6 +222,9 @@ function readRules(root) {
  * @property {string} dir The site directory to serve.
  * @property {number} [port] Port to listen on; 0 picks a free one (default 8080).
  * @property {string} [host] Address to listen on (default `localhost`).
+ * @property {(request: import('node:http').IncomingMessage, response: import('node:http').ServerResponse, url: URL) => boolean | Promise<boolean>} [intercept] Called before a request is routed; returns true when it has answered the request itself (`coffer dev` serves its events and its error page this way).
+ * @property {(body: Buffer, contentType: string) => Buffer} [transform] Changes the content of every file the server sends (`coffer dev` injects the reload script into HTML this way).
+ * @property {Record<string, string>} [headers] Headers added to every answer.
  */
 
 /**
@@ -262,31 +265,48 @@ export function startServer(options) {
       response.writeHead(status, {
         'Content-Type': type,
         'Content-Length': String(buffer.length),
+        ...options.headers,
         ...headers,
       });
       response.end(method === 'HEAD' ? undefined : buffer);
     };
 
-    try {
+    /**
+     * @param {string} file
+     * @returns {Buffer}
+     */
+    const read = (file) => {
+      const content = readFileSync(file);
+      return options.transform ? options.transform(content, contentTypeFor(file)) : content;
+    };
+
+    const answer = async () => {
       const url = new URL(request.url ?? '/', 'http://localhost');
+      if (options.intercept && (await options.intercept(request, response, url))) return;
       const resolution = resolveRequest(root, readRules(root), url.pathname, url.search);
       if (resolution.kind === 'redirect') {
         send(resolution.status, 'text/plain; charset=utf-8', `${resolution.location}\n`, {
           Location: resolution.location,
         });
       } else if (resolution.kind === 'file') {
-        send(resolution.status, contentTypeFor(resolution.file), readFileSync(resolution.file));
+        send(resolution.status, contentTypeFor(resolution.file), read(resolution.file));
       } else {
         const notFound = join(root, '404.html');
         if (isFile(notFound)) {
-          send(404, contentTypeFor(notFound), readFileSync(notFound));
+          send(404, contentTypeFor(notFound), read(notFound));
         } else {
           send(404, 'text/plain; charset=utf-8', 'Not Found\n');
         }
       }
-    } catch (error) {
+    };
+
+    answer().catch((error) => {
+      if (response.headersSent) {
+        response.destroy();
+        return;
+      }
       send(500, 'text/plain; charset=utf-8', `${error instanceof Error ? error.message : error}\n`);
-    }
+    });
   });
 
   return new Promise((resolvePromise, reject) => {
