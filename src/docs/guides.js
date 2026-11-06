@@ -195,7 +195,7 @@ export function titleFromName(name) {
   return words.map((word) => word.charAt(0).toUpperCase() + word.slice(1)).join(' ') || stem;
 }
 
-const MARKDOWN_FILE = /\.(?:md|markdown)$/i;
+export const MARKDOWN_FILE = /\.(?:md|markdown)$/i;
 
 /**
  * Lists the files of a guide that its patterns select, as paths from the
@@ -264,7 +264,7 @@ function selectFiles(guideReal, guide, report, repo) {
  * @param {(issue: GuideIssue) => void} report
  * @returns {string | null} The text, or null when it cannot be used (reported).
  */
-function readGuideFile(root, rel, label, report) {
+export function readGuideFile(root, rel, label, report) {
   const found = resolveInside(root, rel);
   if (!found.ok) {
     report({
@@ -471,6 +471,7 @@ function hasAnchor(ids, fragment) {
  * @property {string} indexUrl Site-relative address of the docs index.
  * @property {ReadonlyMap<GuidePage, RenderedGuide>} rendered
  * @property {import('./symbols.js').SymbolIndex | null} [symbols] The symbols of the project's reference, which `ref:` links name; null (the default) when the project has none to link to.
+ * @property {readonly GuidePage[]} [sections] Texts that are shown on a page of the site that is not part of the guides (a section of the README on the project's page). Their links are resolved from the file they come from, like those of the guides, but no link leads to them. Their `slug` is not used.
  */
 
 /**
@@ -503,11 +504,11 @@ function hasAnchor(ids, fragment) {
  *
  * Images are not links here: the build resolves them with {@link locateGuideImage}.
  *
- * @param {readonly GuidePage[]} pages
+ * @param {readonly GuidePage[]} pages The published guides.
  * @param {GuideLinkOptions} options
  * @returns {GuideLinkResult}
  */
-export function resolveGuideLinks(pages, { root, repo, github, ref, urlOf, indexUrl, rendered, symbols = null }) {
+export function resolveGuideLinks(pages, { root, repo, github, ref, urlOf, indexUrl, rendered, symbols = null, sections = [] }) {
   /** @type {Map<string, GuidePage>} */
   const byRel = new Map(pages.map((page) => [page.rel, page]));
   const index = pages.find((page) => page.isIndex);
@@ -556,7 +557,7 @@ export function resolveGuideLinks(pages, { root, repo, github, ref, urlOf, index
     return true;
   };
 
-  for (const page of pages) {
+  for (const page of [...pages, ...sections]) {
     const found = rendered.get(page);
     if (!found) continue;
     /** @type {Map<string, string>} */

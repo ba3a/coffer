@@ -11,6 +11,7 @@ import { PROJECT_BLOCK_POSTS, newestFirst, projectsOfPost, unknownProjectMessage
 import { projectStyle } from './content/project-style.js';
 import { loadProjects, projectUrl, showcaseOf } from './content/projects.js';
 import { finishGuidePage, githubRefOf, githubUrl, locateGuideImage, planGuides, resolveGuideLinks } from './docs/guides.js';
+import { fillReadmeSections, readSection } from './docs/readme.js';
 import { SymbolIndexError, indexOfHtmlReference, indexOfView } from './docs/symbols.js';
 import { ReferenceFailure, backBarHtml, generateReference, publishReferenceFolder, viewOfReference } from './docs/reference.js';
 import { fetchDocsSources, manifestDocs } from './docs/sources.js';
@@ -1344,6 +1345,14 @@ async function buildSite(config, site, options, outRoot, version, report) {
    * @property {ManifestProjectFile[]} files The video and font files copied to the output for the project.
    * @property {PreparedPressKit | null} pressKit The press kit of a game that has one.
    * @property {import('./check/source-links.js').SourceFile} source The page as the link check sees it.
+   * @property {Map<number, PreparedReadmeSection>} readmes The sections of the project's repository that the page's `::readme` directives show, by the number of the directive; a directive whose section could not be read has no entry (the problem is reported).
+   */
+  /**
+   * A section of the README of a project, rendered for the project's page.
+   *
+   * @typedef {object} PreparedReadmeSection
+   * @property {string} html The section, links rewritten, no map placeholders.
+   * @property {number} carousels Number of carousels in it.
    */
   /**
    * A card picture, ready for a template's `<picture>`.
@@ -1429,13 +1438,14 @@ async function buildSite(config, site, options, outRoot, version, report) {
    * @param {import('./docs/sources.js').FetchedDocs} fetched
    * @param {ReturnType<typeof createResolver>} resolver
    * @param {PreparedReference | undefined} reference The generated reference of the project, if it has one.
+   * @param {readonly import('./markdown/directives/readme.js').ReadmeDirective[]} directives The `::readme` directives of the project's page; their sections are rendered with the guides' link rewriting and put into `sections`.
+   * @param {Map<number, PreparedReadmeSection>} sections Filled with the sections that could be read, by the number of the directive.
    * @returns {Promise<PreparedDocs | null>} Null when the project publishes no guide page and has no reference.
    */
-  const prepareDocs = async (project, projectPageUrl, fetched, resolver, reference) => {
+  const prepareDocs = async (project, projectPageUrl, fetched, resolver, reference, directives, sections) => {
     const plan = planGuides(fetched);
     for (const issue of plan.issues) report.addError({ site: site.id, ...issue });
     for (const warning of plan.warnings) warnings.push(warning);
-    if (plan.pages.length === 0 && !reference) return null;
     const indexUrl = `${projectPageUrl}${site.urls.docs}/`;
     /** @param {import('./docs/guides.js').GuidePage} page */
     const urlOf = (page) => (page.slug === '' ? indexUrl : `${indexUrl}${page.slug}/`);
@@ -1464,8 +1474,49 @@ async function buildSite(config, site, options, outRoot, version, report) {
         report.addError({ site: site.id, file: guide.label, line: error.line, column: error.column, message: markdownMessageOf(error) });
       }
     }
+    // The sections of the README that the project's page shows are texts of the repository too: they are rendered like guides and their links are resolved from their own file.
+    const pageFile = posix(relative(config.dir, project.pageFile));
+    /** @type {{ directive: import('./markdown/directives/readme.js').ReadmeDirective, page: import('./docs/guides.js').GuidePage }[]} */
+    const sectionPages = [];
+    for (const directive of directives) {
+      const read = readSection(fetched, directive);
+      if (!read.ok) {
+        report.addError({ site: site.id, file: pageFile, line: directive.line, column: directive.column, message: `::readme: ${read.message}` });
+        continue;
+      }
+      const { page } = read.found;
+      const sourceFile = join(fetched.root, ...page.rel.split('/'));
+      const images = pageImagesOf(sourceFile, null, resolver);
+      images.shown = page.label;
+      pageImages.set(`docs:${project.slug}:${page.rel}:readme:${directive.index}`, images);
+      const own = imageOptionsFor(sourceFile, projectPageUrl, images, {
+        shown: page.label,
+        locate: (src) => locateGuideImage(fetched.root, page.rel, src),
+      });
+      try {
+        renderedPages.set(
+          page,
+          await renderMarkdown(page.text, {
+            file: page.label,
+            startLine: read.found.line,
+            // The pictures of the section are plain pictures: the viewer of the page lists the images of the page's own text, and the project page's first picture is not among these.
+            images: { ...own, leadingImage: true, resolve: async (request) => {
+                const image = await own.resolve(request);
+                return image === null ? null : { ...image, viewer: undefined };
+              },
+            },
+            carousel: carouselLabels,
+          }),
+        );
+        sectionPages.push({ directive, page });
+      } catch (error) {
+        if (!(error instanceof MarkdownError)) throw error;
+        report.addError({ site: site.id, file: page.label, line: error.line, column: error.column, message: markdownMessageOf(error) });
+      }
+    }
     const ref = githubRefOf(fetched);
     const links = resolveGuideLinks(plan.pages, {
+      sections: sectionPages.map((entry) => entry.page),
       root: fetched.root,
       repo: plan.repo,
       github: fetched.github,
@@ -1476,6 +1527,23 @@ async function buildSite(config, site, options, outRoot, version, report) {
       symbols: reference?.symbols ?? null,
     });
     for (const issue of links.issues) report.addError({ site: site.id, ...issue });
+    for (const { directive, page } of sectionPages) {
+      const rendered = /** @type {RenderedPost} */ (renderedPages.get(page));
+      for (const map of rendered.maps) {
+        warnings.push(`${page.label}:${map.line ?? 1}: the ::map directive is only for posts and is left out`);
+      }
+      const finished = finishGuidePage({
+        page,
+        html: rendered.html,
+        rewrites: links.rewrites.get(page),
+        refused: links.refused.get(page),
+        indexTitle: '',
+        symbols: reference?.symbols ?? null,
+        autoLink: reference?.autoLink ?? true,
+      });
+      for (const issue of finished.issues) report.addError({ site: site.id, ...issue });
+      sections.set(directive.index, { html: finished.html, carousels: rendered.carousels });
+    }
     /** @type {PreparedDocsPage[]} */
     const pagesOut = [];
     for (const guide of plan.pages) {
@@ -1607,6 +1675,8 @@ async function buildSite(config, site, options, outRoot, version, report) {
         // A game page starts with its logo or key art, which is the eager image; the pictures of the text then are all lazy.
         images: { ...imageOptionsFor(project.pageFile, url, page), leadingImage: Boolean(project.fields.logo || project.fields.keyArt) },
         carousel: carouselLabels,
+        // Only the page of a project with a docs source can show a section of its README.
+        readme: docsFetched.has(project.slug),
       });
       const makePicture = (/** @type {string} */ field, /** @type {string} */ file, /** @type {string} */ alt) =>
         makeProjectPicture(project, field, file, alt, url, page);
@@ -1615,6 +1685,8 @@ async function buildSite(config, site, options, outRoot, version, report) {
       const media = {};
       /** @type {ManifestProjectFile[]} */
       const files = [];
+      /** @type {Map<number, PreparedReadmeSection>} */
+      const readmes = new Map();
       const kind = /** @type {import('./content/project-kinds.js').ProjectKind} */ (getProjectKind(project.kind));
       for (const [field, spec] of Object.entries(kind.fields)) {
         const value = project.fields[field];
@@ -1647,10 +1719,11 @@ async function buildSite(config, site, options, outRoot, version, report) {
         files,
         pressKit,
         source: { slug: project.slug, kind: 'folder', file: project.pageFile, dir: project.dir, draft: false },
+        readmes,
       });
       const fetchedDocs = docsFetched.get(project.slug);
       if (fetchedDocs) {
-        const prepared = await prepareDocs(project, url, fetchedDocs, projectResolver, referencePrepared.get(project.slug));
+        const prepared = await prepareDocs(project, url, fetchedDocs, projectResolver, referencePrepared.get(project.slug), rendered.readmes, readmes);
         if (prepared) docsPrepared.set(project.slug, prepared);
       }
     }
@@ -1689,6 +1762,14 @@ async function buildSite(config, site, options, outRoot, version, report) {
   }
   for (const entry of preparedProjects) {
     entry.rendered = { ...entry.rendered, html: applyLinkRewrites(entry.rendered.html, linkCheck.rewrites.get(entry.source)) };
+    if (entry.rendered.readmes.length > 0) {
+      // The sections come after the link rewrites of the page: their links were resolved from the file they come from.
+      entry.rendered = {
+        ...entry.rendered,
+        html: fillReadmeSections(entry.rendered.html, new Map([...entry.readmes].map(([index, section]) => [index, section.html]))),
+        carousels: entry.rendered.carousels + [...entry.readmes.values()].reduce((sum, section) => sum + section.carousels, 0),
+      };
+    }
     for (const description of [entry.pressKit?.shortDescription, entry.pressKit?.longDescription]) {
       if (description) description.html = applyLinkRewrites(description.html, linkCheck.rewrites.get(description.source));
     }

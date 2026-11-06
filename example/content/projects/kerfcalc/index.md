@@ -4,9 +4,7 @@ list fit on the board I have.
 
 ## Quick start
 
-```sh
-kerfcalc waste --board 2400 --kerf 2.4 --pieces 600,450,450,300
-```
+::readme{section="Quick start"}
 
 ## Why
 

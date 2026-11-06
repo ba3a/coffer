@@ -61,6 +61,22 @@ A relative image is read from the repository (through the same containment as ev
 
 `docs.njk` extends `base.njk`, so the header, footer, theme switch and styles are the site's. It writes: breadcrumbs (projects, the project, the documentation, the page); a `<nav>` with the label "{project}: documentation pages" listing the pages in order with the current one marked `aria-current="page"`; the page; previous and next links; and, when the `github` repository is known, a link "View this page on GitHub" to the file. On a narrow screen (360 px) the sidebar is above the text; from 60 rem it is beside it and stays in view. No script is needed and nothing is animated. Each part is a block (`docs_breadcrumbs`, `docs_sidebar`, `docs_header`, `toc`, `docs_body`, `docs_pager`, `docs_source`); a theme can replace one (`{% extends "coffer:docs.njk" %}`). The template receives `project`, `projectsUrl`, `toc` and `docs` (`isIndex`, `generated`, `indexUrl`, `url`, `titleId`, `sidebar` (`{ title, url, current }`), `previous`, `next` and `sourceUrl`).
 
+### README sections on the project page
+
+The page of a project that has a `docs` source can show a section of the README of the project's repository, so that the marketing page reuses the quick start without copying it:
+
+```markdown
+## Quick start
+
+::readme{section="Quick start"}
+```
+
+`section` is the text of a heading of the README (white space and capitals do not matter; the first heading that matches is used). The directive inserts what is below that heading, up to the next heading of the same or a higher level, so sub sections come with it; the heading itself does not, because the page writes its own. `file` takes the section from another Markdown file of the repository, as in `::readme{file="docs/install.md" section="Linux"}`; without it the README in the top folder of the source is used (`README.md`, else any file called `readme.md` or `readme.markdown`).
+
+The section is rendered like a guide: relative links are read from the folder of the file, a link to a published guide becomes the address of its page, a link to another file of the repository becomes its address on GitHub, `ref:` links and inline code that names a symbol of the reference are linked, and a broken link fails the build, naming the README (`lathe:README.md:12`). Pictures next to the README are published through the image pipeline under the page's [metadata policy](location-policy.md); they are shown as plain pictures, not in the image viewer of the page. The insertion is wrapped in `<div class="readme-section">`.
+
+An unknown file or heading, a section with no content, a `::readme` without `section` and a `::readme` on a page whose project has no `docs` source fail the build with the path of the project's `index.md` and the line of the directive. The directive is not available in posts, guides, the home page or press kit descriptions.
+
 ### The link to the documentation
 
 The tool page and the project block of a post link to `/{projects}/{slug}/{docs}/` if and only if the build rendered documentation pages for the project. With `guides` empty and no `reference` the docs section is empty and the link is hidden. A `docs` block with a [reference](#the-reference) only has a docs index that the build writes (it lists the reference), so the link is there.

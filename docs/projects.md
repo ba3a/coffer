@@ -61,7 +61,7 @@ The slug is not a field; a `slug:` key fails the build. Any key that neither the
 
 ### `index.md`
 
-The text of the project's page, in ordinary [Markdown](markdown.md) without front matter (a file that starts with `---` fails the build: the fields are in `project.yaml`). Images beside the file, carousels, code blocks and the image viewer work as in a post, and links are checked as in a post (see [Links, images and the build report](links.md)). Images are published under the site's [metadata policy](location-policy.md), exactly as in a post. A project page has no tracks and no located photos of its own, so a `::map` there is left out and the build warns.
+The text of the project's page, in ordinary [Markdown](markdown.md) without front matter (a file that starts with `---` fails the build: the fields are in `project.yaml`). Images beside the file, carousels, code blocks and the image viewer work as in a post, and links are checked as in a post (see [Links, images and the build report](links.md)). Images are published under the site's [metadata policy](location-policy.md), exactly as in a post. A project page has no tracks and no located photos of its own, so a `::map` there is left out and the build warns. A tool with a `docs` source can show a section of its README with `::readme{section="..."}` (see [README sections on the project page](project-docs.md#readme-sections-on-the-project-page)).
 
 ## Order and the showcase
 

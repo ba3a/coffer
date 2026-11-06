@@ -10,6 +10,7 @@ import { visit, SKIP } from 'unist-util-visit';
 import { bundledLanguages, createHighlighter } from 'shiki';
 import { CarouselSyntaxError, remarkCarousels } from './directives/carousel.js';
 import { MapSyntaxError, remarkMaps } from './directives/map.js';
+import { ReadmeSyntaxError, remarkReadmes } from './directives/readme.js';
 
 /** Number of h2/h3 headings from which a post gets a table of contents. */
 export const DEFAULT_TOC_MIN_HEADINGS = 4;
@@ -32,6 +33,7 @@ export const DEFAULT_CODE_THEMES = Object.freeze({
  * @property {{ light: string, dark: string }} [codeThemes] Shiki theme names for the light and the dark scheme.
  * @property {ImageOptions} [images] Turns images into responsive figures; without it an image stays a plain `<img>`.
  * @property {Partial<CarouselLabels>} [carousel] The words the carousels need, in the language of the site (English when left out).
+ * @property {boolean} [readme] Whether the text may hold `::readme` directives (default false: one is then an error). Only the page of a project with a docs source can show a section of the project's README.
  */
 
 /**
@@ -150,6 +152,7 @@ export const DEFAULT_CAROUSEL_LABELS = Object.freeze({
  * @property {ViewerImage[]} viewerImages The images the viewer opens, in document order: every image that has a full-size file and is not already a link to something else. Each one is wrapped in a link with `data-viewer` set to its index in this list. Empty without an image resolver.
  * @property {string[]} viewerSources The address of each image of `viewerImages` as written in the text, in the same order.
  * @property {import('./directives/map.js').MapDirective[]} maps The `::map` directives of the text, in document order. Each one is an empty `<div data-coffer-map="n"></div>` in `html`, n being its `index`, for the caller to fill in.
+ * @property {import('./directives/readme.js').ReadmeDirective[]} readmes The `::readme` directives of the text, in document order. Each one is an empty `<div data-coffer-readme="n"></div>` in `html`, n being its `index`, for the caller to fill in.
  * @property {FoundLink[]} links Every Markdown link and image written in the text (links the renderer makes up, such as footnote back references, are left out).
  * @property {string[]} ids Every `id` a link can point at: heading ids, ids of other elements and ids and names set by raw HTML, without duplicates.
  */
@@ -306,7 +309,33 @@ function maps({ file, lineOffset, onFound }) {
 }
 
 /**
- * Remark plugin: apart from the ones that are defined (see `carousels` and `maps`),
+ * Remark plugin: the `::readme` leaf directive, with its mistakes reported as
+ * errors that name the file and the line.
+ *
+ * @param {{ file?: string, lineOffset: number, enabled: boolean, onFound: (readmes: import('./directives/readme.js').ReadmeDirective[]) => void }} options
+ * @returns {(tree: import('mdast').Root) => void}
+ */
+function readmes({ file, lineOffset, enabled, onFound }) {
+  const transform = remarkReadmes({
+    enabled,
+    onFound: (found) => onFound(found.map((entry) => ({ ...entry, line: entry.line === undefined ? undefined : entry.line + lineOffset }))),
+  });
+  return (tree) => {
+    try {
+      transform(tree);
+    } catch (error) {
+      if (!(error instanceof ReadmeSyntaxError)) throw error;
+      throw new MarkdownError(error.message, {
+        file,
+        line: error.line === undefined ? undefined : error.line + lineOffset,
+        column: error.column,
+      });
+    }
+  };
+}
+
+/**
+ * Remark plugin: apart from the ones that are defined (see `carousels`, `maps` and `readmes`),
  * directives are reserved syntax, so each one is an error that names the file
  * and the line.
  *
@@ -694,6 +723,8 @@ export async function renderMarkdown(source, options = {}) {
   let viewerSources = [];
   /** @type {import('./directives/map.js').MapDirective[]} */
   let mapDirectives = [];
+  /** @type {import('./directives/readme.js').ReadmeDirective[]} */
+  let readmeDirectives = [];
 
   const processor = unified()
     .use(remarkParse)
@@ -706,6 +737,14 @@ export async function renderMarkdown(source, options = {}) {
       lineOffset,
       onFound: (found) => {
         mapDirectives = found;
+      },
+    })
+    .use(readmes, {
+      file: options.file,
+      lineOffset,
+      enabled: options.readme === true,
+      onFound: (found) => {
+        readmeDirectives = found;
       },
     })
     .use(rejectDirectives, { file: options.file, lineOffset })
@@ -743,6 +782,7 @@ export async function renderMarkdown(source, options = {}) {
     viewerImages,
     viewerSources,
     maps: mapDirectives,
+    readmes: readmeDirectives,
     links: collected.links,
     ids: [...collected.ids],
   };
