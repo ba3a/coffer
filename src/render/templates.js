@@ -17,6 +17,7 @@ export const ENGINE_PREFIX = 'coffer:';
  * @property {string} [timezone] IANA time zone in which the `date` filter shows moments (default `UTC`).
  * @property {string} [engineTemplatesDir] Directory of the engine's templates (defaults to the one shipped with coffer).
  * @property {string} [engineI18nDir] Directory of the engine's UI strings (defaults to the one shipped with coffer).
+ * @property {import('../config.js').AnalyticsConfig | null} [analytics] The analytics snippet to render in the `analytics` block of `base.njk`; leave it out (or pass `null` or `{ provider: 'none' }`) for a page without one, as in a preview build.
  * @property {boolean} [noCache] Re-read templates from disk on every render (for live preview).
  * @property {(message: string) => void} [onMissing] Receives each missing UI string once, when it is first needed.
  */
@@ -123,6 +124,8 @@ export class TemplateEngine {
     const translator = this.translator;
     this.env.addGlobal('lang', options.lang);
     this.env.addGlobal('basePath', basePath);
+    const analytics = options.analytics;
+    this.env.addGlobal('analytics', analytics && analytics.provider !== 'none' ? analytics : null);
     this.env.addFilter('t', (/** @type {unknown} */ key, /** @type {Record<string, unknown> | undefined} */ params) => {
       if (typeof key !== 'string') {
         throw new TypeError(`the "t" filter needs a string key, got ${String(key)}`);

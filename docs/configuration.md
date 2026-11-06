@@ -74,6 +74,7 @@ Unknown keys are errors everywhere in the file, so a misspelled key never passes
 | `location`       | no       | see below    | Image metadata policy.                                                                                                                                       |
 | `tracks`         | no       | see below    | How GPX tracks are simplified and summarized (see [Maps and GPX tracks](maps.md)).                                                                           |
 | `map`            | no       | OpenStreetMap | The tile server of the maps of posts (see [Maps and GPX tracks](maps.md#the-map)).                                                                          |
+| `analytics`      | no       | none         | An optional analytics snippet, a third-party script in production builds only (see [Analytics](analytics.md)). |
 | `projects`       | no       | none         | Where the site's projects live. Without it the site has no projects.                                                                                         |
 
 ## `author` and `feeds`
@@ -188,6 +189,20 @@ map:
 | `tileUrl`     | `https://tile.openstreetmap.org/{z}/{x}/{y}.png` | An `http(s)` address with `{z}`, `{x}` and `{y}` for the zoom level and the tile (`{s}` and `{r}` work as in Leaflet). It must not need a key. |
 | `attribution` | the credit of OpenStreetMap                      | The credit of the tile provider, shown in the corner of every map; may contain links. Required when `tileUrl` is set, because the default credit belongs to the default server. |
 | `maxZoom`     | `19`                                             | The deepest zoom level of the tile server, an integer from 1 to 24. |
+
+## `analytics`
+
+```yaml
+analytics: { provider: cloudflare, token: "0123456789abcdef0123456789abcdef" }
+```
+
+| Key        | Required                     | Description |
+| ---------- | ---------------------------- | ----------- |
+| `provider` | no (default `none`)          | `none`, `cloudflare` or `custom`. |
+| `token`    | with `cloudflare`, only then | The token of the site in Cloudflare Web Analytics: 8 to 64 letters and digits. Write it in quotes. |
+| `html`     | with `custom`, only then     | The snippet, as HTML. |
+
+A setting that does not fit its provider (no token for `cloudflare`, no `html` for `custom`, a `token` or `html` for another provider, an unknown provider) is a configuration error. See [Analytics](analytics.md).
 
 ## `projects`
 

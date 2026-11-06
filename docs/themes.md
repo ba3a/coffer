@@ -60,6 +60,7 @@ Templates in the engine refer to each other by plain names (`{% extends "base.nj
 | `main`   | the page itself (inside `<main id="main">`)                           |
 | `footer` | the content license and the credit line (inside `<footer>`)           |
 | `scripts`| scripts at the end of `<body>`; by default one `<script defer>` for each address in the page's `scripts` list, which holds the carousel script on pages with a carousel (see [Carousels](carousels.md)) and the scripts of the image viewer on pages with images (see [The image viewer](viewer.md)); before them, a `<script type="application/json" id="coffer-viewer">` element with the list of images when the page's `viewerData` is not empty |
+| `analytics` | the analytics snippet, after `scripts`: `partials/analytics.njk`, empty unless the site configures analytics and the build is not a preview (see [Analytics](analytics.md)) |
 
 Besides the base templates, the theme layer has these for projects (see [Projects](projects.md#templates)): `project-index.njk`, `project.njk`, `project-tool.njk`, `project-game.njk`, `project-card.njk` and `project-picture.njk`.
 

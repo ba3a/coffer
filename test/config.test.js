@@ -221,6 +221,7 @@ test('defaults are applied to a minimal site', () => {
       attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
       maxZoom: 19,
     },
+    analytics: { provider: 'none' },
     projects: null,
   });
 });
@@ -707,6 +708,9 @@ test('docs/configuration.md documents every configuration key', () => {
     'webpQuality',
     'jpegQuality',
     'sizes',
+    'analytics',
+    'provider',
+    'token',
   ];
   for (const key of keys) {
     assert.ok(page.includes(`\`${key}\``), `configuration.md misses \`${key}\``);

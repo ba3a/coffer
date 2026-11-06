@@ -560,6 +560,9 @@ async function buildSite(config, site, options, outRoot, version, report) {
     theme: site.theme,
     baseUrl: site.baseUrl,
     timezone: site.timezone,
+    // The snippet is for the published site only; a preview build (`coffer dev`,
+    // `--drafts`) must not count the author's own visits.
+    analytics: drafts ? null : site.analytics,
     onMissing: (message) => warnings.push(message),
   });
 

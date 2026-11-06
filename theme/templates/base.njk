@@ -126,5 +126,8 @@
 <script src="{{ src | url }}" defer></script>
 {% endfor %}
 {% endblock %}
+{% block analytics %}
+{% include "partials/analytics.njk" %}
+{% endblock %}
 </body>
 </html>

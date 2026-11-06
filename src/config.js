@@ -112,6 +112,13 @@ export const CONFIG_FILE_NAME = 'coffer.yaml';
  */
 
 /**
+ * The analytics snippet of a site: nothing, the Cloudflare Web Analytics
+ * beacon, or a snippet of the site author's own.
+ *
+ * @typedef {{ provider: 'none' } | { provider: 'cloudflare', token: string } | { provider: 'custom', html: string }} AnalyticsConfig
+ */
+
+/**
  * A site as configured, with defaults applied and paths made absolute.
  *
  * @typedef {object} SiteConfig
@@ -134,6 +141,7 @@ export const CONFIG_FILE_NAME = 'coffer.yaml';
  * @property {ImagesConfig} images How published images are made.
  * @property {TracksConfig} tracks How GPX tracks are simplified and summarized.
  * @property {MapConfig} map The tiles of the maps of posts.
+ * @property {AnalyticsConfig} analytics The optional analytics snippet; `{ provider: 'none' }` when the site has none.
  * @property {ProjectsConfig | null} projects Projects location, or null when the site has no projects.
  */
 
@@ -221,8 +229,17 @@ const SITE_KEYS = [
   'images',
   'tracks',
   'map',
+  'analytics',
   'projects',
 ];
+/** The values of `analytics.provider`. */
+export const ANALYTICS_PROVIDERS = Object.freeze(['none', 'cloudflare', 'custom']);
+/**
+ * What a Cloudflare Web Analytics token looks like: letters and digits only
+ * (Cloudflare issues 32 hexadecimal characters). Anything else could break
+ * out of the attribute the token is written into.
+ */
+const ANALYTICS_TOKEN_RE = /^[A-Za-z0-9]{8,64}$/;
 const ID_RE = /^[a-z0-9][a-z0-9._-]*$/i;
 const SEGMENT_RE = /^[a-z0-9][a-z0-9._-]*$/i;
 
@@ -883,6 +900,50 @@ function normalizeFeeds(raw, path, problems) {
 }
 
 /**
+ * @param {Record<string, unknown> | undefined} raw
+ * @param {string} path
+ * @param {Problems} problems
+ * @returns {AnalyticsConfig}
+ */
+function normalizeAnalytics(raw, path, problems) {
+  /** @type {AnalyticsConfig} */
+  const none = { provider: 'none' };
+  if (raw === undefined) return none;
+  rejectUnknownKeys(raw, ['provider', 'token', 'html'], path, problems);
+  const provider = readString(raw, 'provider', path, problems, { fallback: 'none' });
+  if (provider === undefined) return none;
+  if (!ANALYTICS_PROVIDERS.includes(provider)) {
+    problems.add(`${path}.provider`, `must be one of: ${ANALYTICS_PROVIDERS.join(', ')}`);
+    return none;
+  }
+  const given = (/** @type {string} */ key) => raw[key] !== undefined && raw[key] !== null;
+  const token = readString(raw, 'token', path, problems);
+  const html = readString(raw, 'html', path, problems);
+  if (given('token') && provider !== 'cloudflare') {
+    problems.add(`${path}.token`, 'only has an effect with "provider: cloudflare"');
+  }
+  if (given('html') && provider !== 'custom') {
+    problems.add(`${path}.html`, 'only has an effect with "provider: custom"');
+  }
+  if (provider === 'cloudflare') {
+    if (!given('token')) {
+      problems.add(`${path}.token`, 'is required with "provider: cloudflare"');
+    } else if (token !== undefined) {
+      if (ANALYTICS_TOKEN_RE.test(token)) return { provider: 'cloudflare', token };
+      problems.add(`${path}.token`, 'must be the 8 to 64 letters and digits of the Cloudflare Web Analytics token, nothing else');
+    }
+  }
+  if (provider === 'custom') {
+    if (!given('html')) {
+      problems.add(`${path}.html`, 'is required with "provider: custom"');
+    } else if (html !== undefined) {
+      return { provider: 'custom', html };
+    }
+  }
+  return none;
+}
+
+/**
  * @param {unknown} raw
  * @param {number} index
  * @param {string} baseDir
@@ -1002,6 +1063,11 @@ function normalizeSite(raw, index, baseDir, problems) {
     problems,
   );
   const map = normalizeMap(readMapping(raw, 'map', path, problems), `${path}.map`, problems);
+  const analytics = normalizeAnalytics(
+    readMapping(raw, 'analytics', path, problems),
+    `${path}.analytics`,
+    problems,
+  );
 
   /** @type {ProjectsConfig | null} */
   let projects = null;
@@ -1086,6 +1152,7 @@ function normalizeSite(raw, index, baseDir, problems) {
     images,
     tracks,
     map,
+    analytics,
     projects,
   };
 }

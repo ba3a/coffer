@@ -1,0 +1,6 @@
+{#- The analytics snippet of a production build. `analytics` is a global of the template engine: absent in a preview build (`coffer dev`, `--drafts`) and for a site without analytics, otherwise `{ provider: 'cloudflare', token }` or `{ provider: 'custom', html }`. The Cloudflare token is public by design (it is visible in the page source) and was checked to hold letters and digits only; `html` is the site author's own snippet and is written as it is, unescaped. A theme replaces this partial, or the `analytics` block of base.njk, to change the markup. -#}
+{% if analytics and analytics.provider == 'cloudflare' %}
+<script defer src="https://static.cloudflareinsights.com/beacon.min.js" data-cf-beacon='{"token": "{{ analytics.token }}"}'></script>
+{% elif analytics and analytics.provider == 'custom' %}
+{{ analytics.html | safe }}
+{% endif %}
