@@ -10,6 +10,7 @@ import { FONT_FILE_FORMATS, getProjectKind } from './content/project-kinds.js';
 import { PROJECT_BLOCK_POSTS, newestFirst, projectsOfPost, unknownProjectMessage } from './content/project-posts.js';
 import { projectStyle } from './content/project-style.js';
 import { loadProjects, projectUrl, showcaseOf } from './content/projects.js';
+import { fetchDocsSources, manifestDocs } from './docs/sources.js';
 import {
   FEED_FILE_NAME,
   absoluteUrl,
@@ -60,6 +61,9 @@ import { VIEWER_SCRIPTS, VIEWER_STYLES, viewerJson } from './viewer.js';
 /** Directory holding the static assets of the default theme. */
 export const ENGINE_ASSETS_DIR = fileURLToPath(new URL('../theme/assets/', import.meta.url));
 
+/** Folder of the cache that holds the checkouts of documentation sources, `{cache}/repos/{slug}`. */
+export const DOCS_REPOS_CACHE_DIR = 'repos';
+
 /** Output root used when none is given. */
 export const DEFAULT_OUT_DIR = 'dist';
 
@@ -106,6 +110,8 @@ export class BuildError extends Error {
  * @property {string} [cwd] Directory that a relative `out` resolves against (default the working directory).
  * @property {string[]} [siteIds] Build only these sites (default all).
  * @property {string} [cacheDir] Directory for work that is worth keeping between builds, such as title cards (default `.cache` beside the configuration file; an absolute path, or relative to the working directory).
+ * @property {{ timeoutMs?: number, exec?: import('./docs/sources.js').FetchOptions['exec'], env?: Record<string, string | undefined> }} [docsFetch] How the documentation sources of tool projects are fetched: the time one git call can take, a replacement for running git, and the environment git's is made from. Used by tests.
+ * @property {ReadonlyMap<string, readonly string[]>} [docsPages] The published documentation pages of projects, by project slug (page paths under the docs address). A project's page links its documentation only when it has at least one; until the pages are built by the build itself, this is the only way to have one.
  * @property {string} [reportDir] Directory that receives `report.json`, the errors, warnings and notes of the build (default `.coffer` beside the configuration file; an absolute path, or relative to the working directory). It is never inside the output.
  */
 
@@ -276,6 +282,7 @@ export class BuildError extends Error {
  * @property {string | null} feed Site-relative URL of the project's feed; null when the site has no blog.
  * @property {string} card Path of the card picture, relative to the configuration file.
  * @property {ManifestProjectFile[]} files The files copied unchanged to the output for the project, such as a trailer video or a font; empty when it has none. Pictures are listed under `images`.
+ * @property {import('./docs/sources.js').ManifestDocs | null} docs Where the documentation of a tool comes from: the source (for a git repository the address without credentials, the ref and the commit that was built; for a folder its path and the commit of the repository it is in), the GitHub repository and the guides. Null when the project has no `docs`.
  * @property {ManifestDownload[]} downloads The full-resolution logos and screenshots of the project's press kit; empty when it has none. `coffer check` reads each one back against its policy.
  */
 
@@ -1305,9 +1312,19 @@ async function buildSite(config, site, options, outRoot, version, report) {
    */
   /** @type {PreparedProject[]} */
   const preparedProjects = [];
+  /** @type {Map<string, import('./docs/sources.js').FetchedDocs>} */
+  let docsFetched = new Map();
   if (site.projects) {
     const projectResolver = createResolver(new Map(), null);
-    for (const project of loadProjects(site.projects.dir)) {
+    const loadedProjects = loadProjects(site.projects.dir);
+    // The documentation sources are fetched before anything is rendered, and a source that cannot be fetched fails the build: there is no fallback to empty documentation.
+    docsFetched = await fetchDocsSources(
+      loadedProjects.flatMap((project) =>
+        project.fields.docs ? [{ slug: project.slug, docs: /** @type {import('./docs/sources.js').DocsConfig} */ (project.fields.docs) }] : [],
+      ),
+      { cacheDir: join(cacheRoot, DOCS_REPOS_CACHE_DIR), ...options.docsFetch },
+    );
+    for (const project of loadedProjects) {
       const url = projectUrl(site.urls.projects, project.slug);
       const page = pageImagesOf(project.pageFile, null, projectResolver);
       pageImages.set(project.pageFile, page);
@@ -1525,7 +1542,8 @@ async function buildSite(config, site, options, outRoot, version, report) {
       license: project.license,
       tag: project.tag,
       fields: project.fields,
-      docsUrl: project.fields.docs ? `${url}${site.urls.docs}/` : null,
+      // The link is written only when the pages exist, so that it never leads to a page that is not built.
+      docsUrl: project.fields.docs && (options.docsPages?.get(project.slug)?.length ?? 0) > 0 ? `${url}${site.urls.docs}/` : null,
       storeLinks: storeLinksOf(project),
       picture,
       media,
@@ -2113,6 +2131,7 @@ async function buildSite(config, site, options, outRoot, version, report) {
         feed: view.feed ? view.feed.url : null,
         card: posix(relative(config.dir, project.card)),
         files,
+        docs: docsFetched.has(project.slug) ? manifestDocs(/** @type {import('./docs/sources.js').FetchedDocs} */ (docsFetched.get(project.slug)), config.dir) : null,
         downloads: entry.pressKit?.downloads ?? [],
       });
     }

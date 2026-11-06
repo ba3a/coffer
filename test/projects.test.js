@@ -52,6 +52,9 @@ function toolYaml(extra = {}) {
     .join('\n');
 }
 
+/** A `docs` block that is valid wherever it is used: the project's own folder as the source. */
+const DOCS = { source: { path: '.' } };
+
 /**
  * The files of one project.
  *
@@ -96,7 +99,7 @@ async function inSite(files, body) {
 
 /**
  * @param {string} root
- * @param {{ drafts?: boolean }} [options]
+ * @param {Partial<import('../src/build.js').BuildOptions>} [options]
  */
 function build(root, options = {}) {
   return buildSites(loadConfig({ configPath: join(root, 'coffer.yaml') }), {
@@ -701,11 +704,14 @@ test('a tool page shows the hero, the text, and a facts box with repository and 
   );
 });
 
-test('a tool page links its docs when docs is configured, and shows no docs link otherwise', async () => {
+test('a tool page links its docs once its docs pages exist, and shows no docs link otherwise', async () => {
   await inSite(
-    { ...project('lathe', toolYaml({ docs: { pages: ['intro.md'] } })), ...project('plane', toolYaml({ name: 'Plane' })) },
+    { ...project('lathe', toolYaml({ docs: DOCS })), ...project('plane', toolYaml({ name: 'Plane' })) },
     async (root) => {
+      // Docs configured but no pages published yet: no link, so that the link never leads nowhere.
       await build(root);
+      assert.doesNotMatch(pageHtml(root, '/made/lathe/'), /Documentation|project-fact-docs/);
+      await build(root, { docsPages: new Map([['lathe', ['index.html']]]) });
       const configured = facts(pageHtml(root, '/made/lathe/'));
       assert.match(configured, /<dt>Documentation<\/dt>\s*<dd><a href="\/made\/lathe\/docs\/">Read the documentation<\/a><\/dd>/);
       const without = facts(pageHtml(root, '/made/plane/'));
@@ -719,11 +725,11 @@ test('a tool page links its docs when docs is configured, and shows no docs link
 test('the docs link follows urls.projects and urls.docs', async () => {
   await inSite(
     {
-      ...project('lathe', toolYaml({ docs: { pages: ['intro.md'] } })),
+      ...project('lathe', toolYaml({ docs: DOCS })),
       'coffer.yaml': CONFIG.replace('    projects:', '    urls: { projects: built, docs: manual }\n    projects:'),
     },
     async (root) => {
-      await build(root);
+      await build(root, { docsPages: new Map([['lathe', ['index.html']]]) });
       assert.match(facts(pageHtml(root, '/built/lathe/')), /<a href="\/built\/lathe\/manual\/">/);
     },
   );

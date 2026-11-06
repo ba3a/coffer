@@ -339,7 +339,7 @@ test('the example projects page lists both projects and the project pages resolv
     assert.match(tool, /<p class="project-pitch">A small command-line calculator for saw kerf/);
     assert.match(tool, /<a href="https:\/\/github\.example\/tove-marlowe\/kerfcalc" rel="noopener">github\.example\/tove-marlowe\/kerfcalc<\/a>/);
     assert.match(tool, /<div class="project-body">\s*<p>Kerfcalc answers the questions/);
-    // The example tool configures no docs, so there is no docs link and no empty section.
+    // The example tool configures docs (read in place from the sample-tool fixture), but its pages are not built yet, so there is no docs link and no empty section.
     assert.doesNotMatch(tool, /project-fact-docs|\/made\/kerfcalc\/docs\//);
     // The example game has no store link, so it asks readers to follow the devlog (its project feed); it has no repository link.
     const game = page(site, '/made/tenon-tumble/');

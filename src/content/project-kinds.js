@@ -1,6 +1,7 @@
 import { readFileSync, realpathSync, statSync } from 'node:fs';
 import { extname, isAbsolute, relative, resolve, sep } from 'node:path';
 
+import { checkDocsConfig } from '../docs/sources.js';
 import { IMAGE_EXTENSIONS } from '../images/defaults.js';
 import { inspectSvg } from '../images/svg.js';
 
@@ -516,6 +517,11 @@ export const FIELD_TYPES = Object.freeze({
     empty: () => null,
     check: checkPressKit,
   },
+  docs: {
+    describe: 'a mapping with the source of the documentation (a git repository or a folder), the guides to publish and, later, a reference',
+    empty: () => null,
+    check: checkDocsConfig,
+  },
   mapping: {
     describe: 'a mapping',
     empty: () => null,
@@ -655,7 +661,7 @@ registerProjectKind({
   template: 'project-tool.njk',
   fields: {
     repo: { type: 'url', required: true },
-    docs: { type: 'mapping' },
+    docs: { type: 'docs' },
   },
 });
 

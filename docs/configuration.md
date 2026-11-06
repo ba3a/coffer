@@ -112,7 +112,7 @@ Prefixes of generated sections. All four are optional.
 | Key        | Default   | Description                                                      |
 | ---------- | --------- | ---------------------------------------------------------------- |
 | `projects` | `made`    | Prefix of the projects index and the project pages.              |
-| `docs`     | `docs`    | Segment under a project page that holds the project's docs.      |
+| `docs`     | `docs`    | Segment under a project page that holds the project's docs (see [docs sources](docs-sources.md)). |
 | `tags`     | `tags`    | Segment under a blog that holds the tag pages (see [Tags](tags.md)). |
 | `series`   | `series`  | Segment under a blog that holds the series pages.                |
 

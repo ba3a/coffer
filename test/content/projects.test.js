@@ -87,15 +87,15 @@ test('a tool has the common fields, the tool fields and defaults for the rest', 
 
 test('featured, order, tag, license and the kind fields are read', () => {
   parse(
-    `${TOOL}featured: true\norder: 3\ntag: Projects/Lathe\nlicense: MIT\ncardAlt: " A lathe "\ndocs:\n  path: ../docs\n`,
-    (project, errors) => {
+    `${TOOL}featured: true\norder: 3\ntag: Projects/Lathe\nlicense: MIT\ncardAlt: " A lathe "\ndocs:\n  source:\n    path: .\n`,
+    (project, errors, _file, dir) => {
       assert.deepEqual(errors, []);
       assert.equal(project?.featured, true);
       assert.equal(project?.order, 3);
       assert.equal(project?.tag, 'projects/lathe');
       assert.equal(project?.license, 'MIT');
       assert.equal(project?.cardAlt, 'A lathe');
-      assert.deepEqual(project?.fields.docs, { path: '../docs' });
+      assert.deepEqual(project?.fields.docs, { source: { path: '.', dir: dir }, github: null, guides: [], reference: null });
     },
   );
 });

@@ -1,13 +1,14 @@
 import { existsSync, statSync } from 'node:fs';
-import { resolve } from 'node:path';
+import { join, resolve } from 'node:path';
 
-import { BuildError, buildSites, DEFAULT_OUT_DIR } from './build.js';
+import { BuildError, buildSites, DEFAULT_OUT_DIR, DOCS_REPOS_CACHE_DIR } from './build.js';
 import { CardError } from './cards.js';
 import { checkOutput } from './check/index.js';
 import { ConfigError, loadConfig } from './config.js';
 import { HomeError } from './content/home.js';
 import { PostError } from './content/posts.js';
-import { ProjectError } from './content/projects.js';
+import { loadProjects, ProjectError } from './content/projects.js';
+import { describeFetched, DocsSourceError, fetchDocsSources, planDocsFetch } from './docs/sources.js';
 import { SeriesError } from './content/series.js';
 import { TagsError } from './content/tags.js';
 import { FontError } from './font-metrics.js';
@@ -32,6 +33,10 @@ Commands:
                   feeds and the sitemap; exits 1 on any failure
                   (--config <path>, --out <dir> [default: ${DEFAULT_OUT_DIR}],
                   --w3c to also validate feeds at validator.w3.org)
+  docs fetch      Fetch the documentation sources of the tool projects
+                  (git repositories into the cache, folders in place) and
+                  print the commit of each; exits 1 if any cannot be fetched
+                  (--config <path>, --project <slug> for one project)
   config          Check coffer.yaml and list the configured sites
                   (--config <path> selects another file)
   help            Show this help text
@@ -51,6 +56,7 @@ Run "coffer help" to see this message again.
  *
  * @typedef {object} Services
  * @property {import('./check/w3c.js').W3cOptions} [w3c] Replaces the network and the clock of `check --w3c`.
+ * @property {Partial<Pick<import('./docs/sources.js').FetchOptions, 'exec' | 'timeoutMs' | 'env'>>} [docs] Replaces git, the time limit and the environment of `docs fetch`.
  */
 
 /**
@@ -133,6 +139,31 @@ export function parseCheckArgs(args) {
       options.w3c = true;
       continue;
     }
+    const [flag, inline] = arg.startsWith('--') && arg.includes('=')
+      ? [arg.slice(0, arg.indexOf('=')), arg.slice(arg.indexOf('=') + 1)]
+      : [arg, undefined];
+    if (!Object.hasOwn(valued, flag)) return { error: `unexpected argument "${arg}"` };
+    const value = inline ?? args[i + 1];
+    if (value === undefined || value === '') return { error: `${flag} needs a value` };
+    if (inline === undefined) i += 1;
+    options[valued[flag]] = value;
+  }
+  return options;
+}
+
+/**
+ * Reads the options of `coffer docs fetch`.
+ *
+ * @param {string[]} args
+ * @returns {{ configPath?: string, project?: string } | { error: string }}
+ */
+export function parseDocsFetchArgs(args) {
+  /** @type {{ configPath?: string, project?: string }} */
+  const options = {};
+  /** @type {Record<string, 'configPath' | 'project'>} */
+  const valued = { '--config': 'configPath', '--project': 'project' };
+  for (let i = 0; i < args.length; i += 1) {
+    const arg = args[i];
     const [flag, inline] = arg.startsWith('--') && arg.includes('=')
       ? [arg.slice(0, arg.indexOf('=')), arg.slice(arg.indexOf('=') + 1)]
       : [arg, undefined];
@@ -247,7 +278,8 @@ const commands = {
         error instanceof SeriesError ||
         error instanceof TagsError ||
         error instanceof HomeError ||
-        error instanceof ReportError
+        error instanceof ReportError ||
+        error instanceof DocsSourceError
       ) {
         io.err(`${error.errors.join('\n')}\n`);
         return 1;
@@ -296,6 +328,72 @@ const commands = {
       return 0;
     } catch (error) {
       if (error instanceof ConfigError) {
+        io.err(`${error.errors.join('\n')}\n`);
+        return 1;
+      }
+      throw error;
+    }
+  },
+  docs: async (args, io, services) => {
+    const [subcommand, ...rest] = args;
+    if (subcommand !== 'fetch') {
+      io.err(`coffer: ${subcommand === undefined ? 'docs needs a subcommand' : `unknown docs subcommand "${subcommand}"`} (known: fetch)\n`);
+      return 1;
+    }
+    const parsed = parseDocsFetchArgs(rest);
+    if ('error' in parsed) {
+      io.err(`coffer: ${parsed.error}\n`);
+      return 1;
+    }
+    try {
+      const config = loadConfig({ configPath: parsed.configPath });
+      /** @type {import('./docs/sources.js').DocsEntry[]} */
+      const entries = [];
+      let projectCount = 0;
+      for (const site of config.sites) {
+        if (!site.projects) continue;
+        for (const project of loadProjects(site.projects.dir)) {
+          projectCount += 1;
+          if (parsed.project !== undefined && project.slug !== parsed.project) continue;
+          if (!project.fields.docs) continue;
+          entries.push({
+            site: site.id,
+            slug: project.slug,
+            docs: /** @type {import('./docs/sources.js').DocsConfig} */ (project.fields.docs),
+          });
+        }
+      }
+      const plan = planDocsFetch(entries);
+      if (plan.conflicts.length > 0) {
+        io.err(`${plan.conflicts.join('\n')}\n`);
+        return 1;
+      }
+      if (parsed.project !== undefined && entries.length === 0) {
+        io.err(`coffer: no project "${parsed.project}" with a docs source (${projectCount} project(s) read)\n`);
+        return 1;
+      }
+      /** @type {import('./docs/sources.js').FetchedDocs[]} */
+      const fetched = [];
+      /** @type {string[]} */
+      const failures = [];
+      for (const run of plan.runs) {
+        try {
+          const result = await fetchDocsSources(run, {
+            cacheDir: join(config.dir, '.cache', DOCS_REPOS_CACHE_DIR),
+            ...services.docs,
+          });
+          fetched.push(...result.values());
+        } catch (error) {
+          if (!(error instanceof DocsSourceError)) throw error;
+          failures.push(...error.errors);
+        }
+      }
+      if (failures.length > 0) throw new DocsSourceError(failures);
+      for (const entry of fetched) io.out(`${describeFetched(entry)}\n`);
+      if (fetched.length === 0) io.out('no project has a docs source\n');
+      return 0;
+    } catch (error) {
+      if (error instanceof ConfigError || error instanceof ProjectError || error instanceof DocsSourceError) {
         io.err(`${error.errors.join('\n')}\n`);
         return 1;
       }

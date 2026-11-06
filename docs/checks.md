@@ -16,6 +16,8 @@ The command prints one line per site, then one line per problem as `{out}/{siteI
 
 ## What is checked
 
+A tool's link to its documentation is written only when the documentation pages are built, so the checks never meet a link to a page that does not exist (see [Where a project's documentation comes from](docs-sources.md#the-link-to-the-documentation)). The documentation sources are fetched by `coffer build` (and `coffer docs fetch`), not by `coffer check`, which reads only the output.
+
 The build writes a manifest (`.coffer-manifest.json`) into each site's output; the checks use it to know which pages, feeds and sitemap entries to expect.
 
 - **Links.** Every `href`, `src`, `srcset` (each candidate) and `poster` in every HTML file, every link in every feed, and every link, image and `srcset` inside the HTML content of feed entries must lead to a file in the output. A host such as Cloudflare Pages decides what is served, so the check uses the same rules as [`coffer serve`](urls.md): `/a/` is `a/index.html`, `/a` is the file `a`, `a.html` or a redirect to `/a/`, and a rule in `_redirects` is followed (up to five hops) to the page it ends at. Absolute URLs on the site's own `baseUrl` are checked like relative ones; URLs on other hosts, `mailto:` and `tel:` are not.

@@ -9,3 +9,14 @@ order: 2
 tag: projects/kerfcalc
 license: MIT
 repo: https://github.example/tove-marlowe/kerfcalc
+# The documentation comes from a folder read in place; a git source is
+# `source: { git: <address>, ref: <branch or tag> }`. The folder is relative to
+# this project's folder. The link to the documentation appears once the guides
+# are built.
+docs:
+  source:
+    path: ../../../sample-tool
+  github: tove-marlowe/kerfcalc
+  guides:
+    - dir: docs
+      order: [getting-started.md, usage.md]

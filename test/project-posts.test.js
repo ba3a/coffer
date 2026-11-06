@@ -93,7 +93,7 @@ async function inSite(files, body, config = configText()) {
 
 /**
  * @param {string} root
- * @param {{ drafts?: boolean }} [options]
+ * @param {Partial<import('../src/build.js').BuildOptions>} [options]
  */
 function build(root, options = {}) {
   return buildSites(loadConfig({ configPath: join(root, 'coffer.yaml') }), {
@@ -294,11 +294,14 @@ test('the block links the documentation only when the project has docs, and the 
     {
       ...SITE,
       ...project('shop', 'name: Shop\npitch: Sells it.\nkind: game\nstatus: released\ncard: card.png\ntag: projects/shop\norder: 3\nstores:\n  itch: https://shop.itch.example/shop\n  steam:\n'),
-      ...project('docced', 'name: Docced\npitch: Has docs.\nkind: tool\nstatus: released\ncard: card.png\nrepo: https://github.example/me/docced\ntag: projects/docced\norder: 4\ndocs: {}\n'),
+      ...project('docced', 'name: Docced\npitch: Has docs.\nkind: tool\nstatus: released\ncard: card.png\nrepo: https://github.example/me/docced\ntag: projects/docced\norder: 4\ndocs:\n  source: { path: . }\n'),
       ...post('p', '2026-02-01', ['projects/lathe', 'projects/shop', 'projects/docced']),
     },
     async (root) => {
+      // Docs are configured, but without published pages the block links nothing.
       await build(root);
+      assert.doesNotMatch(pageHtml(root, '/journal/p/'), /project-block-docs/);
+      await build(root, { docsPages: new Map([['docced', ['index.html']]]) });
       const html = pageHtml(root, '/journal/p/');
       const blocks = [...html.matchAll(/<section class="project-block" aria-labelledby="project-block-([^"]+)">[\s\S]*?<\/section>/g)];
       /** @type {Record<string, string>} */
