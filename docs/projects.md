@@ -82,7 +82,7 @@ The `kind` of a project decides which template renders its page and which furthe
 | Kind   | Field         | Required | Description                                                                                                         |
 | ------ | ------------- | -------- | ------------------------------------------------------------------------------------------------------------------- |
 | `tool` | `repo`        | yes      | `http(s)` address of the source repository.                                                                          |
-|        | `docs`        | no       | A mapping that configures the project's documentation: `source` (a git repository and ref, or a folder), `github`, `guides` and `reference` (see [Where a project's documentation comes from](docs-sources.md)). The build fetches the source; the project's page links to `/{projects}/{slug}/{docs}/` once the documentation pages are built. |
+|        | `docs`        | no       | A mapping that configures the project's documentation: `source` (a git repository and ref, or a folder), `github`, `guides` and `reference` (see [Where a project's documentation comes from](docs-sources.md)). The build fetches the source; the project's page links to `/{projects}/{slug}/{docs}/` once the documentation pages are built (see [Project documentation](project-docs.md)). |
 | `game` | `stores`      | no       | A mapping of store names to `http(s)` links, such as `itch` or `steam`. An empty value means "not set yet".          |
 |        | `platforms`   | no       | A list of platform names.                                                                                            |
 |        | `price`       | no       | Text such as `Free` or `4.99 EUR`.                                                                                   |
@@ -155,7 +155,7 @@ A site that only needs another look for `tool` or `game` does not need a new kin
 1. **The heading**: kind and status, the name, the pitch.
 2. **A facts box** ("Project details") with the links a reader looks for first:
    - **Source code**: the `repo` address, as a link with `rel="noopener"` (the field is checked to be an absolute `http` or `https` address, so a `javascript:` or `ftp:` address fails the build).
-   - **Documentation**: a link to the project's guides, `/{projects}/{slug}/{docs}/` (`/made/kerfcalc/docs/` with the defaults), present only when the project's documentation pages have been built, which needs `docs` in `project.yaml` and the guides step (until then `docs` is fetched and recorded, but no link is written, so that `coffer check` never sees a link to a page that does not exist; see [the link to the documentation](docs-sources.md#the-link-to-the-documentation)). The segment comes from `urls.docs`.
+   - **Documentation**: a link to the project's guides, `/{projects}/{slug}/{docs}/` (`/made/kerfcalc/docs/` with the defaults), present only when the build rendered documentation pages for the project, which needs `docs` with at least one guide in `project.yaml` (a `docs` block without guides is fetched and recorded, but no link is written, so that `coffer check` never sees a link to a page that does not exist; see [the link to the documentation](docs-sources.md#the-link-to-the-documentation)). The segment comes from `urls.docs`.
    - **License**: the `license` text, as plain text.
 3. **The text of `index.md`**: what it is, why it exists, how it works, a quick start, screenshots or a demo. Write it with ordinary headings; pictures go through the image pipeline like in a post.
 4. **Latest posts**: the devlog posts about the project (block `project_latest`, see [Posts about a project](#posts-about-a-project)). It writes nothing while there are no posts.
@@ -304,4 +304,4 @@ The UI strings are `home.projects`, `post.projects`, `projects.title`, `projects
 
 ## Not yet
 
-The rendering of a tool's documentation pages and its generated reference are separate features. `docs` is validated and its source is fetched now (see [Where a project's documentation comes from](docs-sources.md)).
+A tool's guides are rendered as pages of the site (see [Project documentation](project-docs.md)); its generated reference is a separate feature. `docs` is validated and its source is fetched (see [Where a project's documentation comes from](docs-sources.md)).

@@ -13,5 +13,6 @@ kerfcalc waste --board 2400 --kerf 2.4 --pieces 600,450,450,300
 
 Next, read [Usage](usage.md) for every command, or jump to
 [the options](usage.md#options). The calculation itself lives in
-[Sample.kt](../src/main/kotlin/Sample.kt), and the history of the tool is in the
+[Sample.kt](../src/main/kotlin/Sample.kt), all the sources are in the
+[src folder](../src/), and the history of the tool is in the
 [changelog](../CHANGELOG.md).

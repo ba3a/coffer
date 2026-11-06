@@ -16,7 +16,7 @@ The command prints one line per site, then one line per problem as `{out}/{siteI
 
 ## What is checked
 
-A tool's link to its documentation is written only when the documentation pages are built, so the checks never meet a link to a page that does not exist (see [Where a project's documentation comes from](docs-sources.md#the-link-to-the-documentation)). The documentation sources are fetched by `coffer build` (and `coffer docs fetch`), not by `coffer check`, which reads only the output.
+A tool's link to its documentation is written only when the build rendered its documentation pages, so the checks never meet a link to a page that does not exist (see [Where a project's documentation comes from](docs-sources.md#the-link-to-the-documentation)). The documentation pages are ordinary pages of the output, so the checks read them like the rest: links, anchors, images, preview metadata, and their place in the sitemap. The documentation sources are fetched by `coffer build` (and `coffer docs fetch`), not by `coffer check`, which reads only the output.
 
 The build writes a manifest (`.coffer-manifest.json`) into each site's output; the checks use it to know which pages, feeds and sitemap entries to expect.
 

@@ -1,0 +1,62 @@
+{# A page of a project's documentation: breadcrumbs back to the project, a sidebar listing the pages in their order, the page (the title is its first heading, with a table of contents when it is long), previous and next, and a link to the source file when the repository is known. Extends the base page; every part is a block a theme can replace. Expects `project`, `projectsUrl`, `docs` and `toc`. #}
+{% extends "base.njk" %}
+
+{% block main %}
+<div class="docs">
+{% block docs_breadcrumbs %}
+<nav class="docs-breadcrumbs" aria-label="{{ 'docs.breadcrumbs' | t }}">
+<ol>
+<li><a href="{{ projectsUrl | url }}">{{ 'nav.projects' | t }}</a></li>
+<li><a href="{{ project.url | url }}">{{ project.name }}</a></li>
+{% if docs.isIndex %}<li><a href="{{ docs.indexUrl | url }}" aria-current="page">{{ 'docs.title' | t }}</a></li>
+{% else %}<li><a href="{{ docs.indexUrl | url }}">{{ 'docs.title' | t }}</a></li>
+<li><a href="{{ docs.url | url }}" aria-current="page">{{ page.title }}</a></li>
+{% endif %}
+</ol>
+</nav>
+{% endblock %}
+<div class="docs-layout">
+{% block docs_sidebar %}
+<nav class="docs-sidebar" aria-label="{{ 'docs.sidebar' | t({ name: project.name }) }}">
+<p class="docs-sidebar-title">{{ project.name }}</p>
+<ul>
+{% for item in docs.sidebar %}<li>{% if item.current %}<a href="{{ item.url | url }}" aria-current="page">{{ item.title }}</a>{% else %}<a href="{{ item.url | url }}">{{ item.title }}</a>{% endif %}</li>
+{% endfor %}
+</ul>
+</nav>
+{% endblock %}
+<article class="docs-page">
+{% block docs_header %}
+<h1{% if docs.titleId %} id="{{ docs.titleId }}"{% endif %}>{{ page.title }}</h1>
+{% endblock %}
+{% if toc.length %}{% block toc %}{% include "partials/toc.njk" %}{% endblock %}{% endif %}
+{% block docs_body %}
+<div class="post-body docs-body">
+{{ page.content | safe }}
+{% if docs.generated %}<ul class="docs-index-list">
+{% for item in docs.sidebar %}{% if not item.current %}<li><a href="{{ item.url | url }}">{{ item.title }}</a></li>
+{% endif %}{% endfor %}
+</ul>
+{% endif %}
+</div>
+{% endblock %}
+{% block docs_pager %}
+{% if docs.previous or docs.next %}
+<nav class="docs-pager" aria-label="{{ 'docs.pager' | t }}">
+<ul>
+{% if docs.previous %}<li class="docs-previous"><a rel="prev" href="{{ docs.previous.url | url }}"><span class="docs-pager-label">{{ 'docs.previous' | t }}</span> {{ docs.previous.title }}</a></li>
+{% endif %}
+{% if docs.next %}<li class="docs-next"><a rel="next" href="{{ docs.next.url | url }}"><span class="docs-pager-label">{{ 'docs.next' | t }}</span> {{ docs.next.title }}</a></li>
+{% endif %}
+</ul>
+</nav>
+{% endif %}
+{% endblock %}
+{% block docs_source %}
+{% if docs.sourceUrl %}<p class="docs-source"><a href="{{ docs.sourceUrl }}" rel="noopener">{{ 'docs.view_source' | t }}</a></p>
+{% endif %}
+{% endblock %}
+</article>
+</div>
+</div>
+{% endblock %}

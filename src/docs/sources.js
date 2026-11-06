@@ -2,6 +2,8 @@ import { spawn } from 'node:child_process';
 import { accessSync, constants, lstatSync, mkdirSync, realpathSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { delimiter, isAbsolute, join, relative, resolve, sep } from 'node:path';
 
+import { checkGlobPattern } from './glob.js';
+
 /**
  * Where the documentation of a tool project comes from.
  *
@@ -374,14 +376,17 @@ function checkList(value, what, max, problems, check) {
 
 /**
  * A glob for `include` or `exclude`: relative, inside the guide, no control
- * characters.
+ * characters, and written in the syntax the guides step matches (see
+ * `glob.js`), so a pattern it cannot match is refused here, by name.
  *
  * @param {string} text
  * @returns {{ value: string } | { problem: string }}
  */
 function checkGlob(text) {
   const cleaned = cleanRelativePath(text);
-  return 'problem' in cleaned ? cleaned : { value: text.trim() };
+  if ('problem' in cleaned) return cleaned;
+  const checked = checkGlobPattern(text.trim());
+  return 'problem' in checked ? checked : { value: text.trim() };
 }
 
 /**

@@ -1,0 +1,9 @@
+{# The table of contents of a long text: a closed details element on a narrow screen, open beside the text on a wide one. Expects `toc`, a list of { id, text, depth }; posts and documentation pages both include it. #}
+<details class="toc">
+<summary>{{ 'post.contents' | t }}</summary>
+<ol>
+{% for entry in toc %}
+<li class="toc-depth-{{ entry.depth }}"><a href="#{{ entry.id }}">{{ entry.text }}</a></li>
+{% endfor %}
+</ol>
+</details>

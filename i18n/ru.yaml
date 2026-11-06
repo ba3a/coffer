@@ -108,6 +108,14 @@ projects:
     released: Выпущен
     maintained: Поддерживается
     archived: В архиве
+docs:
+  title: Документация
+  breadcrumbs: Путь по сайту
+  sidebar: "{name}: страницы документации"
+  pager: Предыдущая и следующая страница
+  previous: Назад
+  next: Вперёд
+  view_source: Открыть эту страницу на GitHub
 feeds:
   title: Ленты
   subscribe: Подписаться

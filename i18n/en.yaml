@@ -103,6 +103,14 @@ projects:
     released: Released
     maintained: Maintained
     archived: Archived
+docs:
+  title: Documentation
+  breadcrumbs: Breadcrumbs
+  sidebar: "{name}: documentation pages"
+  pager: Previous and next page
+  previous: Previous
+  next: Next
+  view_source: View this page on GitHub
 feeds:
   title: Feeds
   subscribe: Subscribe

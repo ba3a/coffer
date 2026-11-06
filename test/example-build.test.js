@@ -134,6 +134,10 @@ test('the manifest is written and lists the pages and the posts', async () => {
         '/journal/walnut-box/',
         '/made/',
         '/made/kerfcalc/',
+        '/made/kerfcalc/docs/',
+        '/made/kerfcalc/docs/getting-started/',
+        '/made/kerfcalc/docs/internals/',
+        '/made/kerfcalc/docs/usage/',
         '/made/tenon-tumble/',
       ],
     );
@@ -165,6 +169,7 @@ test('the manifest is written and lists the pages and the posts', async () => {
         ['content/journal/photos/ridge.jpg', '/journal/photo-notes/', 'body'],
         ['content/journal/photos/ridge.jpg', '/journal/ridge-walk/', 'body'],
         ['content/projects/kerfcalc/card.jpg', '/made/kerfcalc/', 'card'],
+        ['sample-tool/docs/board.png', '/made/kerfcalc/docs/getting-started/', 'body'],
         ['content/projects/tenon-tumble/card.jpg', '/made/tenon-tumble/', 'card'],
         ['content/projects/tenon-tumble/press-kit/logo.png', '/made/tenon-tumble/', 'press-kit'],
         ['content/projects/tenon-tumble/press-kit/on-the-bench.jpg', '/made/tenon-tumble/', 'press-kit'],
@@ -202,7 +207,7 @@ test('coffer build with --out, --now and --drafts builds the example from the co
       { encoding: 'utf8', cwd: tmpdir() },
     );
     assert.equal(result.status, 0, result.stderr);
-    assert.match(result.stdout, /workshop: 5 post\(s\), 21 page\(s\)/);
+    assert.match(result.stdout, /workshop: 5 post\(s\), 25 page\(s\)/);
     assert.equal(existsSync(join(out, 'workshop', 'journal', 'spring-open-house')), false);
 
     const preview = spawnSync(
@@ -211,7 +216,7 @@ test('coffer build with --out, --now and --drafts builds the example from the co
       { encoding: 'utf8', cwd: tmpdir() },
     );
     assert.equal(preview.status, 0, preview.stderr);
-    assert.match(preview.stdout, /workshop: 7 post\(s\), 25 page\(s\)/);
+    assert.match(preview.stdout, /workshop: 7 post\(s\), 29 page\(s\)/);
     assert.ok(existsSync(join(out, 'workshop', 'journal', 'spring-open-house', 'index.html')));
   } finally {
     rmSync(out, { recursive: true, force: true });
@@ -339,8 +344,8 @@ test('the example projects page lists both projects and the project pages resolv
     assert.match(tool, /<p class="project-pitch">A small command-line calculator for saw kerf/);
     assert.match(tool, /<a href="https:\/\/github\.example\/tove-marlowe\/kerfcalc" rel="noopener">github\.example\/tove-marlowe\/kerfcalc<\/a>/);
     assert.match(tool, /<div class="project-body">\s*<p>Kerfcalc answers the questions/);
-    // The example tool configures docs (read in place from the sample-tool fixture), but its pages are not built yet, so there is no docs link and no empty section.
-    assert.doesNotMatch(tool, /project-fact-docs|\/made\/kerfcalc\/docs\//);
+    // The example tool configures docs (read in place from the sample-tool fixture) and its guide pages are built, so the facts box links the documentation.
+    assert.match(tool, /<dt>Documentation<\/dt>\s*<dd><a href="\/made\/kerfcalc\/docs\/">Read the documentation<\/a><\/dd>/);
     // The example game has no store link, so it asks readers to follow the devlog (its project feed); it has no repository link.
     const game = page(site, '/made/tenon-tumble/');
     assert.match(game, /<h1>Tenon Tumble<\/h1>/);

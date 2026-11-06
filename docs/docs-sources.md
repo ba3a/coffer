@@ -1,6 +1,6 @@
 # Where a project's documentation comes from
 
-A tool project can publish documentation that lives in its own repository. The `docs` block of its `project.yaml` says where that repository is, which folders hold guides, and in what order they appear. This page covers the first part: describing the source and fetching it. Rendering the guides and the generated reference are separate steps (see [What comes next](#what-comes-next)).
+A tool project can publish documentation that lives in its own repository. The `docs` block of its `project.yaml` says where that repository is, which folders hold guides, and in what order they appear. This page covers describing the source and fetching it; how the guides are rendered is in [Project documentation](project-docs.md). The generated reference is a separate feature (see [What comes next](#what-comes-next)).
 
 ```yaml
 # content/projects/kerfcalc/project.yaml
@@ -22,7 +22,7 @@ Everything about where the guides come from, their order and what is left out is
 | ----------- | -------- | ------- |
 | `source`    | yes      | Where the files are: a git repository (`git` and `ref`) or a folder (`path`). Exactly one of the two. |
 | `github`    | no       | `owner/repo` of the GitHub repository that links to files point at. Taken from a `github.com` address (`https://github.com/o/r(.git)`, `git@github.com:o/r(.git)`, `ssh://git@github.com/o/r`) when not given; otherwise null. |
-| `guides`    | no       | A list of guides. Without any, no guide is published. |
+| `guides`    | no       | A list of guides. Without any, no guide is published and the project has no documentation pages and no documentation link. |
 | `reference` | no       | The configuration of a generated reference. It is accepted and kept, but nothing uses it before the reference step. |
 
 Unknown keys are refused. Every problem in the block is reported at once, with the path of `project.yaml` and the field, like any other field (`.../project.yaml: docs: source.git: the scheme "ext" is not allowed (...)`).
@@ -44,11 +44,19 @@ Each item is a mapping:
 | `include` | Glob patterns, relative to `dir`, of the files to publish. Default `["**/*.md"]`. |
 | `exclude` | Glob patterns, relative to `dir`, that take files out again. Default none. |
 
-Paths are relative to the repository and stay inside it: no `..`, no leading `/`, no drive letter, no backslash. There are at most 20 guides, 200 names in `order`, 50 patterns in each of `include` and `exclude`, and no path or pattern is longer than 200 characters. A folder cannot be listed twice. The guides step reads the files with `resolveInside`, which also refuses a symbolic link that leads out of the repository.
+Paths are relative to the repository and stay inside it: no `..`, no leading `/`, no drive letter, no backslash. There are at most 20 guides, 200 names in `order`, 50 patterns in each of `include` and `exclude`, and no path or pattern is longer than 200 characters. A folder cannot be listed twice. The files are read with `resolveInside`, which also refuses a symbolic link that leads out of the repository.
 
 A guide folder that is missing from the fetched source fails the build (see below).
 
-**Requirement for the guides step (not implemented here).** This step only checks that `include` and `exclude` are relative paths of bounded number and length; it does not interpret their syntax. The step that renders the guides must match them with a **linear-time matcher** (no regular expression built from the pattern, no backtracking), keep the limits above (at most 50 patterns of 200 characters, so a pattern cannot be made expensive), and decide what `**` and `{a,b}` mean, rejecting what it does not support with a message that names the pattern.
+**Patterns.** `include` and `exclude` are matched by a small matcher of coffer's own that takes time in proportion to the pattern times the path (it builds no regular expression and never backtracks, so a pattern from a configuration file cannot be made expensive). A pattern is checked when the configuration is read; one that uses what the matcher does not support is refused with a message that names it:
+
+- `/` separates folders; a pattern is matched against the whole path relative to `dir`;
+- `*` is any run of characters inside one name, `?` is one character, `[abc]`, `[a-z]` and `[!abc]` are one character of a set;
+- `**` as a whole segment is any number of folders, also none: `**/*.md` matches `a.md` and `x/y/a.md`, `drafts/**` everything below `drafts`;
+- matching is case-sensitive, and a name that starts with a dot (`.github`, `.draft.md`) is matched only by a pattern segment that starts with a literal dot;
+- not supported: `{a,b}` alternatives (list one pattern for each), a leading `!` (use `exclude`) and `\` escapes.
+
+Only Markdown files (`.md` and `.markdown`) become pages, whatever the patterns select.
 
 ## Fetching: `coffer docs fetch`
 
@@ -119,15 +127,21 @@ Each project of the manifest has `docs`: null without a `docs` block, otherwise
 }
 ```
 
+Beside these, `pages` lists the documentation pages built from the guides (see [Project documentation](project-docs.md)): `{ "url", "file", "source", "title" }`, where `source` is the path of the guide file in the source and null for the docs index the build writes when no file is one. `pages` is empty when the project has no guide.
+
 A path source is `{ "type": "path", "path": "sample-tool", "sha": "9a2b..." | null, "dirty": false | null }`, where `path` is relative to the configuration file when the folder is inside its directory, and as written in `project.yaml` otherwise.
 
 ## The link to the documentation
 
-A tool's page and its project block link to `/{projects}/{slug}/{docs}/` **only when the project's documentation pages have been built**, so that the link never leads to a page that does not exist and `coffer check` stays green. Until the guides step builds pages, configuring `docs` fetches the source and records it in the manifest but writes no link. The build takes the pages from the `docsPages` build option (a map from project slug to page paths), which the guides step will fill from what it renders; tests use it to see the link.
+A tool's page and its project block link to `/{projects}/{slug}/{docs}/` **if and only if the build rendered documentation pages for the project**, so that the link never leads to a page that does not exist and `coffer check` stays green. A `docs` block without `guides` fetches the source and records it in the manifest but publishes no page and writes no link. The same holds for a block with only a `reference`, until the reference step adds pages of its own.
 
 ## What comes next
 
-- The guides step renders the files of the fetched source in the site's theme, rewrites links between them (to files outside the published set they point at `https://github.com/{github}/blob/{ref}/{path}`), publishes their images, and fills `docsPages`.
+- The guides are rendered from the fetched source; see [Project documentation](project-docs.md).
 - The reference step runs the command of `reference` in the checkout.
 
-The fetch result (`FetchedDocs`) already carries what they need: `root`, the folder the guides are read from, the `source` with the `sha`, the `github` repository and the normalized `guides`.
+The fetch result (`FetchedDocs`) carries what they need: `root`, the folder the guides are read from, the `source` with the `sha`, the `github` repository and the normalized `guides`.
+
+## Trust
+
+The files of the source are content of a repository that may not be yours, and they are treated that way: every file is reached through `resolveInside` (a symbolic link that leads out of the repository is refused), a page can be at most 1 MiB and a project can publish at most 500 pages, nothing outside the repository is read, and every address a page contains is checked (see [link rewriting](project-docs.md#link-rewriting)). **Raw HTML in a guide is passed through unchanged, as it is in your own posts and project pages** (embeds, `<details>`, `<div>`, and also `<script>` or event attributes), because the author of a project is the author of its site. Only addresses are made safe: an `href`, `src`, `srcset` or `poster` that has a scheme other than `http:`, `https:` or `mailto:` (`javascript:`, `data:`, `vbscript:`, `file:`) fails the build and is replaced by `#` in the page. If you publish the documentation of a repository you do not control, review its files like code.

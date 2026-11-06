@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 
@@ -53,7 +53,7 @@ function toolYaml(extra = {}) {
 }
 
 /** A `docs` block that is valid wherever it is used: the project's own folder as the source. */
-const DOCS = { source: { path: '.' } };
+const DOCS = { source: { path: '.' }, guides: [{ dir: '.', include: ['index.md'] }] };
 
 /**
  * The files of one project.
@@ -704,14 +704,18 @@ test('a tool page shows the hero, the text, and a facts box with repository and 
   );
 });
 
-test('a tool page links its docs once its docs pages exist, and shows no docs link otherwise', async () => {
+test('a tool page links its docs when docs pages were built, and shows no docs link otherwise', async () => {
   await inSite(
-    { ...project('lathe', toolYaml({ docs: DOCS })), ...project('plane', toolYaml({ name: 'Plane' })) },
+    {
+      ...project('lathe', toolYaml({ docs: DOCS })),
+      ...project('plane', toolYaml({ name: 'Plane' })),
+      ...project('chisel', toolYaml({ name: 'Chisel', docs: { source: { path: '.' } } })),
+    },
     async (root) => {
-      // Docs configured but no pages published yet: no link, so that the link never leads nowhere.
       await build(root);
-      assert.doesNotMatch(pageHtml(root, '/made/lathe/'), /Documentation|project-fact-docs/);
-      await build(root, { docsPages: new Map([['lathe', ['index.html']]]) });
+      // Docs configured but without a guide: no pages are built, so there is no link that would lead nowhere.
+      assert.doesNotMatch(pageHtml(root, '/made/chisel/'), /Documentation|project-fact-docs/);
+      assert.equal(existsSync(join(root, 'out', 'demo', 'made', 'chisel', 'docs')), false);
       const configured = facts(pageHtml(root, '/made/lathe/'));
       assert.match(configured, /<dt>Documentation<\/dt>\s*<dd><a href="\/made\/lathe\/docs\/">Read the documentation<\/a><\/dd>/);
       const without = facts(pageHtml(root, '/made/plane/'));
@@ -729,7 +733,7 @@ test('the docs link follows urls.projects and urls.docs', async () => {
       'coffer.yaml': CONFIG.replace('    projects:', '    urls: { projects: built, docs: manual }\n    projects:'),
     },
     async (root) => {
-      await build(root, { docsPages: new Map([['lathe', ['index.html']]]) });
+      await build(root);
       assert.match(facts(pageHtml(root, '/built/lathe/')), /<a href="\/built\/lathe\/manual\/">/);
     },
   );

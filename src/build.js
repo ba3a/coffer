@@ -10,6 +10,7 @@ import { FONT_FILE_FORMATS, getProjectKind } from './content/project-kinds.js';
 import { PROJECT_BLOCK_POSTS, newestFirst, projectsOfPost, unknownProjectMessage } from './content/project-posts.js';
 import { projectStyle } from './content/project-style.js';
 import { loadProjects, projectUrl, showcaseOf } from './content/projects.js';
+import { finishGuidePage, githubRefOf, githubUrl, locateGuideImage, planGuides, resolveGuideLinks } from './docs/guides.js';
 import { fetchDocsSources, manifestDocs } from './docs/sources.js';
 import {
   FEED_FILE_NAME,
@@ -44,7 +45,7 @@ import { IMAGES_CACHE_DIR, ImageError, createImagePipeline, imageFileUrl, pickVa
 import { PolicyError, createPolicyResolver, findImageOverride } from './images/policy.js';
 import { inspectSvg } from './images/svg.js';
 import { buildMeta } from './meta.js';
-import { renderMarkdown } from './markdown/render.js';
+import { MarkdownError, renderMarkdown } from './markdown/render.js';
 import {
   REDIRECTS_FILE_NAME,
   checkRedirects,
@@ -111,7 +112,6 @@ export class BuildError extends Error {
  * @property {string[]} [siteIds] Build only these sites (default all).
  * @property {string} [cacheDir] Directory for work that is worth keeping between builds, such as title cards (default `.cache` beside the configuration file; an absolute path, or relative to the working directory).
  * @property {{ timeoutMs?: number, exec?: import('./docs/sources.js').FetchOptions['exec'], env?: Record<string, string | undefined> }} [docsFetch] How the documentation sources of tool projects are fetched: the time one git call can take, a replacement for running git, and the environment git's is made from. Used by tests.
- * @property {ReadonlyMap<string, readonly string[]>} [docsPages] The published documentation pages of projects, by project slug (page paths under the docs address). A project's page links its documentation only when it has at least one; until the pages are built by the build itself, this is the only way to have one.
  * @property {string} [reportDir] Directory that receives `report.json`, the errors, warnings and notes of the build (default `.coffer` beside the configuration file; an absolute path, or relative to the working directory). It is never inside the output.
  */
 
@@ -121,7 +121,7 @@ export class BuildError extends Error {
  * @typedef {object} ManifestPage
  * @property {string} url Site-relative URL, ending in a slash.
  * @property {string} file Path of the HTML file, relative to the site's output directory.
- * @property {'home' | 'not-found' | 'blog-index' | 'post' | 'tag-index' | 'tag' | 'series' | 'project-index' | 'project'} type
+ * @property {'home' | 'not-found' | 'blog-index' | 'post' | 'tag-index' | 'tag' | 'series' | 'project-index' | 'project' | 'docs'} type
  * @property {string} title
  */
 
@@ -282,8 +282,25 @@ export class BuildError extends Error {
  * @property {string | null} feed Site-relative URL of the project's feed; null when the site has no blog.
  * @property {string} card Path of the card picture, relative to the configuration file.
  * @property {ManifestProjectFile[]} files The files copied unchanged to the output for the project, such as a trailer video or a font; empty when it has none. Pictures are listed under `images`.
- * @property {import('./docs/sources.js').ManifestDocs | null} docs Where the documentation of a tool comes from: the source (for a git repository the address without credentials, the ref and the commit that was built; for a folder its path and the commit of the repository it is in), the GitHub repository and the guides. Null when the project has no `docs`.
+ * @property {ManifestProjectDocs | null} docs The documentation of a tool: where it comes from (for a git repository the address without credentials, the ref and the commit that was built; for a folder its path and the commit of the repository it is in), the GitHub repository, the guides, and the pages built from them. Null when the project has no `docs`.
  * @property {ManifestDownload[]} downloads The full-resolution logos and screenshots of the project's press kit; empty when it has none. `coffer check` reads each one back against its policy.
+ */
+
+/**
+ * The documentation of a project in the manifest: the source and guides as
+ * configured (see `ManifestDocs`), and the pages built from them.
+ *
+ * @typedef {import('./docs/sources.js').ManifestDocs & { pages: ManifestDocsPage[] }} ManifestProjectDocs
+ */
+
+/**
+ * A page of a project's documentation.
+ *
+ * @typedef {object} ManifestDocsPage
+ * @property {string} url Site-relative URL, ending in a slash.
+ * @property {string} file Path of the HTML file, relative to the site's output directory.
+ * @property {string | null} source Path of the guide file inside the documentation source, with `/`; null for the docs index that the build generates when no file is one.
+ * @property {string} title
  */
 
 /**
@@ -844,16 +861,28 @@ async function buildSite(config, site, options, outRoot, version, report) {
    * @param {string} sourceFile Markdown file of the text.
    * @param {string} pageUrl Site-relative URL of the page the text appears on.
    * @param {PageImages} page Decides the metadata policy of the images.
+   * @param {{ shown: string, locate: (src: string) => { file: string } | { error: string } | null }} [own] For a text that does not live in the content directory (a guide of a project's documentation): how findings name the file, and how an image address is turned into a file. `locate` returns null for an image that is left as it is (a remote one) and `{ error }` for one that fails the build.
    * @returns {import('./markdown/render.js').ImageOptions}
    */
-  const imageOptionsFor = (sourceFile, pageUrl, page) => {
-    const shown = posix(relative(config.dir, sourceFile));
+  const imageOptionsFor = (sourceFile, pageUrl, page, own) => {
+    const shown = own ? own.shown : posix(relative(config.dir, sourceFile));
     return {
       sizes: site.images.sizes,
       carouselSizes: site.images.carouselSizes,
       resolve: async ({ src, alt, line, column }) => {
         if (alt.trim() === '') warnings.push(`${shown}:${line}:${column}: the image "${src}" has no alt text`);
-        const file = localImageFile(sourceFile, src);
+        /** @type {string | null} */
+        let file;
+        if (own) {
+          const located = own.locate(src);
+          if (located !== null && 'error' in located) {
+            report.addError({ site: site.id, file: shown, line, column, message: located.error });
+            return null;
+          }
+          file = located === null ? null : located.file;
+        } else {
+          file = localImageFile(sourceFile, src);
+        }
         if (file === null) return null;
         if (!IMAGE_EXTENSIONS.includes(extname(file).toLowerCase())) {
           report.addError({
@@ -1314,6 +1343,144 @@ async function buildSite(config, site, options, outRoot, version, report) {
   const preparedProjects = [];
   /** @type {Map<string, import('./docs/sources.js').FetchedDocs>} */
   let docsFetched = new Map();
+
+  /**
+   * A page of a project's documentation, rendered and ready to be written.
+   *
+   * @typedef {object} PreparedDocsPage
+   * @property {string} url Site-relative address, ending in a slash.
+   * @property {string} file Path of the HTML file, relative to the output directory.
+   * @property {string} title
+   * @property {string | null} titleId The `id` of the heading the title came from.
+   * @property {string} html The body, without the title.
+   * @property {string} description
+   * @property {RenderedPost | null} rendered What the Markdown renderer found (headings, images); null for a generated index.
+   * @property {import('./docs/guides.js').GuidePage | null} page The guide file; null for an index the build generates.
+   */
+  /**
+   * The documentation of one project.
+   *
+   * @typedef {object} PreparedDocs
+   * @property {string} indexUrl Site-relative address of the docs index.
+   * @property {PreparedDocsPage[]} pages In sidebar order, the index first.
+   * @property {string | null} github
+   * @property {string} ref
+   */
+  /** @type {Map<string, PreparedDocs>} */
+  const docsPrepared = new Map();
+
+  /**
+   * Splits the location off a Markdown error, which carries it in its message.
+   *
+   * @param {MarkdownError} error
+   * @returns {string}
+   */
+  const markdownMessageOf = (error) => {
+    const place = [error.file, error.line, error.line === undefined ? undefined : error.column].filter((part) => part !== undefined).join(':');
+    return place !== '' && error.message.startsWith(`${place}: `) ? error.message.slice(place.length + 2) : error.message;
+  };
+
+  /**
+   * Reads, renders and checks the guides of a project: selects the files,
+   * renders them with the site's Markdown pipeline (images go through the image
+   * pipeline), decides where every link leads, and takes the title from the first
+   * heading. Findings are reported with `{repo}:{path}:{line}`.
+   *
+   * @param {import('./content/projects.js').Project} project
+   * @param {string} projectPageUrl
+   * @param {import('./docs/sources.js').FetchedDocs} fetched
+   * @param {ReturnType<typeof createResolver>} resolver
+   * @returns {Promise<PreparedDocs | null>} Null when the project publishes no guide page.
+   */
+  const prepareDocs = async (project, projectPageUrl, fetched, resolver) => {
+    const plan = planGuides(fetched);
+    for (const issue of plan.issues) report.addError({ site: site.id, ...issue });
+    for (const warning of plan.warnings) warnings.push(warning);
+    if (plan.pages.length === 0) return null;
+    const indexUrl = `${projectPageUrl}${site.urls.docs}/`;
+    /** @param {import('./docs/guides.js').GuidePage} page */
+    const urlOf = (page) => (page.slug === '' ? indexUrl : `${indexUrl}${page.slug}/`);
+    /** @type {Map<import('./docs/guides.js').GuidePage, RenderedPost>} */
+    const renderedPages = new Map();
+    for (const guide of plan.pages) {
+      const url = urlOf(guide);
+      const sourceFile = join(fetched.root, ...guide.rel.split('/'));
+      const images = pageImagesOf(sourceFile, null, resolver);
+      images.shown = guide.label;
+      pageImages.set(`docs:${project.slug}:${guide.rel}`, images);
+      try {
+        renderedPages.set(
+          guide,
+          await renderMarkdown(guide.text, {
+            file: guide.label,
+            images: imageOptionsFor(sourceFile, url, images, {
+              shown: guide.label,
+              locate: (src) => locateGuideImage(fetched.root, guide.rel, src),
+            }),
+            carousel: carouselLabels,
+          }),
+        );
+      } catch (error) {
+        if (!(error instanceof MarkdownError)) throw error;
+        report.addError({ site: site.id, file: guide.label, line: error.line, column: error.column, message: markdownMessageOf(error) });
+      }
+    }
+    const ref = githubRefOf(fetched);
+    const links = resolveGuideLinks(plan.pages, {
+      root: fetched.root,
+      repo: plan.repo,
+      github: fetched.github,
+      ref,
+      urlOf,
+      indexUrl,
+      rendered: renderedPages,
+    });
+    for (const issue of links.issues) report.addError({ site: site.id, ...issue });
+    /** @type {PreparedDocsPage[]} */
+    const pagesOut = [];
+    for (const guide of plan.pages) {
+      const rendered = renderedPages.get(guide);
+      if (!rendered) continue;
+      for (const directive of rendered.maps) {
+        warnings.push(`${guide.label}:${directive.line ?? 1}: the ::map directive is only for posts and is left out`);
+      }
+      const finished = finishGuidePage({
+        page: guide,
+        html: rendered.html,
+        rewrites: links.rewrites.get(guide),
+        refused: links.refused.get(guide),
+        indexTitle: t('docs.title'),
+      });
+      for (const issue of finished.issues) report.addError({ site: site.id, ...issue });
+      const url = urlOf(guide);
+      pagesOut.push({
+        url,
+        file: fileForUrl(url),
+        title: finished.title,
+        titleId: finished.titleId,
+        html: finished.html,
+        description: finished.description,
+        rendered,
+        page: guide,
+      });
+    }
+    if (pagesOut.length === 0) return null;
+    // Without a README or an index file the docs index lists the pages.
+    if (!pagesOut.some((entry) => entry.page?.isIndex)) {
+      pagesOut.unshift({
+        url: indexUrl,
+        file: fileForUrl(indexUrl),
+        title: t('docs.title'),
+        titleId: null,
+        html: '',
+        description: project.pitch,
+        rendered: null,
+        page: null,
+      });
+    }
+    return { indexUrl, pages: pagesOut, github: fetched.github, ref };
+  };
+
   if (site.projects) {
     const projectResolver = createResolver(new Map(), null);
     const loadedProjects = loadProjects(site.projects.dir);
@@ -1375,6 +1542,11 @@ async function buildSite(config, site, options, outRoot, version, report) {
         pressKit,
         source: { slug: project.slug, kind: 'folder', file: project.pageFile, dir: project.dir, draft: false },
       });
+      const fetchedDocs = docsFetched.get(project.slug);
+      if (fetchedDocs) {
+        const prepared = await prepareDocs(project, url, fetchedDocs, projectResolver);
+        if (prepared) docsPrepared.set(project.slug, prepared);
+      }
     }
   }
   for (const entry of preparedProjects) {
@@ -1542,8 +1714,8 @@ async function buildSite(config, site, options, outRoot, version, report) {
       license: project.license,
       tag: project.tag,
       fields: project.fields,
-      // The link is written only when the pages exist, so that it never leads to a page that is not built.
-      docsUrl: project.fields.docs && (options.docsPages?.get(project.slug)?.length ?? 0) > 0 ? `${url}${site.urls.docs}/` : null,
+      // The link is written only when the documentation pages are built, so that it never leads to a page that does not exist.
+      docsUrl: docsPrepared.get(project.slug)?.indexUrl ?? null,
       storeLinks: storeLinksOf(project),
       picture,
       media,
@@ -2115,6 +2287,58 @@ async function buildSite(config, site, options, outRoot, version, report) {
       const file = fileForUrl(url);
       writeOutput(outDir, file, html);
       pages.push({ url, file, type: 'project', title: project.name });
+
+      // The pages of the project's documentation.
+      const docs = docsPrepared.get(project.slug);
+      /** @type {ManifestDocsPage[]} */
+      const docsManifestPages = [];
+      if (docs) {
+        const sidebar = docs.pages.map((entry) => ({ title: entry.title, url: entry.url }));
+        for (const [position, entry] of docs.pages.entries()) {
+          const previous = docs.pages[position - 1];
+          const next = docs.pages[position + 1];
+          const isIndex = entry.url === docs.indexUrl;
+          const sourceUrl =
+            entry.page && docs.github
+              ? githubUrl({ github: docs.github, ref: docs.ref, kind: 'blob', path: entry.page.rel })
+              : null;
+          const docsHtml = templates.render('docs.njk', {
+            site,
+            nav,
+            feedLinks: feedLinksFor(null, view.feed ? [view.feed] : []),
+            meta: metaFor({
+              title: isIndex ? `${t('docs.title')}: ${project.name}` : `${entry.title}: ${project.name}`,
+              description: entry.description || project.pitch,
+              url: entry.url,
+              image: picture ? picture.src : cardFor(project.name),
+            }),
+            project: view,
+            projectsUrl: projectsIndexUrl,
+            toc: entry.rendered?.toc ?? [],
+            docs: {
+              isIndex,
+              generated: entry.page === null,
+              indexUrl: docs.indexUrl,
+              url: entry.url,
+              titleId: entry.titleId,
+              sidebar: sidebar.map((item) => ({ ...item, current: item.url === entry.url })),
+              previous: previous ? { title: previous.title, url: previous.url } : null,
+              next: next ? { title: next.title, url: next.url } : null,
+              sourceUrl,
+            },
+            ...pageAssetsFor(entry.rendered),
+            page: { title: entry.title, description: entry.description, content: entry.html },
+          });
+          writeOutput(outDir, entry.file, docsHtml);
+          pages.push({ url: entry.url, file: entry.file, type: 'docs', title: entry.title });
+          docsManifestPages.push({
+            url: entry.url,
+            file: entry.file,
+            source: entry.page ? entry.page.rel : null,
+            title: entry.title,
+          });
+        }
+      }
       manifestProjects.push({
         slug: project.slug,
         url,
@@ -2131,7 +2355,9 @@ async function buildSite(config, site, options, outRoot, version, report) {
         feed: view.feed ? view.feed.url : null,
         card: posix(relative(config.dir, project.card)),
         files,
-        docs: docsFetched.has(project.slug) ? manifestDocs(/** @type {import('./docs/sources.js').FetchedDocs} */ (docsFetched.get(project.slug)), config.dir) : null,
+        docs: docsFetched.has(project.slug)
+          ? { ...manifestDocs(/** @type {import('./docs/sources.js').FetchedDocs} */ (docsFetched.get(project.slug)), config.dir), pages: docsManifestPages }
+          : null,
         downloads: entry.pressKit?.downloads ?? [],
       });
     }
@@ -2226,13 +2452,15 @@ async function buildSite(config, site, options, outRoot, version, report) {
     for (const [file, entries] of byFile) {
       if (entries.length < 2) continue;
       for (const entry of entries) {
-        if (entry.type !== 'project' && entry.type !== 'project-index') continue;
-        const owner = preparedProjects.find((candidate) => candidate.url === entry.url);
+        if (entry.type !== 'project' && entry.type !== 'project-index' && entry.type !== 'docs') continue;
+        const owner = preparedProjects.find((candidate) =>
+          entry.type === 'docs' ? entry.url.startsWith(candidate.url) : candidate.url === entry.url,
+        );
         const source = owner
           ? posix(relative(config.dir, owner.project.file))
           : posix(relative(config.dir, /** @type {{ dir: string }} */ (site.projects).dir));
         const others = entries.filter((other) => other !== entry).map((other) => `${other.type} ${other.url}`);
-        const what = entry.type === 'project' ? 'the project page' : 'the projects index';
+        const what = entry.type === 'project' ? 'the project page' : entry.type === 'docs' ? 'the documentation page' : 'the projects index';
         report.addError({
           site: site.id,
           file: source,

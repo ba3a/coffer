@@ -1209,20 +1209,41 @@ function build(dir, options = {}) {
   });
 }
 
-test('a build fetches the docs source, records it in the manifest and writes no docs link before the pages exist', async () => {
+test('a build fetches the docs source, records it in the manifest, and writes the docs link because the guide pages were built', async () => {
   await inSite(siteFiles('docs:\n  source: { path: ../../../elsewhere }\n  github: me/lathe\n  guides:\n    - { dir: docs, order: [a.md] }\n'), async (dir) => {
     mkdirSync(join(dir, 'elsewhere', 'docs'), { recursive: true });
+    writeFileSync(join(dir, 'elsewhere', 'docs', 'a.md'), '# Alpha\n\nThe first page.\n');
     const [result] = await build(dir);
     const entry = /** @type {import('../src/build.js').ManifestProject} */ (result.manifest.projects[0]);
     assert.equal(entry.docs?.source.type, 'path');
     assert.deepEqual(entry.docs?.source && 'path' in entry.docs.source ? entry.docs.source.path : null, 'elsewhere');
     assert.equal(entry.docs?.github, 'me/lathe');
     assert.deepEqual(entry.docs?.guides, [{ dir: 'docs', order: ['a.md'], include: ['**/*.md'], exclude: [] }]);
+    assert.deepEqual(
+      entry.docs?.pages.map((page) => [page.url, page.source, page.title]),
+      [
+        ['/made/lathe/docs/', null, 'Documentation'],
+        ['/made/lathe/docs/a/', 'docs/a.md', 'Alpha'],
+      ],
+    );
+    // The docs pages were built, so the project page links them.
     const html = readFileSync(join(dir, 'out', 'demo', 'made', 'lathe', 'index.html'), 'utf8');
-    assert.doesNotMatch(html, /project-fact-docs/);
-    // With pages published by the docs step, the link appears.
-    await build(dir, { docsPages: new Map([['lathe', ['index.html']]]) });
-    assert.match(readFileSync(join(dir, 'out', 'demo', 'made', 'lathe', 'index.html'), 'utf8'), /href="\/made\/lathe\/docs\/"/);
+    assert.match(html, /project-fact-docs/);
+    assert.match(html, /href="\/made\/lathe\/docs\/"/);
+    assert.ok(existsSync(join(dir, 'out', 'demo', 'made', 'lathe', 'docs', 'a', 'index.html')));
+  });
+});
+
+test('the docs link is written when docs pages were rendered, and not when the project publishes no guide', async () => {
+  await inSite(siteFiles('docs:\n  source: { path: ../../../elsewhere }\n'), async (dir) => {
+    mkdirSync(join(dir, 'elsewhere', 'docs'), { recursive: true });
+    writeFileSync(join(dir, 'elsewhere', 'docs', 'a.md'), '# Alpha\n');
+    const [result] = await build(dir);
+    const entry = /** @type {import('../src/build.js').ManifestProject} */ (result.manifest.projects[0]);
+    // A docs block without guides fetches the source but publishes nothing, so there is nothing to link to.
+    assert.deepEqual(entry.docs?.pages, []);
+    assert.doesNotMatch(readFileSync(join(dir, 'out', 'demo', 'made', 'lathe', 'index.html'), 'utf8'), /project-fact-docs/);
+    assert.equal(existsSync(join(dir, 'out', 'demo', 'made', 'lathe', 'docs')), false);
   });
 });
 
@@ -1489,7 +1510,7 @@ test('coffer docs fetch clones a git source into .cache/repos next to the config
   await inTemp(async (parent) => {
     const repo = makeRepository(parent);
     const url = pathToFileURL(repo).href;
-    await inSite(siteFiles(`docs:\n  source: { git: "${url}", ref: v1 }\n  guides:\n    - { dir: docs }\n`), async (dir) => {
+    await inSite(siteFiles(`docs:\n  source: { git: "${url}", ref: v1 }\n  github: me/lathe\n  guides:\n    - { dir: docs }\n`), async (dir) => {
       const result = await runCli(['docs', 'fetch', '--config', join(dir, 'coffer.yaml')]);
       assert.equal(result.code, 0, result.err);
       assert.equal(result.out, `lathe: ${git(repo, ['rev-parse', 'HEAD'])} (${url}, ref v1)\n`);

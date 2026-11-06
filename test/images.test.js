@@ -585,6 +585,7 @@ test('the manifest records every image with its original, its page and its outpu
         ['content/journal/photos/ridge.jpg', '/journal/photo-notes/', 'body'],
         ['content/journal/photos/ridge.jpg', '/journal/ridge-walk/', 'body'],
         ['content/projects/kerfcalc/card.jpg', '/made/kerfcalc/', 'card'],
+        ['sample-tool/docs/board.png', '/made/kerfcalc/docs/getting-started/', 'body'],
         ['content/projects/tenon-tumble/card.jpg', '/made/tenon-tumble/', 'card'],
         ['content/projects/tenon-tumble/press-kit/logo.png', '/made/tenon-tumble/', 'press-kit'],
         ['content/projects/tenon-tumble/press-kit/on-the-bench.jpg', '/made/tenon-tumble/', 'press-kit'],
@@ -615,16 +616,17 @@ test('a second build reuses the cached images', async () => {
     const first = await build(root);
     // Three originals, each in the post that owns it and again in the carousel post, which has other settings,
     // the two card pictures of the example projects and the two screenshots of the example game; then the
-    // press kit of the game: thumbnails of its PNG logo and its photograph, and four full-resolution downloads.
-    assert.deepEqual(first.images, { generated: 16, reused: 0 });
+    // press kit of the game: thumbnails of its PNG logo and its photograph, and four full-resolution downloads;
+    // and the picture in the guides of the example tool.
+    assert.deepEqual(first.images, { generated: 17, reused: 0 });
     const cacheDir = join(root, '.cache', 'images');
     const cached = readdirSync(cacheDir).sort();
-    assert.equal(cached.length, 16);
+    assert.equal(cached.length, 17);
     const times = new Map(cached.map((name) => [name, statSync(join(cacheDir, name, 'info.json')).mtimeMs]));
     const published = listFiles(first.outDir).filter((name) => name.startsWith('img/'));
 
     const second = await build(root);
-    assert.deepEqual(second.images, { generated: 0, reused: 16 });
+    assert.deepEqual(second.images, { generated: 0, reused: 17 });
     assert.deepEqual(readdirSync(cacheDir).sort(), cached);
     for (const [name, time] of times) assert.equal(statSync(join(cacheDir, name, 'info.json')).mtimeMs, time, name);
     assert.deepEqual(listFiles(second.outDir).filter((name) => name.startsWith('img/')), published, 'the output is the same');
@@ -633,7 +635,7 @@ test('a second build reuses the cached images', async () => {
     // A replaced photo is processed again, once for each way it is published; the others stay cached.
     addFiles(root, { 'content/journal/first-dovetail/marking-gauge.jpg': await solidImage(1000, 600) });
     const third = await build(root);
-    assert.deepEqual(third.images, { generated: 2, reused: 14 });
+    assert.deepEqual(third.images, { generated: 2, reused: 15 });
   });
 });
 
