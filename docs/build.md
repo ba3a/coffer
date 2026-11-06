@@ -79,7 +79,7 @@ Each site's output contains `.coffer-manifest.json`, which records what the buil
 | `tags`             | Every tag page: blog id, tag `path`, `url`, `file`, shown `name`, post `count` and the `posts` (URLs, newest first) it lists. |
 | `series`           | Every series page: blog id, series `slug`, `url`, `file`, shown `name`, part `count` and the `posts` (URLs, in reading order). Each entry of `posts` has a `series` field (`slug`, `number`, `count`), or null. |
 | `redirects`        | Every alias redirect: `from`, `to` (site-relative URLs) and `status`.                                          |
-| `feeds`            | Every Atom feed: `type` (`blog`, `tag` or `series`), blog id, `url`, `selfUrl` (absolute), `file`, the `page` it belongs to, `title`, number of `entries`, and the `tag` path or `series` slug. See [Feeds](feeds.md). |
+| `feeds`            | Every Atom feed: `type` (`blog`, `tag`, `series` or `project`), blog id (null for a project feed), `url`, `selfUrl` (absolute), `file`, the `page` it belongs to, `title`, number of `entries`, and the `tag` path, `series` slug or `project` slug. See [Feeds](feeds.md). |
 | `sitemap`          | The site-relative URLs listed in `sitemap.xml`, sorted. See [SEO and link previews](seo.md). |
 | `images`           | Every image a page uses: the `source` file, the `post` (page) that uses it, `use` (`body` or `cover`), the hash and upright size of the original, the metadata `policy` it was published under, the published `gps` position and `camera` fields, and the `outputs` made from it. See [Images](images.md). |
 

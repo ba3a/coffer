@@ -1,0 +1,15 @@
+{# The latest devlog posts about a project, on its page. Expects `project`; writes nothing when there are no posts (or when `projects.latestPosts` is 0). Included by the tool and game templates in their `project_latest` block. #}
+{% if project.posts.length %}
+<section class="project-latest" aria-labelledby="project-latest-title">
+<h2 id="project-latest-title">{{ 'projects.latest' | t }}</h2>
+<ul class="project-latest-list">
+{% for post in project.posts %}<li class="project-latest-item">
+<a href="{{ post.url | url }}">{{ post.title }}</a>
+<time datetime="{{ post.date | date('iso') }}">{{ post.date | date }}</time>
+{% if post.summary %}<p class="post-summary">{{ post.summary }}</p>
+{% endif %}
+</li>
+{% endfor %}
+</ul>
+</section>
+{% endif %}

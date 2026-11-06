@@ -4,6 +4,15 @@
 {% block main %}
 <article class="post">
 <header class="post-header">
+{% block project_badges %}
+{% if projectBlocks.length %}
+<ul class="project-badges" aria-label="{{ 'post.projects' | t }}">
+{% for badge in projectBlocks %}
+<li><a class="project-badge" href="{{ badge.url | url }}">{{ badge.name }}</a></li>
+{% endfor %}
+</ul>
+{% endif %}
+{% endblock %}
 <h1>{{ page.title }}</h1>
 {% block meta %}
 <p class="post-meta">
@@ -46,6 +55,12 @@
 </div>
 {% block series_bottom %}
 {% if series %}{{ seriesNav(series, 'bottom') }}{% endif %}
+{% endblock %}
+{# One block for each project the post is about, at the very end of the post. #}
+{% block project_blocks %}
+{% for project in projectBlocks %}
+{% include "partials/project-block.njk" %}
+{% endfor %}
 {% endblock %}
 </article>
 {% endblock %}

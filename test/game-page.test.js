@@ -182,9 +182,9 @@ test('with no store link the follow-the-devlog call to action appears, and nothi
       const [result] = await build(root);
       const html = pageHtml(root, '/made/tumble/');
       assert.match(html, /<div class="game-actions game-follow">\s*<p>The game has no store page yet\./);
-      // No project tag has posts, so the link is the feed of the first blog; it exists in the output.
-      assert.match(html, /<a class="game-button game-follow-link" href="\/journal\/feed\.xml">Follow the devlog<\/a>/);
-      assert.ok(result.manifest.feeds.some((feed) => feed.url === '/journal/feed.xml'));
+      // The link is the project's own feed, which exists in the output even when no post is about the game yet.
+      assert.match(html, /<a class="game-button game-follow-link" href="\/made\/tumble\/feed\.xml">Follow the devlog<\/a>/);
+      assert.ok(result.manifest.feeds.some((feed) => feed.url === '/made/tumble/feed.xml' && feed.type === 'project'));
       assert.doesNotMatch(html, /game-store|Get it on itch|Wishlist/);
       assert.doesNotMatch(html, /<(p|div|section|dl|dd|dt|ul|li|a|h2)[^>]*>\s*<\/\1>/);
       assert.doesNotMatch(html, /href=""|href="#"|undefined|null|\[object/);
@@ -193,7 +193,7 @@ test('with no store link the follow-the-devlog call to action appears, and nothi
   }
 });
 
-test('the call to follow links the feed of the project tag when posts carry it', async () => {
+test('the call to follow links the project feed, which lists the posts that carry the project tag', async () => {
   await inSite(
     {
       ...game(`${MINIMAL}tag: projects/tumble\n`),
@@ -201,7 +201,8 @@ test('the call to follow links the feed of the project tag when posts carry it',
     },
     async (root) => {
       await build(root);
-      assert.match(pageHtml(root, '/made/tumble/'), /<a class="game-button game-follow-link" href="\/journal\/tags\/projects\/tumble\/feed\.xml">/);
+      assert.match(pageHtml(root, '/made/tumble/'), /<a class="game-button game-follow-link" href="\/made\/tumble\/feed\.xml">/);
+      assert.match(readFileSync(join(root, 'out', 'demo', 'made', 'tumble', 'feed.xml'), 'utf8'), /<id>https:\/\/demo\.example\/journal\/dev\/<\/id>/);
       assert.deepEqual(await checkFailures(root), []);
     },
   );

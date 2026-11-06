@@ -23,6 +23,7 @@ post:
     other: "{count} minutes"
   contents: Contents
   unpublished: "Preview: this post is not published yet."
+  projects: Projects
 series:
   navigation: "Series: {name}"
   parts:
@@ -51,6 +52,11 @@ projects:
   empty: No projects yet.
   all: All projects
   license: "License: {license}"
+  latest: Latest posts
+  block:
+    about: About this project
+    page: "{name}: project page"
+    more: "More posts about {name}"
   facts:
     title: Project details
     repo: Source code

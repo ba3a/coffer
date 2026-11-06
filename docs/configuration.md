@@ -188,9 +188,10 @@ map:
 
 ## `projects`
 
-| Key   | Required | Description                                                                     |
-| ----- | -------- | ------------------------------------------------------------------------------- |
-| `dir` | yes      | Directory that holds one folder per project, relative to the configuration file. Must be inside the content directory, so that the pictures and links in a project's text are found; a folder outside it is a configuration error. |
+| Key           | Required | Default | Description                                                                     |
+| ------------- | -------- | ------- | ------------------------------------------------------------------------------- |
+| `dir`         | yes      | -       | Directory that holds one folder per project, relative to the configuration file. Must be inside the content directory, so that the pictures and links in a project's text are found; a folder outside it is a configuration error. |
+| `latestPosts` | no       | `5`     | How many of its latest devlog posts a project's page lists, a whole number from 0 to 50. With `0` the list is left out. It does not limit the project's feed or the list in the manifest. See [Posts about a project](projects.md#posts-about-a-project). |
 
 See [Projects](projects.md) for what a project folder holds.
 

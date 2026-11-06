@@ -31,7 +31,7 @@
 </div>
 {% endif %}
 {# The devlog posts about the project go here; the section is written only when there are posts. #}
-{% block project_latest %}{% endblock %}
+{% block project_latest %}{% include "partials/project-latest.njk" %}{% endblock %}
 {% endblock %}
 
 {% block project_footer %}

@@ -12,3 +12,12 @@ trips/mountains:
   # Photos of walking days may publish where they were taken and with what.
   location: keep
   camera: keep
+projects:
+  name: Projects
+  description: Posts about the things I make.
+projects/kerfcalc:
+  name: Kerfcalc
+  description: The devlog of the kerf calculator.
+projects/tenon-tumble:
+  name: Tenon Tumble
+  description: The devlog of the puzzle game.

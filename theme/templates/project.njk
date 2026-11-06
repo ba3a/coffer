@@ -13,6 +13,12 @@
 <div class="project-body">
 {{ page.content | safe }}
 </div>
+{# The devlog posts about the project; the section is written only when there are posts. #}
+{% block project_latest %}{% include "partials/project-latest.njk" %}{% endblock %}
+{% endblock %}
+{% block project_feed %}
+{% if project.feed %}<p class="feed-link"><a rel="alternate" type="application/atom+xml" href="{{ project.feed.url | url }}">{{ project.feed.title }}</a></p>
+{% endif %}
 {% endblock %}
 {% block project_footer %}
 {% if project.license %}<p class="project-license">{{ 'projects.license' | t({ license: project.license }) }}</p>

@@ -48,6 +48,7 @@ The text of the post.
 | `seriesPosition` | no       | Whole number that puts the post ahead of the unnumbered ones, by value. Needs `series`; see [Series](series.md). |
 | `draft`          | no       | `true` keeps the post out of the published site. Default `false`.                                           |
 | `aliases`        | no       | List of old slugs that redirect permanently to this post; see [URLs](urls.md).                              |
+| `projects`       | no       | List of project slugs the post is about, such as `[kerfcalc]`, as an alternative to carrying the project's tag. The post then gets the project's block, badge and place in its feed. A slug that no project has fails the build and the message names the post. See [Posts about a project](projects.md#posts-about-a-project). |
 | `location`       | no       | Image location policy for this post (`strip`, `coarse` or `keep`), overriding the site and tag settings. See [Location and camera metadata](location-policy.md). |
 | `camera`         | no       | Camera metadata policy for this post (`strip` or `keep`). See [Location and camera metadata](location-policy.md). |
 | `tracks`         | no       | The GPX files of this post, as a list of file names beside the post, each either a name or `{ file, title }`. Without it every `*.gpx` file in a post folder is a track. `tracks: []` publishes none. See [Maps and GPX tracks](maps.md). |

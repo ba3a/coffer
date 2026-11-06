@@ -123,6 +123,9 @@ test('the manifest is written and lists the pages and the posts', async () => {
         '/journal/ridge-walk/',
         '/journal/series/boxes-by-hand/',
         '/journal/tags/',
+        '/journal/tags/projects/',
+        '/journal/tags/projects/kerfcalc/',
+        '/journal/tags/projects/tenon-tumble/',
         '/journal/tags/trips/',
         '/journal/tags/trips/mountains/',
         '/journal/tags/workshop/',
@@ -139,11 +142,16 @@ test('the manifest is written and lists the pages and the posts', async () => {
       [
         '/journal/feed.xml',
         '/journal/series/boxes-by-hand/feed.xml',
+        '/journal/tags/projects/feed.xml',
+        '/journal/tags/projects/kerfcalc/feed.xml',
+        '/journal/tags/projects/tenon-tumble/feed.xml',
         '/journal/tags/trips/feed.xml',
         '/journal/tags/trips/mountains/feed.xml',
         '/journal/tags/workshop/boxes/dovetails/feed.xml',
         '/journal/tags/workshop/boxes/feed.xml',
         '/journal/tags/workshop/feed.xml',
+        '/made/kerfcalc/feed.xml',
+        '/made/tenon-tumble/feed.xml',
       ],
     );
     assert.deepEqual(
@@ -194,7 +202,7 @@ test('coffer build with --out, --now and --drafts builds the example from the co
       { encoding: 'utf8', cwd: tmpdir() },
     );
     assert.equal(result.status, 0, result.stderr);
-    assert.match(result.stdout, /workshop: 5 post\(s\), 18 page\(s\)/);
+    assert.match(result.stdout, /workshop: 5 post\(s\), 21 page\(s\)/);
     assert.equal(existsSync(join(out, 'workshop', 'journal', 'spring-open-house')), false);
 
     const preview = spawnSync(
@@ -203,7 +211,7 @@ test('coffer build with --out, --now and --drafts builds the example from the co
       { encoding: 'utf8', cwd: tmpdir() },
     );
     assert.equal(preview.status, 0, preview.stderr);
-    assert.match(preview.stdout, /workshop: 7 post\(s\), 22 page\(s\)/);
+    assert.match(preview.stdout, /workshop: 7 post\(s\), 25 page\(s\)/);
     assert.ok(existsSync(join(out, 'workshop', 'journal', 'spring-open-house', 'index.html')));
   } finally {
     rmSync(out, { recursive: true, force: true });
@@ -333,14 +341,42 @@ test('the example projects page lists both projects and the project pages resolv
     assert.match(tool, /<div class="project-body">\s*<p>Kerfcalc answers the questions/);
     // The example tool configures no docs, so there is no docs link and no empty section.
     assert.doesNotMatch(tool, /project-fact-docs|\/made\/kerfcalc\/docs\//);
-    // The example game has no store link, so it asks readers to follow the devlog; it has no repository link.
+    // The example game has no store link, so it asks readers to follow the devlog (its project feed); it has no repository link.
     const game = page(site, '/made/tenon-tumble/');
     assert.match(game, /<h1>Tenon Tumble<\/h1>/);
     assert.match(game, /<div class="game-page" style="--project-accent:#dd6b4d;--project-on-accent:#000;--project-font:&quot;Fraunces&quot;, var\(--coffer-font-heading\)">/);
-    assert.match(game, /<a class="game-button game-follow-link" href="\/journal\/feed\.xml">Follow the devlog<\/a>/);
+    assert.match(game, /<a class="game-button game-follow-link" href="\/made\/tenon-tumble\/feed\.xml">Follow the devlog<\/a>/);
     assert.doesNotMatch(game, /game-store|project-fact-repo|Source code/);
     assert.match(game, /<section class="carousel" aria-label="Screenshots"/);
     assert.match(game, /<dt>Platforms<\/dt>\s*<dd>Linux, Windows, Web<\/dd>/);
+  });
+});
+
+test('example posts about the tool and the game end with project blocks, and the project pages list them', async () => {
+  await withExample({}, (site, manifest) => {
+    const blocks = (/** @type {string} */ url) =>
+      [...page(site, url).matchAll(/<section class="project-block" aria-labelledby="project-block-([^"]+)"/g)].map((match) => match[1]);
+    assert.deepEqual(blocks('/journal/walnut-box/'), ['kerfcalc']);
+    assert.deepEqual(blocks('/journal/first-dovetail/'), ['tenon-tumble']);
+    // One post carries both project tags, so it has both blocks (the game first, as on the projects page).
+    assert.deepEqual(blocks('/journal/photo-notes/'), ['tenon-tumble', 'kerfcalc']);
+    assert.deepEqual(blocks('/journal/ridge-walk/'), []);
+    assert.match(page(site, '/journal/walnut-box/'), /<a class="project-badge" href="\/made\/kerfcalc\/">Kerfcalc<\/a>/);
+
+    const latest = (/** @type {string} */ url) =>
+      [...(/<section class="project-latest"[\s\S]*?<\/section>/.exec(page(site, url))?.[0] ?? '').matchAll(/<a href="([^"]+)">/g)].map((match) => match[1]);
+    assert.deepEqual(latest('/made/kerfcalc/'), ['/journal/walnut-box/', '/journal/photo-notes/']);
+    assert.deepEqual(latest('/made/tenon-tumble/'), ['/journal/first-dovetail/', '/journal/photo-notes/']);
+    for (const url of ['/made/kerfcalc/', '/made/tenon-tumble/']) {
+      assert.match(page(site, url), new RegExp(`<p class="feed-link"><a rel="alternate" type="application/atom\\+xml" href="${url}feed\\.xml">`));
+    }
+    assert.deepEqual(
+      manifest.projects.map((project) => [project.slug, project.feed, project.posts]),
+      [
+        ['tenon-tumble', '/made/tenon-tumble/feed.xml', ['/journal/first-dovetail/', '/journal/photo-notes/']],
+        ['kerfcalc', '/made/kerfcalc/feed.xml', ['/journal/walnut-box/', '/journal/photo-notes/']],
+      ],
+    );
   });
 });
 

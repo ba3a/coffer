@@ -1,0 +1,21 @@
+{# The "about this project" block at the end of a post. Expects `project`: { slug, name, pitch, url, docsUrl, storeLinks, posts }. Every part with nothing to show is left out: no documentation link without docs, no store links without store addresses, no list without other posts. A theme replaces this file or the `project_blocks` block of post.njk. #}
+<section class="project-block" aria-labelledby="project-block-{{ project.slug }}">
+<p class="project-block-kicker">{{ 'projects.block.about' | t }}</p>
+<h2 id="project-block-{{ project.slug }}" class="project-block-title"><a href="{{ project.url | url }}">{{ project.name }}</a></h2>
+<p class="project-pitch">{{ project.pitch }}</p>
+<ul class="project-block-links">
+<li><a class="project-block-page" href="{{ project.url | url }}">{{ 'projects.block.page' | t({ name: project.name }) }}</a></li>
+{% if project.docsUrl %}<li><a class="project-block-docs" href="{{ project.docsUrl | url }}">{{ 'projects.facts.docs_link' | t }}</a></li>
+{% endif %}
+{% for store in project.storeLinks %}<li><a class="project-block-store project-block-store-{{ store.name }}" href="{{ store.url }}" rel="noopener">{{ store.label }}</a></li>
+{% endfor %}
+</ul>
+{% if project.posts.length %}<div class="project-block-posts">
+<h3>{{ 'projects.block.more' | t({ name: project.name }) }}</h3>
+<ul>
+{% for other in project.posts %}<li><a href="{{ other.url | url }}">{{ other.title }}</a> <time datetime="{{ other.date | date('iso') }}">{{ other.date | date }}</time></li>
+{% endfor %}
+</ul>
+</div>
+{% endif %}
+</section>

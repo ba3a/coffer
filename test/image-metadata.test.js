@@ -807,7 +807,7 @@ test('the check command exits 1 and names the image that does not match its poli
       });
       assert.equal(code, 1);
       assert.match(err, /workshop\/img\/[0-9a-f]{16}\/dovetail-joint-full\.jpg: its position is not the original position rounded to two decimals/);
-      assert.match(stdout, /^workshop: \d+ page\(s\), 7 feed\(s\), 20 image\(s\) checked, 1 failure\(s\)$/m);
+      assert.match(stdout, /^workshop: \d+ page\(s\), 12 feed\(s\), 20 image\(s\) checked, 1 failure\(s\)$/m);
     },
   );
 });

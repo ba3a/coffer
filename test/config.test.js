@@ -163,6 +163,7 @@ test('a valid two-site configuration loads with its values', () => {
     assert.deepEqual(english.location, { default: 'coarse', camera: 'keep' });
     assert.deepEqual(english.projects, {
       dir: join(dir, 'content/english/projects'),
+      latestPosts: 5,
     });
 
     assert.equal(russian.id, 'russian');
@@ -475,6 +476,21 @@ test('projects needs a dir', () => {
   assert.deepEqual(normalizeErrors(oneSite({ projects: 'here' })), [
     'coffer.yaml: sites[0].projects: must be a mapping',
   ]);
+});
+
+test('projects.latestPosts is a whole number from 0 to 50 and defaults to 5', () => {
+  const latest = (/** @type {unknown} */ value) =>
+    normalize(oneSite({ projects: { dir: 'content/projects', latestPosts: value } })).sites[0].projects?.latestPosts;
+  assert.equal(latest(undefined), 5);
+  assert.equal(latest(null), 5);
+  assert.equal(latest(0), 0);
+  assert.equal(latest(3), 3);
+  assert.equal(latest(50), 50);
+  for (const value of [-1, 51, 1.5, '3', true]) {
+    assert.deepEqual(normalizeErrors(oneSite({ projects: { dir: 'content/projects', latestPosts: value } })), [
+      'coffer.yaml: sites[0].projects.latestPosts: must be a whole number from 0 to 50',
+    ]);
+  }
 });
 
 test('all errors are reported together, across sites', () => {

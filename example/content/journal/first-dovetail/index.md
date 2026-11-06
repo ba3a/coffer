@@ -1,7 +1,7 @@
 ---
 title: My first hand-cut dovetail
 date: 2025-03-14
-tags: [workshop/boxes/dovetails]
+tags: [workshop/boxes/dovetails, projects/tenon-tumble]
 aliases: [dovetail-diary]
 series: boxes-by-hand
 # The photos were taken in the workshop at home: publish only the area.

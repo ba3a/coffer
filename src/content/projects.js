@@ -4,7 +4,7 @@ import { LineCounter, parseDocument } from 'yaml';
 
 import { IMAGE_EXTENSIONS } from '../images/defaults.js';
 import { COMMON_PROJECT_KEYS, getProjectKind, listProjectKinds, readKindFields } from './project-kinds.js';
-import { normalizeTag } from './posts.js';
+import { normalizeTag, PROJECT_SLUG_RE } from './posts.js';
 
 /** Name of the file in a project's folder that declares the project. */
 export const PROJECT_FILE_NAME = 'project.yaml';
@@ -16,9 +16,6 @@ export const PROJECT_PAGE_FILE_NAME = 'index.md';
  * The stages a project can be in. Each one has a UI string `projects.status.{status}`.
  */
 export const PROJECT_STATUSES = Object.freeze(['idea', 'in-development', 'released', 'maintained', 'archived']);
-
-/** A project's folder name is its slug, and its slug is a URL segment. */
-const SLUG_RE = /^[a-z0-9][a-z0-9_-]*$/;
 
 /**
  * A project as read from its folder.
@@ -317,7 +314,7 @@ export function loadProjects(dir) {
     const file = join(folder, PROJECT_FILE_NAME);
     const pageFile = join(folder, PROJECT_PAGE_FILE_NAME);
     const before = errors.length;
-    if (!SLUG_RE.test(slug)) {
+    if (!PROJECT_SLUG_RE.test(slug)) {
       errors.push(
         `${folder}: slug: "${slug}" (the folder name) must be lower-case letters, digits, "-" and "_", starting with a letter or a digit`,
       );

@@ -97,7 +97,7 @@ The `kind` of a project decides which template renders its page and which furthe
 |        | `trailerPoster` | no     | A picture in the project folder, shown before a local trailer plays (the `poster` of the video). Ignored for an embedded trailer. |
 |        | `features`    | no       | A list of short feature points.                                                                                      |
 
-The generic `project.njk` shows the name, the pitch, the kind and the status, the text of `index.md`, the license and a link to the projects page. `tool` and `game` have templates of their own, described below. The kind-specific fields are read, validated and passed to the template as `project.fields`.
+The generic `project.njk` shows the name, the pitch, the kind and the status, the text of `index.md`, the latest posts, the link to the project's feed, the license and a link to the projects page. `tool` and `game` have templates of their own, described below. The kind-specific fields are read, validated and passed to the template as `project.fields`.
 
 An unknown `kind`, a missing required field or a value of the wrong shape fails the build. Every problem is listed, each as `path-of-project.yaml: field: message`:
 
@@ -158,7 +158,7 @@ A site that only needs another look for `tool` or `game` does not need a new kin
    - **Documentation**: a link to the project's guides, `/{projects}/{slug}/{docs}/` (`/made/kerfcalc/docs/` with the defaults), present only when `docs` is set in `project.yaml`. The segment comes from `urls.docs`. The documentation pages themselves are a separate feature, so a site that sets `docs` before they exist links to a page that is not built yet and `coffer check` reports the link as broken; the example tool sets no `docs` for that reason.
    - **License**: the `license` text, as plain text.
 3. **The text of `index.md`**: what it is, why it exists, how it works, a quick start, screenshots or a demo. Write it with ordinary headings; pictures go through the image pipeline like in a post.
-4. **Latest posts**: a slot for the devlog posts about the project (block `project_latest`), filled by the posts feature. It writes nothing while there are no posts.
+4. **Latest posts**: the devlog posts about the project (block `project_latest`, see [Posts about a project](#posts-about-a-project)). It writes nothing while there are no posts.
 
 Nothing renders empty. A fact that is not set has no row, a page whose `index.md` is empty has no text section, and the license is shown in the facts box only. A theme overrides `project-tool.njk`, or one of its blocks `project_facts`, `project_latest`, `project_footer`, like any other template.
 
@@ -167,12 +167,13 @@ Nothing renders empty. A fact that is not set has no row, a page whose `index.md
 `project-game.njk` makes the page of a `game` a small promo page. From top to bottom:
 
 1. **The hero**: the `logo`, the kind and status, the name, the pitch (the one-line hook) and the `keyArt`.
-2. **Stores, or a call to follow**: a button for each of `stores.itch` ("Get it on itch.io") and `stores.steam` ("Wishlist on Steam") whose address is set, itch first; other store names are not shown. With none set, the page shows "Follow the devlog" instead: a button that links to the feed of the devlog. Until a project feed exists this is the feed of the project's `tag` when some post carries it, else the feed of the first blog; a site without a blog has no call to action. A store button never shows with an empty address, and the call to action never shows next to a store button.
+2. **Stores, or a call to follow**: a button for each of `stores.itch` ("Get it on itch.io") and `stores.steam` ("Wishlist on Steam") whose address is set, itch first; other store names are not shown. With none set, the page shows "Follow the devlog" instead: a button that links to the project's feed (`/{projects}/{slug}/feed.xml`, see [Posts about a project](#posts-about-a-project)); a site without a blog has no project feed and so no call to action. A store button never shows with an empty address, and the call to action never shows next to a store button.
 3. **The trailer**, when `trailer` is set (see below).
 4. **The text of `index.md`**, with the **screenshot gallery**: write the screenshots as a [carousel](carousels.md) in `index.md` (a `:::carousel[Screenshots]` block of Markdown images with alt text and optional captions). They go through the image pipeline like any image and open in the [image viewer](viewer.md), so the template has no gallery code of its own.
 5. **Features**: the `features` list, when it has items.
 6. **Game details**: the status, the platforms, the price and the license; a row is written only when its value is set (the status always is).
-7. **The press kit**, when `pressKit` is set (see below), at the end of the page.
+7. **Latest posts**: the devlog posts about the game, when there are any.
+8. **The press kit**, when `pressKit` is set (see below), at the end of the page.
 
 A game page has **no link to a source repository**: the `game` kind has no `repo` field (a `repo:` key fails the build as an unknown key), and the template shows none for a kind that has one. Nothing renders empty: a part without data is not written.
 
@@ -244,28 +245,63 @@ The names are made from the slug, the kind of asset and its place in the list (`
 
 The thumbnails are pictures of the page like its card and key art, listed in the manifest under `images` with `use: "press-kit"`. The downloads are listed under the project's `downloads` (see below), and `coffer check` reads every one back: against its policy (position and camera), its size (the original's, never smaller) and, for an SVG, its hash and safety.
 
+## Posts about a project
+
+The devlog is one stream about everything. A post is **about a project** when
+
+- one of its tags equals the project's `tag` or lies below it (`tag: projects/kerfcalc` claims `projects/kerfcalc` and `projects/kerfcalc/release`, not `projects/kerfcalc-two`), the same subtree rule as a tag page and a tag feed; or
+- its front matter lists the project in `projects`, such as `projects: [kerfcalc]`.
+
+A post can be about several projects. A post that names a project through its tag and through `projects:` gets one block, not two. Two projects that declare the same `tag` both claim the posts that carry it: each of those posts gets both blocks and appears in both feeds. The posts of every blog of the site count; each is linked to its own blog.
+
+A slug in `projects:` that no project folder has fails the build. The message names the post and lists the registered projects, like the message for an unknown `project:slug` link:
+
+```
+content/journal/lathe-news/index.md projects: unknown project 'latheh' (registered: kerfcalc, tenon-tumble)
+```
+
+Only **published** posts count. A draft, and a post dated after the build's `now`, never appear in a block, on a project page or in a feed, not even in a preview build (`--drafts`); the blog index, in contrast, lists them with a note. In a preview build such a post still ends with its own project blocks. A draft is checked (for an unknown project) only when a build renders it.
+
+### On the post
+
+- **A badge** near the title: a small link with the project's name to the project's page, one for each project the post is about (block `project_badges` of `post.njk`).
+- **A project block** at the end of the post, one for each project in the order of the projects page (block `project_blocks`, markup in `partials/project-block.njk`; a theme replaces the file or the block). It holds the project's name (a link) and pitch, a link to the project page, a link to the documentation when the project has `docs` (the same address as on the project's page), a button for each store link a game has set, and up to three **other** recent posts about the project, newest first. A part without data is not written: no docs link without docs, no store link without an address, no list when there are no other posts.
+- The head of the post advertises the feed of each project it is about.
+
+A tool's block links its documentation only when `docs` is set in `project.yaml`; `coffer check` fails on that link until the documentation pages are built, which is a separate feature.
+
+### On the project page
+
+The page lists the latest posts about the project (`partials/project-latest.njk`, block `project_latest`): title, date and summary, newest first. The number is `projects.latestPosts` in [`coffer.yaml`](configuration.md) (5 by default, 0 to 50; with 0, or when there are no posts, the section is not written). The page links its feed visibly ("Feed of Kerfcalc", block `project_feed` of `project.njk`) and advertises it in the head.
+
+### The project feed
+
+`/{projects}/{slug}/feed.xml` is an Atom feed of the published posts about the project, from every blog, newest first, with the whole text and absolute addresses (the latest `feeds.limit` entries; see [Feeds](feeds.md)). Its title is the project's name and the site title, its subtitle the project's pitch. Every project of a site that has a blog has one, also when no post is about it yet. The game page's "Follow the devlog" button links it.
+
 ## Templates
 
 
 | Template               | Used for                                                             |
 | ---------------------- | -------------------------------------------------------------------- |
 | `project-index.njk`    | the projects page; block `heading`                                   |
-| `project.njk`          | a project's page; blocks `project_header`, `project_body`, `project_footer` |
+| `project.njk`          | a project's page; blocks `project_header`, `project_body`, `project_latest`, `project_feed`, `project_footer` |
 | `project-tool.njk`     | the page of a `tool`; extends `project.njk`; blocks `project_facts`, `project_latest` |
 | `project-game.njk`     | the page of a `game`; extends `project.njk`; blocks `page_meta` (adds the font), `main` (the `.game-page` wrapper), `game_actions`, `game_trailer`, `game_features`, `game_details`, `game_press_kit` |
 | `partials/press-kit.njk` | the press kit section, included by `project-game.njk`; a theme can replace the file or the `game_press_kit` block |
+| `partials/project-latest.njk` | the latest posts about a project, included in the `project_latest` block of the project pages; writes nothing without posts |
+| `partials/project-block.njk` | the block about a project at the end of a post, included by `post.njk` in its `project_blocks` block |
 | `project-card.njk`     | one card, included by the projects page and the home page showcase   |
 | `project-picture.njk`  | the macro `card(picture, sizes, eager)` that writes a project picture's `<picture>`; `eager` loads it at once |
 | `home.njk`             | the `showcase` block lists the featured projects (see [The home page](home.md)) |
 
-A project, as templates see it (`project` on a project's page, one element of `projects` or `showcase` elsewhere): `slug`, `url`, `name`, `pitch`, `kind`, `kindLabel`, `status`, `statusLabel`, `featured`, `order`, `license`, `tag`, `fields`, `docsUrl` (the address of the project's guides when `docs` is configured, otherwise null), `media` (what the kind's `image`, `trailer` and `font-file` fields publish, by field name: a picture like `picture` with `type: 'image'`, `{ type: 'video', url, mime }`, `{ type: 'embed', provider, url }` or `{ type: 'font', url, format }`; a field that is not set has no entry), `style` (`{ declarations, fontFace }` for a project with an accent or a font, otherwise null), `devlogUrl` (the feed that the call to follow links to, or null), `pressKit` (null, or `{ developer, releaseStatus, platforms, price, shortDescription, longDescription, logos, screenshots }`: the facts that are known, the two descriptions as HTML, and the assets as `{ number, alt, thumbnail, url, fileName, format, width, height, size }`) and `picture` (`src`, `width`, `height`, `srcset` as a list of `{ url, width }`, `alt`; null when the picture could not be made, which also fails the build). The card is included with `level` set to the heading level of the name: 2 on the projects page, 3 in the showcase.
+A project, as templates see it (`project` on a project's page, one element of `projects` or `showcase` elsewhere): `slug`, `url`, `name`, `pitch`, `kind`, `kindLabel`, `status`, `statusLabel`, `featured`, `order`, `license`, `tag`, `fields`, `docsUrl` (the address of the project's guides when `docs` is configured, otherwise null), `media` (what the kind's `image`, `trailer` and `font-file` fields publish, by field name: a picture like `picture` with `type: 'image'`, `{ type: 'video', url, mime }`, `{ type: 'embed', provider, url }` or `{ type: 'font', url, format }`; a field that is not set has no entry), `style` (`{ declarations, fontFace }` for a project with an accent or a font, otherwise null), `storeLinks` (the store links that are set, itch first, as `{ name, label, url }`), `feed` (`{ url, title }` of the project's feed, or null when the site has no blog), `posts` (the latest published posts about the project, at most `projects.latestPosts`, as `{ url, title, date, summary, readingMinutes }`), `devlogUrl` (the address of the feed that the call to follow links to, or null), `pressKit` (null, or `{ developer, releaseStatus, platforms, price, shortDescription, longDescription, logos, screenshots }`: the facts that are known, the two descriptions as HTML, and the assets as `{ number, alt, thumbnail, url, fileName, format, width, height, size }`) and `picture` (`src`, `width`, `height`, `srcset` as a list of `{ url, width }`, `alt`; null when the picture could not be made, which also fails the build). The card is included with `level` set to the heading level of the name: 2 on the projects page, 3 in the showcase.
 
-The UI strings are `home.projects`, `projects.title`, `projects.empty`, `projects.all`, `projects.license`, `projects.facts.*` (`title`, `repo`, `docs`, `docs_link`, `license`), `projects.game.*` (`get`, `itch`, `steam`, `follow`, `follow_text`, `trailer`, `trailer_label`, `trailer_download`, `features`, `details`, `status`, `platforms`, `price`), `projects.press.*` (`title`, `facts`, `developer`, `release_status`, `platforms`, `price`, `short_description`, `long_description`, `logos`, `screenshots`, `logo_n`, `screenshot_n`, `download`, `download_sized`, `size_kb`, `size_mb`), `projects.kind.*` and `projects.status.*`. The navigation gets a "Projects" entry (`nav.projects`) between Home and the blogs.
+The UI strings are `home.projects`, `post.projects`, `projects.title`, `projects.empty`, `projects.all`, `projects.license`, `projects.latest`, `projects.block.*` (`about`, `page`, `more`), `projects.facts.*` (`title`, `repo`, `docs`, `docs_link`, `license`), `projects.game.*` (`get`, `itch`, `steam`, `follow`, `follow_text`, `trailer`, `trailer_label`, `trailer_download`, `features`, `details`, `status`, `platforms`, `price`), `projects.press.*` (`title`, `facts`, `developer`, `release_status`, `platforms`, `price`, `short_description`, `long_description`, `logos`, `screenshots`, `logo_n`, `screenshot_n`, `download`, `download_sized`, `size_kb`, `size_mb`), `projects.kind.*` and `projects.status.*`. The navigation gets a "Projects" entry (`nav.projects`) between Home and the blogs.
 
 ## In the manifest
 
-`.coffer-manifest.json` lists the projects in showcase order under `projects` (`slug`, `url`, `file`, `source`, `name`, `pitch`, `kind`, `status`, `featured`, `order`, `tag`, `card`, `files`, `downloads`). `files` lists the files that are copied unchanged for the project (a local trailer, a font file) as `{ field, source, url, file }`; it is empty for most projects. `downloads` lists the logos and screenshots of the press kit as `{ field, source, sha256, url, file, fileName, type, width, height, bytes, policy, gps, camera }`: the policy each was published under (null for an SVG, which is published as it is), the position and camera fields it carries, and its size in pixels. Their pages are listed under `pages` and in `sitemap`. Their card pictures are among `images` with `use: "card"` and the project's URL as `post`, so the [checks](checks.md) verify their metadata like any other image.
+`.coffer-manifest.json` lists the projects in showcase order under `projects` (`slug`, `url`, `file`, `source`, `name`, `pitch`, `kind`, `status`, `featured`, `order`, `tag`, `posts`, `feed`, `card`, `files`, `downloads`). `posts` lists the addresses of all published posts about the project, newest first, and `feed` the address of its feed (null for a site without a blog); the feed is also listed under `feeds` with `type: "project"`, so `coffer check` validates it. `files` lists the files that are copied unchanged for the project (a local trailer, a font file) as `{ field, source, url, file }`; it is empty for most projects. `downloads` lists the logos and screenshots of the press kit as `{ field, source, sha256, url, file, fileName, type, width, height, bytes, policy, gps, camera }`: the policy each was published under (null for an SVG, which is published as it is), the position and camera fields it carries, and its size in pixels. Their pages are listed under `pages` and in `sitemap`. Their card pictures are among `images` with `use: "card"` and the project's URL as `post`, so the [checks](checks.md) verify their metadata like any other image.
 
 ## Not yet
 
-Feeds of a project, the posts that carry its tag and the documentation pages are separate features; the `tag` field and the kind fields are read and validated now so that a project declaration is complete from the start.
+The documentation pages of a tool (`docs` in `project.yaml`) are a separate feature; the field is read and validated now so that a project declaration is complete from the start.

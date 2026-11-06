@@ -1,7 +1,7 @@
 ---
 title: A walnut keepsake box
 date: 2025-04-10
-tags: [workshop/boxes]
+tags: [workshop/boxes, projects/kerfcalc]
 series: boxes-by-hand
 summary: A small lidded box from offcuts, and why the lid is the hard part.
 ---

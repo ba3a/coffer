@@ -84,7 +84,7 @@ test('coffer check passes on the example build', async () => {
     const result = await runCheck(['--out', out]);
     assert.equal(result.err, '');
     assert.equal(result.code, 0);
-    assert.match(result.out, /^workshop: \d+ page\(s\), 7 feed\(s\), 20 image\(s\) checked, no failures$/m);
+    assert.match(result.out, /^workshop: \d+ page\(s\), 12 feed\(s\), 20 image\(s\) checked, no failures$/m);
   });
 });
 
@@ -401,8 +401,8 @@ test('--w3c posts every feed as rawdata with output=soap12, one request per seco
       w3c: { fetch: fn, sleep: async (ms) => void pauses.push(ms) },
     });
     assert.equal(result.code, 0, result.err);
-    assert.equal(calls.length, 7);
-    assert.equal(pauses.length, 6);
+    assert.equal(calls.length, 12);
+    assert.equal(pauses.length, 11);
     assert.ok(pauses.every((ms) => ms === W3C_REQUEST_INTERVAL_MS && ms === 1000));
     for (const call of calls) {
       assert.equal(call.url, 'https://validator.w3.org/feed/check.cgi');

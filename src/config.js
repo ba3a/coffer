@@ -89,6 +89,7 @@ export const CONFIG_FILE_NAME = 'coffer.yaml';
  *
  * @typedef {object} ProjectsConfig
  * @property {string} dir Absolute path of the directory holding one folder per project.
+ * @property {number} latestPosts How many of its latest devlog posts a project's page lists, from 0 to 50; 0 leaves the list out.
  */
 
 /**
@@ -188,6 +189,12 @@ export const DEFAULT_IMAGE = '/assets/social-default.png';
 
 /** Number of entries in a blog or tag feed unless the site says otherwise. */
 export const DEFAULT_FEED_LIMIT = 20;
+
+/** Number of devlog posts a project's page lists unless the site says otherwise. */
+export const DEFAULT_PROJECT_LATEST_POSTS = 5;
+
+/** The most posts `projects.latestPosts` may ask for. */
+export const MAX_PROJECT_LATEST_POSTS = 50;
 
 const IMAGE_KEYS = ['widths', 'viewerMaxEdge', 'webpQuality', 'jpegQuality', 'sizes', 'carouselSizes'];
 const SITE_KEYS = [
@@ -960,12 +967,26 @@ function normalizeSite(raw, index, baseDir, problems) {
   let projects = null;
   const projectsRaw = readMapping(raw, 'projects', path, problems);
   if (projectsRaw !== undefined) {
-    rejectUnknownKeys(projectsRaw, ['dir'], `${path}.projects`, problems);
+    rejectUnknownKeys(projectsRaw, ['dir', 'latestPosts'],`${path}.projects`, problems);
     const dir = readPath(projectsRaw, 'dir', `${path}.projects`, baseDir, problems, {
       required: true,
     });
+    let latestPosts = DEFAULT_PROJECT_LATEST_POSTS;
+    const rawLatest = projectsRaw.latestPosts;
+    if (rawLatest !== undefined && rawLatest !== null) {
+      if (
+        typeof rawLatest === 'number' &&
+        Number.isInteger(rawLatest) &&
+        rawLatest >= 0 &&
+        rawLatest <= MAX_PROJECT_LATEST_POSTS
+      ) {
+        latestPosts = rawLatest;
+      } else {
+        problems.add(`${path}.projects.latestPosts`, `must be a whole number from 0 to ${MAX_PROJECT_LATEST_POSTS}`);
+      }
+    }
     if (typeof dir === 'string') {
-      projects = { dir };
+      projects = { dir, latestPosts };
       const inside = typeof contentDir === 'string' ? relative(contentDir, dir) : '';
       if (inside === '' || inside.startsWith('..') || isAbsolute(inside)) {
         problems.add(

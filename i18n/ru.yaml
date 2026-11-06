@@ -24,6 +24,7 @@ post:
     other: "{count} минуты"
   contents: Содержание
   unpublished: "Предпросмотр: эта запись ещё не опубликована."
+  projects: Проекты
 series:
   navigation: "Серия: {name}"
   parts:
@@ -56,6 +57,11 @@ projects:
   empty: Проектов пока нет.
   all: Все проекты
   license: "Лицензия: {license}"
+  latest: Последние записи
+  block:
+    about: Об этом проекте
+    page: "{name}: страница проекта"
+    more: "Ещё записи о проекте {name}"
   facts:
     title: О проекте
     repo: Исходный код

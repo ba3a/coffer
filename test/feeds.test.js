@@ -112,11 +112,16 @@ test('the example site gets a blog feed, tag subtree feeds and a series feed, al
       [
         ['blog', '/journal/feed.xml', 5],
         ['series', '/journal/series/boxes-by-hand/feed.xml', 2],
+        ['tag', '/journal/tags/projects/feed.xml', 3],
+        ['tag', '/journal/tags/projects/kerfcalc/feed.xml', 2],
+        ['tag', '/journal/tags/projects/tenon-tumble/feed.xml', 2],
         ['tag', '/journal/tags/trips/feed.xml', 2],
         ['tag', '/journal/tags/trips/mountains/feed.xml', 2],
         ['tag', '/journal/tags/workshop/boxes/dovetails/feed.xml', 1],
         ['tag', '/journal/tags/workshop/boxes/feed.xml', 2],
         ['tag', '/journal/tags/workshop/feed.xml', 3],
+        ['project', '/made/kerfcalc/feed.xml', 2],
+        ['project', '/made/tenon-tumble/feed.xml', 2],
       ],
     );
     for (const feed of feeds) {
@@ -175,7 +180,10 @@ test('entries carry id, dates, author, categories, summary and the full post HTM
       dovetail.element.children
         .filter((child) => child.local === 'category')
         .map((category) => [category.attributes.term, category.attributes.label]),
-      [['workshop/boxes/dovetails', 'dovetails']],
+      [
+        ['workshop/boxes/dovetails', 'dovetails'],
+        ['projects/tenon-tumble', 'Tenon Tumble'],
+      ],
     );
     assert.equal(dovetail.element.children.find((child) => child.local === 'content')?.attributes.type, 'html');
     // The whole post, not an excerpt.
@@ -329,7 +337,9 @@ test('pages advertise their feeds in the head; blog, tag and series pages link t
     assert.deepEqual(advertised(post), [
       '/journal/feed.xml',
       '/journal/tags/workshop/boxes/dovetails/feed.xml',
+      '/journal/tags/projects/tenon-tumble/feed.xml',
       '/journal/series/boxes-by-hand/feed.xml',
+      '/made/tenon-tumble/feed.xml',
     ]);
 
     // The blog feed is advertised everywhere else too.

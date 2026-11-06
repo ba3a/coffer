@@ -7,6 +7,7 @@ import { CARDS_CACHE_DIR, createCardMaker } from './cards.js';
 import { DEFAULT_LATEST_POSTS, loadHome } from './content/home.js';
 import { discoverPosts, isPublished, resolveNow } from './content/posts.js';
 import { FONT_FILE_FORMATS, getProjectKind } from './content/project-kinds.js';
+import { PROJECT_BLOCK_POSTS, newestFirst, projectsOfPost, unknownProjectMessage } from './content/project-posts.js';
 import { projectStyle } from './content/project-style.js';
 import { loadProjects, projectUrl, showcaseOf } from './content/projects.js';
 import {
@@ -185,8 +186,8 @@ export class BuildError extends Error {
  * One Atom feed listed in the manifest.
  *
  * @typedef {object} ManifestFeed
- * @property {'blog' | 'tag' | 'series'} type What the feed lists.
- * @property {string} blog Id of the blog.
+ * @property {'blog' | 'tag' | 'series' | 'project'} type What the feed lists.
+ * @property {string | null} blog Id of the blog; null for a project feed, which lists the posts of every blog.
  * @property {string} url Site-relative URL of the feed.
  * @property {string} selfUrl Absolute URL of the feed, as its self link says.
  * @property {string} file Path of the feed file, relative to the site's output directory.
@@ -195,6 +196,7 @@ export class BuildError extends Error {
  * @property {number} entries Number of entries in the feed.
  * @property {string | null} tag Tag path of a tag feed.
  * @property {string | null} series Series slug of a series feed.
+ * @property {string | null} project Slug of the project of a project feed.
  */
 
 /**
@@ -270,6 +272,8 @@ export class BuildError extends Error {
  * @property {boolean} featured
  * @property {number | null} order
  * @property {string | null} tag The devlog tag that marks posts about the project.
+ * @property {string[]} posts Site-relative URLs of the published posts about the project (by its tag or by `projects:`), newest first, from every blog.
+ * @property {string | null} feed Site-relative URL of the project's feed; null when the site has no blog.
  * @property {string} card Path of the card picture, relative to the configuration file.
  * @property {ManifestProjectFile[]} files The files copied unchanged to the output for the project, such as a trailer video or a font; empty when it has none. Pictures are listed under `images`.
  * @property {ManifestDownload[]} downloads The full-resolution logos and screenshots of the project's press kit; empty when it has none. `coffer check` reads each one back against its policy.
@@ -1395,6 +1399,174 @@ async function buildSite(config, site, options, outRoot, version, report) {
     }
   }
 
+  // Which posts are about which project. A post is about a project when one of
+  // its tags is the project's tag or lies below it, or when its front matter
+  // lists the project (see `content/project-posts.js`). This is decided before
+  // any page is written: a post ends with the blocks of its projects, and a
+  // project's page and feed list its posts, from every blog of the site.
+  const projectRefs = preparedProjects.map(({ project }) => ({ slug: project.slug, tag: project.tag }));
+  const projectSlugs = projectRefs.map((entry) => entry.slug);
+  /**
+   * The slugs of the projects each built post is about, in the order of the projects page.
+   * @type {Map<Post, string[]>}
+   */
+  const aboutPost = new Map();
+  /**
+   * The published posts about each project, newest first. A draft, or a post
+   * dated after `now` that a preview build renders, is never listed.
+   * @type {Map<string, import('./content/project-posts.js').ProjectPostRef[]>}
+   */
+  const publishedAbout = new Map(projectSlugs.map((slug) => [slug, []]));
+  for (const blog of site.blogs) {
+    const { selected, rendered } = /** @type {{ selected: Post[], rendered: Map<Post, RenderedPost> }} */ (
+      prepared.get(blog.id)
+    );
+    for (const post of selected) {
+      const about = projectsOfPost(post, projectRefs);
+      for (const slug of about.unknown) {
+        report.addError({
+          site: site.id,
+          file: posix(relative(config.dir, post.file)),
+          message: unknownProjectMessage(slug, projectSlugs),
+        });
+      }
+      aboutPost.set(post, about.slugs);
+      if (!isPublished(post, { now })) continue;
+      for (const slug of about.slugs) {
+        publishedAbout.get(slug)?.push({
+          url: postUrl(blog, post.slug),
+          title: post.title,
+          date: post.date,
+          summary: post.summary,
+          readingMinutes: rendered.get(post)?.readingMinutes ?? 0,
+        });
+      }
+    }
+  }
+  for (const [slug, list] of publishedAbout) publishedAbout.set(slug, newestFirst(list));
+
+  /** @type {ManifestProject[]} */
+  const manifestProjects = [];
+  /** @param {string} kind */
+  const kindLabelOf = (kind) => (templates.translator.has(`projects.kind.${kind}`) ? t(`projects.kind.${kind}`) : kind);
+  /**
+   * The accent colour and display font of a project's page, as safe CSS.
+   *
+   * @param {import('./content/projects.js').Project} project
+   * @param {Record<string, ProjectMedium | null>} media
+   */
+  const projectStyleOf = (project, media) => {
+    const accent = project.fields.accent;
+    const displayFont = project.fields.displayFont;
+    const font = media.displayFontFile;
+    return projectStyle({
+      accent: typeof accent === 'string' ? accent : null,
+      displayFont: typeof displayFont === 'string' ? displayFont : null,
+      font: font?.type === 'font' ? { url: font.url, format: font.format } : null,
+    });
+  };
+  /**
+   * What the template of a game shows as its press kit: the factsheet (the
+   * fields that are known, the game's own platforms and price standing in for
+   * ones the press kit does not give), the rendered descriptions and the
+   * assets to download.
+   *
+   * @param {import('./content/projects.js').Project} project
+   * @param {PreparedPressKit | null} prepared
+   */
+  const pressKitViewOf = (project, prepared) => {
+    if (prepared === null) return null;
+    const { kit } = prepared;
+    const platforms = kit.platforms ?? /** @type {string[]} */ (project.fields.platforms ?? []);
+    const price = kit.price ?? /** @type {string | null | undefined} */ (project.fields.price) ?? null;
+    return {
+      developer: kit.developer,
+      releaseStatus: kit.releaseStatus ?? t(`projects.status.${project.status}`),
+      platforms: platforms.length > 0 ? platforms : null,
+      price,
+      shortDescription: prepared.shortDescription?.html ?? null,
+      longDescription: prepared.longDescription?.html ?? null,
+      logos: prepared.logos,
+      screenshots: prepared.screenshots,
+    };
+  };
+  /**
+   * The store buttons of a project: the links of `stores` that are set, itch
+   * first. Other store names are not shown.
+   *
+   * @param {import('./content/projects.js').Project} project
+   * @returns {{ name: string, label: string, url: string }[]}
+   */
+  const storeLinksOf = (project) => {
+    const stores = /** @type {Record<string, unknown> | null | undefined} */ (project.fields.stores);
+    if (typeof stores !== 'object' || stores === null) return [];
+    return ['itch', 'steam'].flatMap((name) => {
+      const url = stores[name];
+      return typeof url === 'string' && url !== '' ? [{ name, label: t(`projects.game.${name}`), url }] : [];
+    });
+  };
+  /** A project has a feed when the site has a blog, which holds the posts the feed lists. */
+  const hasProjectFeeds = site.blogs.length > 0;
+  const latestProjectPosts = site.projects?.latestPosts ?? 0;
+  const projectViews = preparedProjects.map(({ project, url, picture, media, pressKit }) => {
+    const feed = hasProjectFeeds ? { url: feedUrlFor(url), title: t('feeds.project', { title: project.name }) } : null;
+    return {
+      pressKit: pressKitViewOf(project, pressKit),
+      slug: project.slug,
+      url,
+      name: project.name,
+      pitch: project.pitch,
+      kind: project.kind,
+      kindLabel: kindLabelOf(project.kind),
+      status: project.status,
+      statusLabel: t(`projects.status.${project.status}`),
+      featured: project.featured,
+      order: project.order,
+      license: project.license,
+      tag: project.tag,
+      fields: project.fields,
+      docsUrl: project.fields.docs ? `${url}${site.urls.docs}/` : null,
+      storeLinks: storeLinksOf(project),
+      picture,
+      media,
+      style: projectStyleOf(project, media),
+      feed,
+      devlogUrl: feed?.url ?? null,
+      posts: (publishedAbout.get(project.slug) ?? []).slice(0, latestProjectPosts),
+    };
+  });
+  const projectViewBySlug = new Map(projectViews.map((view) => [view.slug, view]));
+  /**
+   * The block at the end of a post about a project, and the badge near its
+   * title: the project, its links and up to three other recent posts about it.
+   *
+   * @param {string} slug
+   * @param {string} pageUrl Site-relative URL of the post, which the block's list leaves out.
+   */
+  const projectBlockOf = (slug, pageUrl) => {
+    const view = /** @type {(typeof projectViews)[number]} */ (projectViewBySlug.get(slug));
+    return {
+      slug,
+      name: view.name,
+      pitch: view.pitch,
+      url: view.url,
+      kind: view.kind,
+      docsUrl: view.docsUrl,
+      storeLinks: view.storeLinks,
+      feed: view.feed,
+      posts: (publishedAbout.get(slug) ?? [])
+        .filter((other) => other.url !== pageUrl)
+        .slice(0, PROJECT_BLOCK_POSTS)
+        .map(({ url, title, date }) => ({ url, title, date })),
+    };
+  };
+  /**
+   * The feed entries of the published posts about each project, from every
+   * blog; the project feeds are written after the blogs.
+   * @type {Map<string, import('./feeds.js').FeedEntry[]>}
+   */
+  const projectFeedEntries = new Map(projectSlugs.map((slug) => [slug, []]));
+
   for (const blog of site.blogs) {
     const { selected, rendered: renderedPosts, tagMeta } = /** @type {{ selected: Post[], rendered: Map<Post, RenderedPost>, tagMeta: ReturnType<typeof loadTagMeta> }} */ (
       prepared.get(blog.id)
@@ -1509,20 +1681,20 @@ async function buildSite(config, site, options, outRoot, version, report) {
       }
       for (const warning of mapped.warnings) warnings.push(`${shownFile}: ${warning}`);
 
+      const aboutProjects = aboutPost.get(post) ?? [];
       if (!unpublished) {
-        feedEntries.set(
-          post,
-          createFeedEntry({
-            baseUrl: site.baseUrl,
-            url,
-            title: post.title,
-            date: post.date,
-            summary: post.summary,
-            html: mapped.feedHtml,
-            tags: post.tags.map((path) => ({ path, name: nameOf(path) })),
-            tagsIndexUrl,
-          }),
-        );
+        const feedEntry = createFeedEntry({
+          baseUrl: site.baseUrl,
+          url,
+          title: post.title,
+          date: post.date,
+          summary: post.summary,
+          html: mapped.feedHtml,
+          tags: post.tags.map((path) => ({ path, name: nameOf(path) })),
+          tagsIndexUrl,
+        });
+        feedEntries.set(post, feedEntry);
+        for (const slug of aboutProjects) projectFeedEntries.get(slug)?.push(feedEntry);
       }
       if (!unpublished && post.aliases.length > 0) {
         aliasing.push({
@@ -1540,6 +1712,7 @@ async function buildSite(config, site, options, outRoot, version, report) {
         post.tags.map((path) => ({ path, name: nameOf(path), url: urlOf(path) })),
         seriesOf.get(post) ?? null,
       );
+      const projectBlocks = aboutProjects.map((slug) => projectBlockOf(slug, url));
       const previewImage = await previewImageOf(post, url);
       warnUnusedImageEntries(/** @type {PageImages} */ (pageImages.get(post.file)));
       const html = templates.render('post.njk', {
@@ -1549,6 +1722,7 @@ async function buildSite(config, site, options, outRoot, version, report) {
         feedLinks: feedLinksFor(blog, [
           ...post.tags.map(tagFeedLink),
           ...(view.series ? [seriesFeedLink(view.series.slug)] : []),
+          ...projectBlocks.flatMap((block) => (block.feed ? [block.feed] : [])),
         ]),
         meta: metaFor({
           title: post.title,
@@ -1560,6 +1734,7 @@ async function buildSite(config, site, options, outRoot, version, report) {
           tags: view.tagLinks.map((tag) => tag.name),
         }),
         post: view,
+        projectBlocks,
         series: view.series,
         toc: rendered.toc,
         ...pageAssetsFor(rendered, mapped.maps.length > 0),
@@ -1804,6 +1979,7 @@ async function buildSite(config, site, options, outRoot, version, report) {
         entries: chosen.length,
         tag,
         series,
+        project: null,
       });
     };
     writeFeed({
@@ -1838,85 +2014,61 @@ async function buildSite(config, site, options, outRoot, version, report) {
     }
   }
 
-  // The projects page, one page per project, and the cards that the home page's showcase reuses.
-  /** @type {ManifestProject[]} */
-  const manifestProjects = [];
-  /** @param {string} kind */
-  const kindLabelOf = (kind) => (templates.translator.has(`projects.kind.${kind}`) ? t(`projects.kind.${kind}`) : kind);
-  /**
-   * The address of the feed that a call to follow a project's devlog links to:
-   * the feed of the project's tag when some post carries it, else the feed of
-   * the first blog; null when the site has no blog.
-   *
-   * @param {string | null} tag
-   * @returns {string | null}
-   */
-  const devlogFeedOf = (tag) =>
-    (tag === null ? undefined : manifestFeeds.find((feed) => feed.type === 'tag' && feed.tag === tag))?.url ??
-    manifestFeeds.find((feed) => feed.type === 'blog')?.url ??
-    null;
-  /**
-   * The accent colour and display font of a project's page, as safe CSS.
-   *
-   * @param {import('./content/projects.js').Project} project
-   * @param {Record<string, ProjectMedium | null>} media
-   */
-  const projectStyleOf = (project, media) => {
-    const accent = project.fields.accent;
-    const displayFont = project.fields.displayFont;
-    const font = media.displayFontFile;
-    return projectStyle({
-      accent: typeof accent === 'string' ? accent : null,
-      displayFont: typeof displayFont === 'string' ? displayFont : null,
-      font: font?.type === 'font' ? { url: font.url, format: font.format } : null,
-    });
-  };
-  /**
-   * What the template of a game shows as its press kit: the factsheet (the
-   * fields that are known, the game's own platforms and price standing in for
-   * ones the press kit does not give), the rendered descriptions and the
-   * assets to download.
-   *
-   * @param {import('./content/projects.js').Project} project
-   * @param {PreparedPressKit | null} prepared
-   */
-  const pressKitViewOf = (project, prepared) => {
-    if (prepared === null) return null;
-    const { kit } = prepared;
-    const platforms = kit.platforms ?? /** @type {string[]} */ (project.fields.platforms ?? []);
-    const price = kit.price ?? /** @type {string | null | undefined} */ (project.fields.price) ?? null;
-    return {
-      developer: kit.developer,
-      releaseStatus: kit.releaseStatus ?? t(`projects.status.${project.status}`),
-      platforms: platforms.length > 0 ? platforms : null,
-      price,
-      shortDescription: prepared.shortDescription?.html ?? null,
-      longDescription: prepared.longDescription?.html ?? null,
-      logos: prepared.logos,
-      screenshots: prepared.screenshots,
-    };
-  };
-  const projectViews = preparedProjects.map(({ project, url, picture, media, pressKit }) => ({
-    pressKit: pressKitViewOf(project, pressKit),
-    slug: project.slug,
-    url,
-    name: project.name,
-    pitch: project.pitch,
-    kind: project.kind,
-    kindLabel: kindLabelOf(project.kind),
-    status: project.status,
-    statusLabel: t(`projects.status.${project.status}`),
-    featured: project.featured,
-    order: project.order,
-    license: project.license,
-    tag: project.tag,
-    fields: project.fields,
-    docsUrl: project.fields.docs ? `${url}${site.urls.docs}/` : null,
-    picture,
-    media,
-    style: projectStyleOf(project, media),
-    devlogUrl: devlogFeedOf(project.tag),
-  }));
+  // The feed of each project: the published posts about it from every blog,
+  // newest first, the latest `feeds.limit` of them. A project that no post is
+  // about still has a feed, with no entries, so the address a page links to
+  // always exists. The feed has the address `{projects}/{slug}/feed.xml`, which
+  // no file the build publishes for a project can have (those have names the
+  // build chooses); a kind that publishes such a file is reported.
+  if (hasProjectFeeds) {
+    const siteTitle = site.title;
+    for (const { project, url, files, pressKit } of preparedProjects) {
+      const feedUrl = feedUrlFor(url);
+      const taken = new Set([...files.map((file) => file.url), ...(pressKit?.downloads ?? []).map((file) => file.url)]);
+      // A blog whose prefix is the project's address has the same feed, but it has the project page's file too, and that clash is reported below.
+      if (taken.has(feedUrl) || manifestFeeds.some((feed) => feed.type !== 'blog' && feed.url === feedUrl)) {
+        report.addError({
+          site: site.id,
+          file: posix(relative(config.dir, project.file)),
+          message: `the feed of the project (${feedUrl}) would be written over another file or feed of the site; rename the project folder`,
+        });
+        continue;
+      }
+      const chosen = selectEntries(projectFeedEntries.get(project.slug) ?? [], site.feeds.limit);
+      const selfUrl = absoluteUrl(site.baseUrl, feedUrl);
+      const title = `${project.name} | ${siteTitle}`;
+      writeOutput(
+        outDir,
+        feedUrl.slice(1),
+        renderFeed({
+          lang: site.lang,
+          selfUrl,
+          alternateUrl: absoluteUrl(site.baseUrl, url),
+          title,
+          subtitle: project.pitch,
+          author: site.author,
+          updated: chosen[0]?.updated ?? now,
+          generator: { name: 'coffer', version },
+          entries: chosen,
+        }),
+      );
+      manifestFeeds.push({
+        type: 'project',
+        blog: null,
+        url: feedUrl,
+        selfUrl,
+        file: feedUrl.slice(1),
+        page: url,
+        title,
+        entries: chosen.length,
+        tag: null,
+        series: null,
+        project: project.slug,
+      });
+    }
+  }
+
+  // The projects page and one page per project; the views of the projects were made before the posts.
   if (projectsIndexUrl) {
     for (const entry of preparedProjects) {
       const { project, url, rendered, page, picture, files } = entry;
@@ -1930,7 +2082,7 @@ async function buildSite(config, site, options, outRoot, version, report) {
       const html = templates.render(kind.template, {
         site,
         nav,
-        feedLinks: feedLinksFor(null),
+        feedLinks: feedLinksFor(null, view.feed ? [view.feed] : []),
         meta: metaFor({
           title: project.name,
           description: project.pitch,
@@ -1957,6 +2109,8 @@ async function buildSite(config, site, options, outRoot, version, report) {
         featured: project.featured,
         order: project.order,
         tag: project.tag,
+        posts: (publishedAbout.get(project.slug) ?? []).map((post) => post.url),
+        feed: view.feed ? view.feed.url : null,
         card: posix(relative(config.dir, project.card)),
         files,
         downloads: entry.pressKit?.downloads ?? [],
@@ -2184,8 +2338,10 @@ async function buildSite(config, site, options, outRoot, version, report) {
  * - for every series, a page at `{blogPrefix}/{series}/{slug}/` listing its
  *   parts in order, and on every part a navigation block (series name, "part
  *   n of m", previous and next) at the top and at the end;
- * - for the blog, every tag and every series, a full-content Atom feed named
+ * - for the blog, every tag, every series and every project, a full-content Atom feed named
  *   `feed.xml` under the page's address, newest first (see `docs/feeds.md`);
+ * - on every post about a project (by its tag or by `projects:`), a badge near the title and
+ *   a project block at the end; on every project page the latest posts about it (see `docs/projects.md`);
  * - `sitemap.xml` (published canonical pages only) and `robots.txt` (see `docs/seo.md`),
  *   and `title`, description, canonical, Open Graph and Twitter card tags on every page;
  * - for every post, tag, series and blog index without a picture of its own, a 1200 by 630 title card in `cards/{hash}.png`, cached in `.cache/cards/`

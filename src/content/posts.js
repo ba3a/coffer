@@ -22,6 +22,7 @@ import { normalizeImageKey } from '../images/policy.js';
  * @property {number | null} seriesPosition Explicit position in the series, if given.
  * @property {boolean} draft True for a draft.
  * @property {string[]} aliases Old slugs that redirect to this post.
+ * @property {string[]} projects Slugs of the projects the post is explicitly about (`projects: [slug]`), without duplicates; empty when there are none. A post is also about the projects whose tag it carries (see `content/project-posts.js`). Whether a slug names a registered project is checked at build time.
  * @property {string | null} location Location policy override as written; checked when the policy is resolved.
  * @property {string | null} camera Camera metadata policy override as written; checked when the policy is resolved.
  * @property {Map<string, import('../images/policy.js').ImageOverride>} images Per-image metadata policy overrides from the `images:` map, by normalized image path (see `normalizeImageKey`); empty when there are none.
@@ -57,6 +58,9 @@ export class PostError extends Error {
 }
 
 const SLUG_RE = /^[\p{L}\p{N}][\p{L}\p{N}._-]*$/u;
+
+/** The syntax of a project's slug, which is the name of its folder and the last segment of its URL. */
+export const PROJECT_SLUG_RE = /^[a-z0-9][a-z0-9_-]*$/;
 const DATE_RE =
   /^(\d{4})-(\d{2})-(\d{2})(?:[T ](\d{2}):(\d{2})(?::(\d{2})(?:\.(\d{1,9}))?)?\s*(Z|[+-]\d{2}(?::?\d{2})?)?)?$/i;
 
@@ -524,6 +528,23 @@ function parseInto(file, text, slug, kind, dir, options, errors) {
     });
   }
 
+  /** @type {string[]} */
+  const projects = [];
+  const rawProjects = optionalStringList('projects');
+  if (rawProjects !== undefined) {
+    rawProjects.forEach((entry, index) => {
+      const value = entry.trim();
+      if (!PROJECT_SLUG_RE.test(value)) {
+        fail(
+          `projects[${index}]`,
+          `"${entry}" must be the slug of a project (lower-case letters, digits, "-" and "_", starting with a letter or a digit)`,
+        );
+      } else if (!projects.includes(value)) {
+        projects.push(value);
+      }
+    });
+  }
+
   if (errors.length > before || when === undefined) return undefined;
   return {
     slug,
@@ -540,6 +561,7 @@ function parseInto(file, text, slug, kind, dir, options, errors) {
     seriesPosition,
     draft: draft ?? false,
     aliases,
+    projects,
     location: location ?? null,
     camera: camera ?? null,
     images,

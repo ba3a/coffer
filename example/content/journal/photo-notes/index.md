@@ -1,7 +1,7 @@
 ---
 title: Three photos from the bench and the hills
 date: 2025-01-12
-tags: [workshop]
+tags: [workshop, projects/kerfcalc, projects/tenon-tumble]
 summary: A sample of a photo carousel, with captions and no script needed to browse it.
 ---
 
