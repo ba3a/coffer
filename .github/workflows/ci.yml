@@ -1,0 +1,50 @@
+# Continuous integration: runs the whole test suite on Linux and on Windows.
+#
+# The workflow assumes that this directory is the root of its own repository.
+# It needs a committed package-lock.json next to package.json: `npm ci` and the
+# npm cache of actions/setup-node both read it. A lock file is not kept while
+# coffer lives in a workspace of a larger repository, where the lock file of
+# the workspace root covers it; create it with `npm install` in the new
+# repository before the first push.
+#
+# `npm test` runs the unit tests, which include building the example site and
+# checking its output with `coffer check`, and then the type check.
+name: CI
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+# A newer run of the same pull request replaces the one in progress. Pushes to
+# branches are never cancelled, so that every commit keeps its own result.
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.event.pull_request.number || github.run_id }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  test:
+    name: test (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    steps:
+      - name: Check out the repository
+        uses: actions/checkout@v7
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Test
+        run: npm test

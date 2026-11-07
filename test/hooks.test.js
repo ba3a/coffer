@@ -557,7 +557,7 @@ test('post-checkout, post-merge and post-rewrite fetch missing originals and nev
       // The other working copy receives the lock file, as a merge would deliver it.
       cleanup(join(b.repo, 'content'));
       mkdirSync(join(b.repo, 'content', 'p'), { recursive: true });
-      rmSync(join(b.repo, '.coffer'), { recursive: true, force: true });
+      cleanup(join(b.repo, '.coffer'));
       writeFileSync(join(b.repo, 'media.lock.json'), readFileSync(join(a.repo, 'media.lock.json')));
       const c = capture();
       assert.equal(await runHook(name, c.io, hookOptions(b.repo)), 0, `${name}: ${c.err()}`);
@@ -573,7 +573,7 @@ test('post-checkout, post-merge and post-rewrite fetch missing originals and nev
     // A local file that differs from the lock and was never synced is a conflict: reported, kept, and the hook still succeeds.
     photo(b.repo, PHOTO, 'my own edit');
     writeFileSync(join(b.repo, 'media.lock.json'), readFileSync(join(a.repo, 'media.lock.json')));
-    rmSync(join(b.repo, '.coffer'), { recursive: true, force: true });
+    cleanup(join(b.repo, '.coffer'));
     const conflict = capture();
     assert.equal(await runHook('post-checkout', conflict.io, hookOptions(b.repo)), 0);
     assert.match(conflict.err(), /conflict content\/p\/IMG_0001\.jpg/);

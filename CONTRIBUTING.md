@@ -37,6 +37,12 @@ Tests are written with `node:test` and `node:assert/strict`. A few guidelines:
 
 The test suite takes several minutes, because it builds sites and processes images.
 
+### Continuous integration
+
+`.github/workflows/ci.yml` runs `npm ci` and `npm test` on Linux and on Windows for every push and pull request, with the Node.js version named in `.nvmrc`. Both systems must be green before a change is merged.
+
+The workflow expects `package-lock.json` to be committed in this repository, because `npm ci` and the dependency cache of the workflow read it. When you change a dependency in `package.json`, run `npm install` and commit the updated lock file with it.
+
 ## Style
 
 - Plain JavaScript in ES modules, with types written as JSDoc comments. `npm run typecheck` checks them strictly, so a new function needs accurate `@param` and `@returns` tags. There is no build step: the code you write is the code that runs.
