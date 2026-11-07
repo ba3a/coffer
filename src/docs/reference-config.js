@@ -32,7 +32,7 @@ export const MAX_PATTERN_LENGTH = 500;
  * The checked `reference` block.
  *
  * @typedef {object} ReferenceConfig
- * @property {string | string[]} command A command line for the system's shell, or a program and its arguments (no shell). `{repo}`, `{out}` and `{site}` are replaced.
+ * @property {string | string[] | { default: string | string[], windows?: string | string[] }} command A command line for the system's shell, or a program and its arguments (no shell), or one of these for Windows and one for every other system. `{repo}`, `{out}` and `{site}` are replaced.
  * @property {'html' | 'json'} format What the command produces.
  * @property {string} output A directory (`html`) or a file (`json`), relative to the checkout or to `{out}`.
  * @property {string} title The name of the reference, in the sidebar and in the breadcrumbs.
@@ -65,11 +65,38 @@ function checkText(value, max) {
   return { value: value.trim() };
 }
 
+/** The keys of a per-system command: the one for Windows, and the one for every other system. */
+export const COMMAND_SYSTEMS = Object.freeze(['default', 'windows']);
+
+/**
+ * @param {unknown} value A command line (text) or a program and its arguments (list).
+ * @param {string} path The path of the field, for the message.
+ * @returns {{ value: string | string[] } | { problem: string }}
+ */
+function checkCommandLine(value, path) {
+  if (Array.isArray(value)) {
+    if (value.length === 0 || value.length > MAX_COMMAND_ARGUMENTS) {
+      return { problem: `${path}: a list needs from 1 to ${MAX_COMMAND_ARGUMENTS} items` };
+    }
+    /** @type {string[]} */
+    const parts = [];
+    for (const [index, part] of value.entries()) {
+      if (typeof part !== 'string' || part.length > MAX_COMMAND_LENGTH || part.includes('\u0000') || (index === 0 && part.trim() === '')) {
+        return { problem: `${path}: item ${index + 1} must be text (the program must not be empty)` };
+      }
+      parts.push(part);
+    }
+    return { value: parts };
+  }
+  const checked = checkText(value, MAX_COMMAND_LENGTH);
+  return 'problem' in checked ? { problem: `${path}: ${checked.problem}` } : checked;
+}
+
 /**
  * Checks a `docs.reference` block and normalizes it. Every problem is
  * returned, each starting with the path of the field.
  *
- * - `command` (required): a command line (text) or a list of text: the program and its arguments;
+ * - `command` (required): a command line (text) or a list of text: the program and its arguments; or a mapping `{default, windows}` of those, for a tool that is started differently on Windows (`./gradlew` and `gradlew.bat`);
  * - `format` (required): `html` or `json`;
  * - `output` (required): where the command leaves its result;
  * - `title` (required): the name of the reference;
@@ -88,28 +115,30 @@ export function checkReferenceConfig(value) {
     if (!REFERENCE_KEYS.includes(key)) problems.push(`reference.${key}: unknown key (expected one of: ${REFERENCE_KEYS.join(', ')})`);
   }
 
-  /** @type {string | string[] | undefined} */
+  /** @type {ReferenceConfig['command'] | undefined} */
   let command;
   if (value.command === undefined || value.command === null) {
-    problems.push('reference.command: is required (a command line, or a list: the program and its arguments)');
-  } else if (Array.isArray(value.command)) {
-    if (value.command.length === 0 || value.command.length > MAX_COMMAND_ARGUMENTS) {
-      problems.push(`reference.command: a list needs from 1 to ${MAX_COMMAND_ARGUMENTS} items`);
-    } else {
-      /** @type {string[]} */
-      const parts = [];
-      for (const [index, part] of value.command.entries()) {
-        if (typeof part !== 'string' || part.length > MAX_COMMAND_LENGTH || part.includes('\u0000') || (index === 0 && part.trim() === '')) {
-          problems.push(`reference.command: item ${index + 1} must be text (the program must not be empty)`);
-        } else {
-          parts.push(part);
-        }
-      }
-      if (parts.length === value.command.length) command = parts;
+    problems.push('reference.command: is required (a command line, or a list: the program and its arguments, or a mapping with default and windows)');
+  } else if (isMapping(value.command)) {
+    /** @type {{ default?: string | string[], windows?: string | string[] }} */
+    const perSystem = {};
+    const before = problems.length;
+    for (const key of Object.keys(value.command)) {
+      if (!COMMAND_SYSTEMS.includes(key)) problems.push(`reference.command.${key}: unknown key (expected one of: ${COMMAND_SYSTEMS.join(', ')})`);
     }
+    for (const system of COMMAND_SYSTEMS) {
+      if (value.command[system] === undefined || value.command[system] === null) continue;
+      const checked = checkCommandLine(value.command[system], `reference.command.${system}`);
+      if ('problem' in checked) problems.push(checked.problem);
+      else perSystem[/** @type {'default' | 'windows'} */ (system)] = checked.value;
+    }
+    if (problems.length === before && perSystem.default === undefined) {
+      problems.push('reference.command.default: is required (the command for every system that has no entry of its own)');
+    }
+    if (problems.length === before) command = /** @type {{ default: string | string[], windows?: string | string[] }} */ (perSystem);
   } else {
-    const checked = checkText(value.command, MAX_COMMAND_LENGTH);
-    if ('problem' in checked) problems.push(`reference.command: ${checked.problem}`);
+    const checked = checkCommandLine(value.command, 'reference.command');
+    if ('problem' in checked) problems.push(checked.problem);
     else command = checked.value;
   }
 

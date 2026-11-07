@@ -108,7 +108,7 @@ docs:
 
 | Key | Meaning |
 | --- | --- |
-| `command` | Required. A list (the program and its arguments, run without a shell) or a text (a command line for the system's shell: `cmd.exe` on Windows, `/bin/sh` elsewhere). `{repo}`, `{out}` and `{site}` are replaced. |
+| `command` | Required. A list (the program and its arguments, run without a shell) or a text (a command line for the system's shell: `cmd.exe` on Windows, `/bin/sh` elsewhere). `{repo}`, `{out}` and `{site}` are replaced. For a tool that starts differently on Windows, a mapping `{default, windows}` of these: the `windows` entry is used on Windows, the `default` entry everywhere else (see [the command](#the-command)). |
 | `format` | Required. `html` or `json`. |
 | `output` | Required. Where the command leaves its result: a folder for `html`, a file for `json`. Relative to the checkout; the placeholders are replaced here too. |
 | `title` | Required. The name of the reference, in the sidebar and on the docs index. |
@@ -126,7 +126,17 @@ It runs with the checkout of the project's repository as its working directory (
 
 In a list, a placeholder is replaced inside each item. In a text, it is replaced by the path, put in quotes for the shell when it needs them. A list is the safer form (no shell parses it); it needs an executable program. A program without a slash is looked up in the absolute folders of the `PATH` (never in the checkout), and `node` is the Node that runs coffer when the `PATH` has none; a program with a slash is relative to the checkout. A script that needs a shell (`gradlew.bat`, `npm`) is written as a text.
 
-The environment of the command is the one of coffer. It is killed, with everything it started, after 15 minutes. **Running the command is running code of the repository** (Gradle runs build scripts, `npm` runs scripts): configure a reference only for repositories you trust.
+A command that is started differently on Windows (`./gradlew` against `.\gradlew.bat`) is written as a mapping, each entry being a list or a text:
+
+```yaml
+command:
+  default: ./gradlew --no-daemon dokkaGeneratePublicationHtml
+  windows: .\gradlew.bat --no-daemon dokkaGeneratePublicationHtml
+```
+
+`default` is required. Write `.\gradlew.bat` with the leading `.\`: `cmd.exe` does not look in the current folder when `NoDefaultCurrentDirectoryInExePath` is set.
+
+The environment of the command is the one of coffer **without the variables whose names look like secrets**: names containing `TOKEN`, `SECRET`, `KEY`, `PASSWORD`, `PASSWD`, `CREDENTIAL`, `AUTH`, `COOKIE` or `PRIVATE` (in any case), and the ones that begin with `CLOUDFLARE_`, `R2_` or `AWS_`. The command is code of another repository and never needs the keys the site is published with. It is killed, with everything it started, after 15 minutes. **Running the command is running code of the repository** (Gradle runs build scripts, `npm` runs scripts): configure a reference only for repositories you trust.
 
 ### The output
 
@@ -203,7 +213,7 @@ A command that cannot be started, exits with a code other than 0, is stopped by 
 
 ### The cache
 
-The result is stored in `.cache/reference/{slug}/{commit}-{hash}/`, where `commit` is the commit of the source (the one `coffer docs fetch` prints) and `hash` covers `command`, `format`, `output` and `undocumented` (the `title` is not part of it). A build whose commit and configuration have an entry does not run the command: the manifest says `"cached": true`, the pages are written from the stored result and the undocumented elements are reported as before. Only a source **pinned to a commit** is cached: a git source always is; a `path` source only when the folder is in a git repository and has no uncommitted changes (a folder outside a repository, or a changed one, runs the command every time). The result is expected to depend on the contents of the repository and the configuration only, not on `{site}` or on the machine. The five most recently used results of a project are kept. Like the repository cache, `.cache/` must not be published, and two builds must not use the same cache folder at the same moment.
+The result is stored in `.cache/reference/{slug}/{commit}-{hash}/`, where `commit` is the commit of the source (the one `coffer docs fetch` prints) and `hash` covers `command`, `format`, `output` and `undocumented` (the `title` is not part of it), and the contents of the files and folders of the content repository that the command names through `{site}` (`{site}/generators/reference.mjs`, `--init-script={site}/build-support/init.gradle.kts`; a folder is read with everything in it). Editing such a script therefore gives a new entry. Files that a script itself reads or imports are not followed, and `{site}` alone (the whole repository) is not an input. A build whose commit and configuration have an entry does not run the command: the manifest says `"cached": true`, the pages are written from the stored result and the undocumented elements are reported as before. Only a source **pinned to a commit** is cached: a git source always is; a `path` source only when the folder is in a git repository and has no uncommitted changes (a folder outside a repository, or a changed one, runs the command every time). The result is expected to depend on the contents of the repository and the configuration only, not on `{site}` or on the machine. The five most recently used results of a project are kept. Like the repository cache, `.cache/` must not be published, and two builds must not use the same cache folder at the same moment.
 
 ### In the manifest
 

@@ -500,6 +500,35 @@ export function substitutePlaceholders(text, values, quote = (value) => value) {
 }
 
 /**
+ * Names of environment variables that look like they hold a secret (a token, a
+ * key, a password, a credential, a cookie, an authorization) or that belong to
+ * the services the site is published with. A generator is code of another
+ * repository, so it does not get them.
+ */
+const SECRET_NAME = /TOKEN|SECRET|KEY|PASSWORD|PASSWD|CREDENTIAL|AUTH|COOKIE|PRIVATE|^(CLOUDFLARE|R2|AWS)_/i;
+
+/**
+ * @param {Record<string, string | undefined>} env
+ * @returns {Record<string, string | undefined>} The environment without the variables whose names look like secrets.
+ */
+export function withoutSecrets(env) {
+  /** @type {Record<string, string | undefined>} */
+  const kept = {};
+  for (const [name, value] of Object.entries(env)) if (!SECRET_NAME.test(name)) kept[name] = value;
+  return kept;
+}
+
+/**
+ * @param {import('./reference-config.js').ReferenceConfig['command']} command
+ * @param {NodeJS.Platform} [platform]
+ * @returns {string | string[]} The command for this system: the entry for Windows on Windows when there is one, else the default.
+ */
+export function commandFor(command, platform = process.platform) {
+  if (typeof command === 'string' || Array.isArray(command)) return command;
+  return platform === 'win32' && command.windows !== undefined ? command.windows : command.default;
+}
+
+/**
  * @typedef {object} CommandResult
  * @property {number | null} code The exit code; null when the process was killed or did not start.
  * @property {string} output The end of what it wrote (both streams together).
@@ -643,7 +672,7 @@ function commandFailure(result, command, timeoutMs) {
  * @property {string} siteDir The root of the content repository (`{site}`).
  * @property {string} cacheDir The folder of the reference cache, `.cache/reference`.
  * @property {number} [timeoutMs] Default {@link DEFAULT_REFERENCE_TIMEOUT_MS}.
- * @property {Record<string, string | undefined>} [env] The environment of the command (default the process's).
+ * @property {Record<string, string | undefined>} [env] The environment the command's is made from (default the process's), without the variables whose names look like secrets.
  */
 
 /**
@@ -656,15 +685,97 @@ function isInside(from, to) {
   return inside !== '..' && !inside.startsWith(`..${sep}`) && !isAbsolute(inside);
 }
 
+/** The most files hashed for one `{site}` path of a command, and the most bytes read from one of them. */
+const MAX_INPUT_FILES = 2000;
+const MAX_INPUT_BYTES = 16 * 1024 * 1024;
+
+/** Ends each record of the hashed inputs. */
+const SEPARATOR = String.fromCharCode(10);
+
 /**
- * The hash of everything in the configuration that decides what the command
- * produces.
+ * Hashes a file or folder of the content repository into `hash`: the files a
+ * command is started with (a generator script, a Gradle init script) decide
+ * what it produces, so changing one has to give a new cache entry. A folder
+ * is read recursively in code-point order, `.git` and `node_modules` left out;
+ * a symbolic link is recorded by name, not followed.
  *
- * @param {import('./reference-config.js').ReferenceConfig} reference
+ * @param {import('node:crypto').Hash} hash
+ * @param {string} label The path as written in the command, after `{site}`, with `/`.
+ * @param {string} path
+ * @param {{ files: number }} budget
+ */
+function hashSiteInput(hash, label, path, budget) {
+  /** @type {import('node:fs').Stats} */
+  let stat;
+  try {
+    stat = lstatSync(path);
+  } catch {
+    hash.update(`missing:${label}${SEPARATOR}`);
+    return;
+  }
+  if (stat.isSymbolicLink()) {
+    hash.update(`link:${label}${SEPARATOR}`);
+  } else if (stat.isDirectory()) {
+    hash.update(`dir:${label}${SEPARATOR}`);
+    const names = readdirSync(path).filter((name) => name !== '.git' && name !== 'node_modules').sort((a, b) => (a < b ? -1 : a > b ? 1 : 0));
+    for (const name of names) hashSiteInput(hash, `${label}/${name}`, join(path, name), budget);
+  } else if (stat.isFile()) {
+    budget.files += 1;
+    if (budget.files > MAX_INPUT_FILES || stat.size > MAX_INPUT_BYTES) {
+      hash.update(`large:${label}:${stat.size}${SEPARATOR}`);
+      return;
+    }
+    hash.update(`file:${label}:${createHash('sha256').update(readFileSync(path)).digest('hex')}${SEPARATOR}`);
+  } else {
+    hash.update(`other:${label}${SEPARATOR}`);
+  }
+}
+
+/**
+ * The hash of the files of the content repository that a command names through
+ * `{site}` (`{site}/generators/reference.mjs`, `--init-script={site}/x.kts`), in
+ * every variant of the command. `{site}` alone, the folder itself, is not an input. The result of a generator depends on the
+ * generator, so the contents of these files are part of the cache key.
+ *
+ * @param {import('./reference-config.js').ReferenceConfig['command']} command
+ * @param {string} siteDir
  * @returns {string}
  */
-function configHash(reference) {
-  return createHash('sha256').update(JSON.stringify([CACHE_VERSION, reference.command, reference.format, reference.output, reference.undocumented])).digest('hex').slice(0, 16);
+export function siteInputsHash(command, siteDir) {
+  const hash = createHash('sha256');
+  /** @type {(string | string[])[]} */
+  const lines = typeof command === 'string' || Array.isArray(command) ? [command] : [command.default, ...(command.windows === undefined ? [] : [command.windows])];
+  const budget = { files: 0 };
+  /** @type {Set<string>} */
+  const seen = new Set();
+  for (const line of lines) {
+    for (const argument of typeof line === 'string' ? [line] : line) {
+      for (const match of argument.matchAll(/\{site\}([^\s"'<>|&;]*)/g)) {
+        const rest = match[1].replaceAll('\\', '/');
+        // The root of the content repository itself is not an input: it holds the output and the caches.
+        if (rest.split('/').every((part) => part === '' || part === '.') || seen.has(rest)) continue;
+        seen.add(rest);
+        hashSiteInput(hash, rest, resolve(siteDir, ...rest.split('/').filter(Boolean)), budget);
+      }
+    }
+  }
+  return hash.digest('hex');
+}
+
+/**
+ * The hash of everything that decides what the command produces: the
+ * configuration, and the contents of the files of the content repository that
+ * the command names through `{site}`.
+ *
+ * @param {import('./reference-config.js').ReferenceConfig} reference
+ * @param {string} siteDir
+ * @returns {string}
+ */
+export function configHash(reference, siteDir) {
+  return createHash('sha256')
+    .update(JSON.stringify([CACHE_VERSION, reference.command, reference.format, reference.output, reference.undocumented, siteInputsHash(reference.command, siteDir)]))
+    .digest('hex')
+    .slice(0, 16);
 }
 
 /**
@@ -766,7 +877,7 @@ export async function generateReference({ slug, reference, fetched, siteDir, cac
   const sha = source.sha;
   const cacheable = sha !== null && (source.type === 'git' || source.dirty === false);
   const slugDir = join(cacheDir, slug);
-  const entry = join(slugDir, cacheable ? `${sha}-${configHash(reference)}` : '_uncached');
+  const entry = join(slugDir, cacheable ? `${sha}-${configHash(reference, siteDir)}` : '_uncached');
   if (cacheable) {
     const found = loadEntry(entry, reference.format);
     if (found) {
@@ -787,9 +898,10 @@ export async function generateReference({ slug, reference, fetched, siteDir, cac
     const out = join(work, 'out');
     mkdirSync(out, { recursive: true });
     const values = { repo: fetched.root, out, site: siteDir };
-    const result = await runCommand({ command: reference.command, values, cwd: fetched.root, env, timeoutMs });
+    const command = commandFor(reference.command);
+    const result = await runCommand({ command, values, cwd: fetched.root, env: withoutSecrets(env), timeoutMs });
     if (result.spawnError !== undefined || result.timedOut || result.code !== 0) {
-      throw new ReferenceFailure(commandFailure(result, reference.command, timeoutMs));
+      throw new ReferenceFailure(commandFailure(result, command, timeoutMs));
     }
 
     // The output has to be inside the checkout or in {out}, links followed.

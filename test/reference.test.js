@@ -13,11 +13,15 @@ import { checkDocsConfig } from '../src/docs/sources.js';
 import { checkReferenceConfig } from '../src/docs/reference-config.js';
 import {
   backBarHtml,
+  commandFor,
+  configHash,
   injectBackBar,
   parseReferenceJson,
   shellQuote,
+  siteInputsHash,
   substitutePlaceholders,
   viewOfReference,
+  withoutSecrets,
 } from '../src/docs/reference.js';
 import { ReportError } from '../src/report.js';
 import { TINY_PNG } from './helpers/images.js';
@@ -582,6 +586,159 @@ test('a folder that is not in a git repository is never taken from the cache', a
     await build(dir);
     await build(dir);
     assert.equal(readFileSync(join(dir, 'runs.log'), 'utf8').length, 2);
+  });
+});
+
+// --- a command per system, the environment, and the cache key ----------------------------------
+
+test('a command can differ for Windows: a mapping with a default and a windows entry', () => {
+  const ok = checkReferenceConfig({
+    command: { default: ['./gradlew', 'dokka'], windows: '.\\gradlew.bat dokka' },
+    format: 'html',
+    output: 'build/dokka/html',
+    title: 'API',
+  });
+  assert.ok('value' in ok);
+  assert.deepEqual(ok.value.command, { default: ['./gradlew', 'dokka'], windows: '.\\gradlew.bat dokka' });
+  const onlyDefault = checkReferenceConfig({ command: { default: 'make docs' }, format: 'html', output: 'o', title: 'T' });
+  assert.ok('value' in onlyDefault);
+
+  for (const [command, message] of /** @type {[unknown, RegExp][]} */ ([
+    [{ windows: 'x' }, /reference\.command\.default: is required/],
+    [{}, /reference\.command\.default: is required/],
+    [{ default: 'x', linux: 'y' }, /reference\.command\.linux: unknown key/],
+    [{ default: [], windows: 'x' }, /reference\.command\.default: a list needs/],
+    [{ default: 'x', windows: 'a\nb' }, /reference\.command\.windows: must not contain control characters/],
+  ])) {
+    const bad = checkReferenceConfig({ command, format: 'html', output: 'o', title: 'T' });
+    assert.ok('problems' in bad, JSON.stringify(command));
+    assert.match(bad.problems.join('\n'), message);
+  }
+
+  assert.equal(commandFor('x', 'win32'), 'x');
+  assert.deepEqual(commandFor(['a', 'b'], 'linux'), ['a', 'b']);
+  assert.equal(commandFor({ default: 'unix', windows: 'win' }, 'win32'), 'win');
+  assert.equal(commandFor({ default: 'unix', windows: 'win' }, 'linux'), 'unix');
+  assert.equal(commandFor({ default: 'unix', windows: 'win' }, 'darwin'), 'unix');
+  assert.equal(commandFor({ default: 'unix' }, 'win32'), 'unix');
+});
+
+test('a generator does not get environment variables whose names look like secrets', () => {
+  const kept = withoutSecrets({
+    PATH: '/bin',
+    JAVA_HOME: '/jdk',
+    GITHUB_TOKEN: 'a',
+    R2_ACCESS_KEY_ID: 'b',
+    r2_secret_access_key: 'c',
+    CLOUDFLARE_ACCOUNT_ID: 'd',
+    AWS_REGION: 'e',
+    NPM_PASSWORD: 'f',
+    DB_PASSWD: 'g',
+    SSH_AUTH_SOCK: 'h',
+    MY_CREDENTIALS: 'i',
+    SESSION_COOKIE: 'j',
+    PRIVATE_STUFF: 'k',
+    Api_Key: 'l',
+    EMPTY: undefined,
+  });
+  assert.deepEqual(Object.keys(kept).sort(), ['EMPTY', 'JAVA_HOME', 'PATH']);
+});
+
+/** A generator that lists the names of its environment as the items of a JSON reference. */
+const ENVIRONMENT_GENERATOR = `
+const { mkdirSync, writeFileSync } = require('node:fs');
+const { dirname } = require('node:path');
+const out = process.argv[2];
+mkdirSync(dirname(out), { recursive: true });
+writeFileSync(out, JSON.stringify({ sections: [{ title: 'Environment', items: Object.keys(process.env).sort().map((name) => ({ name, description: 'x' })) }] }));
+`;
+
+test('the command runs without secret-like environment variables and with the others', async () => {
+  const files = siteWith({ 'gen.js': ENVIRONMENT_GENERATOR }, docsYaml(jsonReference({ command: ['node', 'gen.js', '{out}/reference.json'] })));
+  await inSite(files, async (dir) => {
+    const env = { ...process.env, COFFER_TEST_VISIBLE: '1', COFFER_TEST_TOKEN: 'secret-value', COFFER_TEST_API_KEY: 'secret-value', R2_ACCESS_KEY_ID: 'secret-value' };
+    await build(dir, { reference: { env } });
+    const html = readFileSync(referenceFile(dir), 'utf8');
+    assert.match(html, />COFFER_TEST_VISIBLE</);
+    assert.doesNotMatch(html, /COFFER_TEST_TOKEN|COFFER_TEST_API_KEY|R2_ACCESS_KEY_ID|secret-value/);
+  });
+});
+
+test('the cache key covers the contents of the files that the command names through {site}', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'coffer-inputs-'));
+  try {
+    mkdirSync(join(dir, 'generators'), { recursive: true });
+    mkdirSync(join(dir, 'build-support', 'dokka'), { recursive: true });
+    writeFileSync(join(dir, 'generators', 'one.mjs'), 'export const a = 1;\n');
+    writeFileSync(join(dir, 'generators', 'other.mjs'), 'export const b = 1;\n');
+    writeFileSync(join(dir, 'build-support', 'dokka', 'init.kts'), 'val x = 1\n');
+    const base = { format: /** @type {'json'} */ ('json'), output: 'o', title: 'T', undocumented: null, index: null, autoLink: true };
+    const listCommand = { ...base, command: ['node', '{site}/generators/one.mjs', '{repo}'] };
+    const flagCommand = { ...base, command: ['./gradlew', '--init-script={site}/build-support/dokka/init.kts', 'task'] };
+    const textCommand = { ...base, command: 'node "{site}/generators/one.mjs" {out}' };
+    const folderCommand = { ...base, command: ['node', '{site}/generators', '{out}'] };
+    const noSite = { ...base, command: ['node', 'gen.js'] };
+    const perSystem = { ...base, command: { default: ['./gradlew', '--init-script', '{site}/build-support/dokka/init.kts'], windows: ['gradlew.bat', '--init-script', '{site}/generators/one.mjs'] } };
+
+    const references = [listCommand, flagCommand, textCommand, folderCommand, noSite, perSystem];
+    const before = references.map((reference) => configHash(reference, dir));
+    assert.equal(configHash(listCommand, dir), before[0], 'the hash is stable');
+
+    // A file that the command does not name does not matter to it; a folder is hashed with all its files.
+    writeFileSync(join(dir, 'generators', 'other.mjs'), 'export const b = 2;\n');
+    assert.equal(configHash(listCommand, dir), before[0]);
+    assert.notEqual(configHash(folderCommand, dir), before[3], 'a folder is hashed with all its files');
+    before[3] = configHash(folderCommand, dir);
+
+    writeFileSync(join(dir, 'generators', 'one.mjs'), 'export const a = 2;\n');
+    assert.notEqual(configHash(listCommand, dir), before[0], 'an edited generator gives a new key');
+    assert.notEqual(configHash(textCommand, dir), before[2], 'also in a command line given as text');
+    assert.notEqual(configHash(folderCommand, dir), before[3]);
+    assert.notEqual(configHash(perSystem, dir), before[5], 'also in the entry for Windows');
+    assert.equal(configHash(flagCommand, dir), before[1]);
+    assert.equal(configHash(noSite, dir), before[4]);
+
+    writeFileSync(join(dir, 'build-support', 'dokka', 'init.kts'), 'val x = 2\n');
+    assert.notEqual(configHash(flagCommand, dir), before[1], 'an edited init script, named inside an option, gives a new key');
+    assert.equal(configHash(noSite, dir), before[4]);
+
+    // A missing file is part of the key too, and the key does not depend on where the site is.
+    assert.notEqual(siteInputsHash(['x', '{site}/gone.mjs'], dir), siteInputsHash(['x'], dir));
+    const copy = mkdtempSync(join(tmpdir(), 'coffer-inputs-copy-'));
+    try {
+      mkdirSync(join(copy, 'generators'), { recursive: true });
+      writeFileSync(join(copy, 'generators', 'one.mjs'), 'export const a = 2;\n');
+      assert.equal(siteInputsHash(['node', '{site}/generators/one.mjs'], copy), siteInputsHash(['node', '{site}/generators/one.mjs'], dir));
+    } finally {
+      rmSync(copy, { recursive: true, force: true });
+    }
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('editing a generator of the content repository runs the command again, although the commit and the configuration are the same', { skip: NO_GIT }, async () => {
+  const files = {
+    ...siteWith({ 'note.txt': 'x' }, docsYaml(jsonReference({ command: ['node', '{site}/site-gen.js', '{out}/reference.json', '{site}'] }))),
+    'site-gen.js': JSON_GENERATOR,
+  };
+  await inSite(files, async (dir) => {
+    const tool = join(dir, 'tool');
+    /** @param {string[]} args */
+    const git = (args) =>
+      execFileSync('git', ['-c', 'user.name=Test', '-c', 'user.email=test@example.invalid', '-c', 'commit.gpgsign=false', ...args], { cwd: tool, stdio: 'ignore' });
+    git(['init', '-q', '-b', 'main']);
+    git(['add', '-A']);
+    git(['commit', '-q', '-m', 'first']);
+    const runs = () => (existsSync(join(dir, 'runs.log')) ? readFileSync(join(dir, 'runs.log'), 'utf8').length : 0);
+    await build(dir);
+    await build(dir);
+    assert.equal(runs(), 1, 'the second build is answered by the cache');
+    writeFileSync(join(dir, 'site-gen.js'), `${JSON_GENERATOR}\n// edited\n`);
+    await build(dir);
+    assert.equal(runs(), 2, 'the edited generator ran');
+    await build(dir);
+    assert.equal(runs(), 2);
   });
 });
 
