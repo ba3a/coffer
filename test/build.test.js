@@ -925,3 +925,39 @@ test('a post with a series that is not a slug fails the build with the file and 
     },
   );
 });
+
+test('a site with no posts at all and a theme folder without templates builds, checks and falls back to the default theme', async () => {
+  await inTree(
+    {
+      'coffer.yaml': [
+        'sites:',
+        '  - id: quiet',
+        '    baseUrl: https://quiet.example',
+        '    lang: ru',
+        '    title: Quiet',
+        '    description: Nothing yet.',
+        '    contentDir: content',
+        '    theme: themes/quiet',
+        '    blogs:',
+        '      - { id: blog, dir: content, prefix: "", title: Blog }',
+        '',
+      ].join('\n'),
+      'content/.gitkeep': '',
+      'themes/quiet/README.md': 'A placeholder: this folder holds no templates yet.\n',
+    },
+    async (root) => {
+      const config = loadConfig({ configPath: join(root, 'coffer.yaml') });
+      const [result] = await buildSites(config, { out: join(root, 'out'), now: NOW });
+      assert.deepEqual(result.manifest.posts, []);
+      const index = readFileSync(join(result.outDir, 'index.html'), 'utf8');
+      assert.match(index, /<html lang="ru">/);
+      assert.match(index, /<link rel="canonical" href="https:\/\/quiet\.example\/">/);
+      assert.match(index, /<link rel="stylesheet" href="\/assets\/coffer\.css/);
+      assert.ok(existsSync(join(result.outDir, '404.html')));
+      assert.ok(existsSync(join(result.outDir, 'feed.xml')));
+      assert.ok(existsSync(join(result.outDir, 'sitemap.xml')));
+      const checked = await engine.checkOutput(config, { out: join(root, 'out'), w3c: false });
+      assert.deepEqual(checked.failures, []);
+    },
+  );
+});

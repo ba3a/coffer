@@ -23,6 +23,7 @@ Every release is a git tag named `v` followed by the version, for example `v0.1.
 - GPX tracks and maps, built from tracks and photo locations without an API key.
 - A media store for original photos and videos, with a lock file, a filesystem store, an S3-compatible store and git hooks that keep working copies in step.
 - Atom feeds per blog, tag subtree, series and project.
+- HTML comments in Markdown (for example `<!-- TODO: rewrite -->`) stay in the source and are left out of the published page. A comment that is never closed is kept as it is.
 - Open Graph and Twitter metadata, generated title cards, canonical addresses, a sitemap and `robots.txt`.
 - A copy-friendly share summary for posts.
 - Full-text search for every blog, with word forms.

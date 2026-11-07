@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 
 import {
   MarkdownError,
+  removeHtmlComments,
   renderMarkdown,
   DEFAULT_TOC_MIN_HEADINGS,
   DEFAULT_WORDS_PER_MINUTE,
@@ -189,6 +190,78 @@ test('raw HTML passes through, so a video can be embedded with an iframe', async
     /<div class="embed">\n<iframe src="https:\/\/www\.youtube-nocookie\.com\/embed\/abc" title="Clip" allowfullscreen><\/iframe>\n<\/div>/,
   );
   assert.match(html, /<p>After\.<\/p>/);
+});
+
+test('HTML comments stay in the source and are left out of the page', async () => {
+  const source = [
+    '<!-- TODO: rewrite -->',
+    '',
+    'Kept <!-- inline note --> text.',
+    '',
+    '<div class="embed">',
+    '<!-- note inside a block -->',
+    '<b>bold</b>',
+    '</div>',
+    '',
+    '<script>const a = "<!-- not a note -->";</script>',
+    '',
+    'Code stays: `<!-- in code -->`',
+    '',
+    '```html',
+    '<!-- in a fence -->',
+    '```',
+  ].join('\n');
+  const { html } = await renderMarkdown(source);
+  assert.doesNotMatch(html, /TODO: rewrite/);
+  assert.doesNotMatch(html, /inline note/);
+  assert.doesNotMatch(html, /note inside a block/);
+  assert.match(html, /<p>Kept {2}text\.<\/p>/);
+  assert.match(html, /<b>bold<\/b>/);
+  assert.match(html, /<script>const a = "<!-- not a note -->";<\/script>/);
+  assert.match(html, /in code/);
+  assert.match(html, /in a fence/);
+});
+
+test('<!--> and <!---> are complete empty comments, so the text after them is kept', async () => {
+  const abrupt = await renderMarkdown('<div>\n<!-->\nkeep me\n</div>\n<!-- real -->');
+  assert.match(abrupt.html, /keep me/);
+  assert.match(abrupt.html, /<\/div>/);
+  assert.doesNotMatch(abrupt.html, /real/);
+
+  const dashed = await renderMarkdown('<div>\n<!--->\nkeep me too\n</div>\n<!-- real -->');
+  assert.match(dashed.html, /keep me too/);
+  assert.match(dashed.html, /<\/div>/);
+  assert.doesNotMatch(dashed.html, /real/);
+  assert.doesNotMatch(dashed.html, /<!--/);
+});
+
+test('removeHtmlComments follows the HTML comment syntax', () => {
+  assert.equal(removeHtmlComments('a<!-- x -->b<!-- y -->c'), 'abc');
+  assert.equal(removeHtmlComments('a<!---->b'), 'ab');
+  assert.equal(removeHtmlComments('a<!-->b'), 'ab');
+  assert.equal(removeHtmlComments('a<!--->b'), 'ab');
+  assert.equal(removeHtmlComments('a<!-- x -- y -->b'), 'ab');
+  assert.equal(removeHtmlComments('no comment here'), 'no comment here');
+});
+
+test('a comment that is never closed is kept as it is, with everything after it', async () => {
+  assert.equal(removeHtmlComments('a<!-- x -->b<!-- open\nstill here'), 'ab<!-- open\nstill here');
+  const { html } = await renderMarkdown('<div>\n<!-- never closed\nkeep me\n</div>');
+  assert.match(html, /keep me/);
+  assert.match(html, /<\/div>/);
+});
+
+test('removing comments takes time proportional to the text, even for comments that never close', async () => {
+  const open = '<!--'.repeat(200_000);
+  const started = performance.now();
+  const { html } = await renderMarkdown(open);
+  assert.ok(html.includes('<!--'));
+  assert.ok(performance.now() - started < 3000, 'unterminated comments must not be rescanned');
+
+  const lone = `<!--->${'<!-->'.repeat(100_000)}\n\nafter`;
+  const result = await renderMarkdown(lone);
+  assert.match(result.html, /after/);
+  assert.doesNotMatch(result.html, /<!--/);
 });
 
 test('an unknown directive is an error with file and line', async () => {

@@ -94,7 +94,7 @@ Inline code (`` `like this` ``) is not highlighted.
 
 ### Video and other embeds
 
-Raw HTML is allowed and is written to the page exactly as it appears. Embed a hosted video with an `<iframe>`. Put it inside a `<div>` that starts and ends on its own lines, with no blank line in between; otherwise Markdown wraps the iframe in a paragraph:
+Raw HTML is allowed and is written to the page as it appears. Embed a hosted video with an `<iframe>`. Put it inside a `<div>` that starts and ends on its own lines, with no blank line in between; otherwise Markdown wraps the iframe in a paragraph:
 
 ```html
 <div class="embed">
@@ -110,7 +110,9 @@ Always give the iframe a `title`. A video file that sits next to the post works 
 </div>
 ```
 
-The engine does not rewrite, check or sandbox raw HTML, and does not read links or images inside it, so they are not part of `links` or `firstImage`. Prefer Markdown syntax for images and links.
+HTML comments are the exception: `<!-- a note to myself -->` stays in the source and is left out of the page, so it can mark text that still needs work without being published. A comment runs from `<!--` to the next `-->`, and `<!-->` and `<!--->` are complete, empty comments, as in HTML. A comment inside a `<script>` or `<style>` block is kept. A `<!--` that is never closed is kept as it is, together with the text after it, so a mistyped note cannot delete content; close it with `-->`.
+
+The engine does not otherwise rewrite, check or sandbox raw HTML, and does not read links or images inside it, so they are not part of `links` or `firstImage`. Prefer Markdown syntax for images and links.
 
 ### Directives
 
