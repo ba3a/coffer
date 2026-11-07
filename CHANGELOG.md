@@ -12,7 +12,7 @@ Every release is a git tag named `v` followed by the version, for example `v0.1.
 
 Nothing yet.
 
-## 0.1.0 - YYYY-MM-DD
+## 0.1.0 - 2026-11-07
 
 ### Added
 
