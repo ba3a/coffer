@@ -585,14 +585,18 @@ test('the example site has a trip post with a track and a located photo, and a p
 
 // ---- The vendored library ------------------------------------------------------------------------
 
-/** @param {string} path */
-const sha256 = (path) => createHash('sha256').update(readFileSync(path)).digest('hex');
+/**
+ * Hash with CRLF folded to LF: the repository stores text as LF (.gitattributes), but leaflet.css is
+ * published on npm with CRLF.
+ * @param {string} path
+ */
+const sha256 = (path) => createHash('sha256').update(readFileSync(path, 'latin1').replaceAll('\r\n', '\n'), 'latin1').digest('hex');
 
 test('Leaflet is vendored as published on npm, with its licence', () => {
   const directory = join(themeAssets, 'vendor', 'leaflet');
-  // Hashes of dist/leaflet.js and dist/leaflet.css in the leaflet@1.9.4 package on the npm registry.
+  // Hashes (CRLF folded to LF) of dist/leaflet.js and dist/leaflet.css in the leaflet@1.9.4 package on the npm registry.
   assert.equal(sha256(join(directory, 'leaflet.js')), 'db49d009c841f5ca34a888c96511ae936fd9f5533e90d8b2c4d57596f4e5641a');
-  assert.equal(sha256(join(directory, 'leaflet.css')), 'a7837102824184820dfa198d1ebcd109ff6d0ff9a2672a074b9a1b4d147d04c6');
+  assert.equal(sha256(join(directory, 'leaflet.css')), '337bfca5cabd03b39815b2700febe2b3b7edf55921c59cd49f88ecb328212303');
   assert.match(readFileSync(join(directory, 'leaflet.js'), 'utf8'), /^\/\* @preserve\n \* Leaflet 1\.9\.4, a JS library for interactive maps\./);
   assert.match(readFileSync(join(directory, 'LICENSE'), 'utf8'), /^BSD 2-Clause License\n\nCopyright \(c\) 2010-2023, Volodymyr Agafonkin/);
   for (const file of ['layers.png', 'layers-2x.png', 'marker-icon.png', 'marker-icon-2x.png', 'marker-shadow.png']) {

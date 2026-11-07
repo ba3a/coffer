@@ -1,4 +1,4 @@
-import { existsSync, statSync } from 'node:fs';
+import { existsSync, realpathSync, statSync } from 'node:fs';
 import { chmod, lstat, mkdir, readdir, readFile, rm, rmdir } from 'node:fs/promises';
 import { isAbsolute, join, relative, resolve, sep } from 'node:path';
 
@@ -351,6 +351,14 @@ async function readHookFile(file) {
 }
 
 /**
+ * @param {string} rel A path relative to a folder.
+ * @returns {boolean} Whether it names something below that folder.
+ */
+function isInside(rel) {
+  return !(rel === '' || rel === '..' || rel.startsWith(`..${sep}`) || isAbsolute(rel));
+}
+
+/**
  * Checks a `--config` value and turns it into the form the scripts hold.
  *
  * @param {string | undefined} configPath
@@ -363,8 +371,16 @@ function configForScripts(configPath, cwd, repoRoot) {
   if (configPath === undefined) return undefined;
   const file = isAbsolute(configPath) ? configPath : resolve(cwd, configPath);
   if (!existsSync(file) || !statSync(file).isFile()) throw new HooksError([`${configPath}: file not found`]);
-  const rel = relative(repoRoot, file);
-  if (rel === '' || rel === '..' || rel.startsWith(`..${sep}`) || isAbsolute(rel)) {
+  let rel = relative(repoRoot, file);
+  if (!isInside(rel)) {
+    // The same place can have two spellings (a short 8.3 name on Windows, a link in the path), so compare the resolved paths too.
+    try {
+      rel = relative(realpathSync.native(repoRoot), realpathSync.native(file));
+    } catch {
+      // keep the first answer
+    }
+  }
+  if (!isInside(rel)) {
     throw new HooksError([`${configPath}: the configuration file must be inside the repository (${repoRoot})`]);
   }
   const posixRel = rel.split(sep).join('/');
