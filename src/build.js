@@ -2949,7 +2949,7 @@ async function buildSite(config, site, options, outRoot, version, report) {
  * - for every post, tag, series and blog index without a picture of its own, a 1200 by 630 title card in `cards/{hash}.png`, cached in `.cache/cards/`
  *   (see `docs/seo.md`); a post's `cover` is the preview image of a post that has one;
  * - for every blog, a search page at `{blogPrefix}/search/` and, in `pagefind/`, the full-text index of the published posts
- *   and guides (Pagefind, built for the site's language; see `docs/search.md`);
+ *   and guides (Pagefind, built for the site's language; see `docs/full-text-search.md`);
  * - the assets of the default theme, then of the site's theme, in `assets/`;
  * - `build-info.json`, the build time, the commits of the documentation sources and the time of the next scheduled post (see `docs/scheduling.md`);
  * - the build manifest `.coffer-manifest.json`.

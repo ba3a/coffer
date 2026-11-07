@@ -40,6 +40,6 @@ coffer is a static site engine for people who make things and write about them. 
 - [URLs, redirects and hosting](urls.md): canonical addresses, redirects for old slugs and `coffer serve`.
 - [Feeds](feeds.md): Atom feeds per blog, tag, series and project.
 - [SEO and link previews](seo.md): metadata, Open Graph and Twitter tags, the sitemap and `robots.txt`.
-- [Search](search.md): full-text search for every blog.
+- [Search](full-text-search.md): full-text search for every blog.
 - [Analytics](analytics.md): the optional cookieless analytics snippet.
 - [Scheduled rebuilds](scheduling.md): `build-info.json` and `coffer rebuild-needed`.

@@ -53,7 +53,7 @@ A hashtag is made from the display name of a tag (the `name` from `tags.yaml`, e
 For a post at `/journal/first-dovetail/` the file is `/journal/first-dovetail/share.txt`, served as `text/plain; charset=utf-8`. It is an output of the build and not a page:
 
 - it is listed in the build manifest, in the `share` field of the post (`{ "url": "/journal/first-dovetail/share.txt", "file": "journal/first-dovetail/share.txt" }`, or `null` when the blog has no share summary);
-- it is **not in `sitemap.xml`**, in no feed and not in the search index (Pagefind indexes HTML only, and the block in the page is marked `data-pagefind-ignore` and sits outside the marked post body, see [Search](search.md));
+- it is **not in `sitemap.xml`**, in no feed and not in the search index (Pagefind indexes HTML only, and the block in the page is marked `data-pagefind-ignore` and sits outside the marked post body, see [Search](full-text-search.md));
 - the name `share.txt` is reserved in the folder of a post of such a blog. A file called `share.txt` next to the Markdown file of a post (`content/journal/first-dovetail/share.txt`) fails the build with the post's path in the message. Rename it or switch the share summary off.
 
 Posts built only because of preview mode (`--drafts`) get the file and the block too, so that they can be seen while writing.

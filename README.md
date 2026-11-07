@@ -21,7 +21,7 @@ The screenshot shows the home page and a post of the example site that ships wit
 - **Media originals** kept out of git, in an S3-compatible store, with git hooks that sync them. See [Media originals](docs/media.md).
 - **Feeds** in Atom 1.0 with full content, per blog, tag, series and project. See [Feeds](docs/feeds.md).
 - **Link previews and search engine metadata**: Open Graph and Twitter tags, generated title cards, canonical addresses, sitemap and `robots.txt`. See [SEO and link previews](docs/seo.md) and [Share summary](docs/sharing.md).
-- **Search** for every blog, built at build time and run in the visitor's browser, with word forms. See [Search](docs/search.md).
+- **Search** for every blog, built at build time and run in the visitor's browser, with word forms. See [Search](docs/full-text-search.md).
 - **Analytics** that are off by default and, when switched on, add a single cookieless snippet. See [Analytics](docs/analytics.md).
 - **Themes** with light and dark colours, a remembered switch, and per-block template overrides. See [Themes and UI strings](docs/themes.md).
 - **Home page, 404 page and footer** whose texts, links and license note come from content and configuration. See [The home page, the 404 page and the footer](docs/home.md).
