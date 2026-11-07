@@ -449,16 +449,22 @@ export function formatLock(result, lockPath) {
 /**
  * Uploads the objects of the lock that the store lacks.
  *
+ * A lock file that is missing or lists nothing needs no store, so `store` may
+ * be a function that makes it: it is called only when there is something to
+ * upload, and a store that cannot be made (no credentials) is then not asked
+ * for when there is nothing to push.
+ *
  * @param {MediaContext} context
- * @param {import('./store.js').MediaStore} store
+ * @param {import('./store.js').MediaStore | (() => Promise<import('./store.js').MediaStore>)} storeOrFactory
  * @returns {Promise<PushResult>}
  */
-export async function pushMedia(context, store) {
+export async function pushMedia(context, storeOrFactory) {
   const lock = await readLockFile(context);
   /** @type {PushResult} */
   const result = { uploaded: 0, present: 0, errors: [], noLock: lock === null };
-  if (lock === null) return result;
+  if (lock === null || lock.size === 0) return result;
   requireIncluded(context, lock.keys());
+  const store = typeof storeOrFactory === 'function' ? await storeOrFactory() : storeOrFactory;
   const cache = await HashCache.load(context.root);
   const state = await SyncState.load(context.root);
   /** @type {Set<string>} */
@@ -489,7 +495,14 @@ export async function pushMedia(context, store) {
             await store.put(entry.sha256, location.path);
             result.uploaded += 1;
           } else {
-            result.errors.push(`${entry.path}: the store lacks its content and the file here ${local === null ? 'is missing' : 'is different from the lock'}; run "coffer media lock", or fetch the right file`);
+            if (local === null && synced === undefined) {
+              // A kept entry: the lock lists the file, but this working copy never had it, so "lock" would change nothing.
+              result.errors.push(
+                `${entry.path}: the store lacks its content, and this working copy does not have the file (the lock lists it, but it was never fetched here), so it cannot be uploaded from here; run "coffer media pull" on a working copy that has the file, or put the original at this path`,
+              );
+            } else {
+              result.errors.push(`${entry.path}: the store lacks its content and the file here ${local === null ? 'is missing' : 'is different from the lock'}; run "coffer media lock", or fetch the right file`);
+            }
             continue;
           }
           ensured.add(entry.sha256);
@@ -817,8 +830,8 @@ export function formatPull(result) {
 
 /**
  * The lines the content repository should ignore: the originals themselves
- * (they live in the store, the lock records them) and the working files of the
- * media commands.
+ * (they live in the store, the lock records them), the working files of the
+ * media commands and `.env.local`, which holds the credentials of the store.
  *
  * @param {MediaContext} context
  * @returns {string}
@@ -831,6 +844,9 @@ export function gitignoreText(context) {
     '',
     '# Working files of the media commands.',
     '.coffer/',
+    '',
+    '# Local settings with the credentials of the media store; never commit this file.',
+    '.env.local',
   ];
   return `${lines.join('\n')}\n`;
 }

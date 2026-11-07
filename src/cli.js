@@ -13,6 +13,7 @@ import { describeFetched, DocsSourceError, fetchDocsSources, planDocsFetch, reda
 import { SeriesError } from './content/series.js';
 import { TagsError } from './content/tags.js';
 import { FontError } from './font-metrics.js';
+import { runHooks } from './hooks.js';
 import { MarkdownError } from './markdown/render.js';
 import { runMedia } from './media/command.js';
 import { createPost, NewPostError, splitTags } from './new-post.js';
@@ -55,6 +56,8 @@ Commands:
                   status, lock, push, pull, gitignore (see docs/media.md)
                   (--config <path>; status: --remote;
                   pull: --force, --restore, --dry-run)
+  hooks           Git hooks that keep the originals in step with git: install
+                  (--force, --config <path>), uninstall, status (see docs/media.md)
   rebuild-needed  Say whether a deployed site is out of date: fetch its
                   build-info.json, ask each git docs source for its current
                   commit (git ls-remote, no token for public repositories)
@@ -86,7 +89,9 @@ Run "coffer help" to see this message again.
  * @property {{ signal?: AbortSignal, out?: string, watch?: boolean }} [dev] Lets a test stop `dev` (the signal), keep its build elsewhere (`out`) or not watch.
  * @property {Date} [now] Replaces the clock of `new` and `rebuild-needed`.
  * @property {import('./build-info.js').HttpOptions} [http] Replaces the limits (and `fetch`) of `rebuild-needed`.
- * @property {Record<string, string | undefined>} [env] Replaces the environment that `media` reads store credentials from.
+ * @property {Record<string, string | undefined>} [env] Replaces the environment that `media` and `hooks` read store credentials from (and `hooks` runs git in).
+ * @property {{ cwd?: string }} [hooks] Replaces the folder `hooks` starts from.
+ * @property {NodeJS.ReadableStream & { isTTY?: boolean }} [stdin] Replaces the standard input that `hooks run pre-push` reads the refs of the push from.
  */
 
 /**
@@ -650,6 +655,7 @@ const commands = {
     }
   },
   media: (args, io, services) => runMedia(args, io, services),
+  hooks: (args, io, services) => runHooks(args, io, services),
   config: (args, io) => {
     const parsed = parseConfigArgs(args);
     if ('error' in parsed) {

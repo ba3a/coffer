@@ -236,15 +236,15 @@ Keys of `store`:
 | Key                  | Used by | Required | Description |
 | -------------------- | ------- | -------- | ----------- |
 | `type`               | both    | yes      | `fs` or `s3`. |
-| `dir`                | `fs`    | yes      | A folder (relative to the configuration file) that holds the objects. It must not be inside a content folder or contain one, must not be or contain the folder of the configuration file, and must not be inside `.coffer`. |
-| `endpoint`           | `s3`    | yes      | An `https` address, without credentials; `${NAME}` stands for an environment variable. |
+| `dir`                | `fs`    | yes      | A folder (relative to the configuration file) that holds the objects. It must not be inside a content folder or contain one, must not be or contain the folder of the configuration file, and must not be inside `.coffer`. `~` and environment variables are not expanded, and the checks are on the path as written (links are not resolved). |
+| `endpoint`           | `s3`    | yes      | An `https` address, without credentials; `${NAME}` stands for an environment variable (or a line of `.env.local`) whose value may hold only letters, digits, `.`, `_` and `-`, and not only dots. Objects are addressed path-style: `{endpoint}/{bucket}/{prefix}/originals/{sha256}`. |
 | `bucket`             | `s3`    | yes      | The bucket name. |
 | `region`             | `s3`    | no       | Default `auto`. |
 | `prefix`             | `s3`    | no       | A folder-like prefix in the bucket. |
 | `accessKeyIdEnv`     | `s3`    | no       | The NAME of the environment variable that carries the access key id. Default `COFFER_MEDIA_ACCESS_KEY_ID`. |
 | `secretAccessKeyEnv` | `s3`    | no       | The NAME of the environment variable that carries the secret access key. Default `COFFER_MEDIA_SECRET_ACCESS_KEY`. |
 
-Credentials are never read from the configuration file, and a key written in its place is an error. The `s3` block is checked, but the S3 client is not part of this build yet: using it fails with a clear message. See [Media originals](media.md).
+Credentials are never read from the configuration file, and a key written in its place is an error: they come from the named environment variables or from a gitignored `.env.local` next to the configuration file. See [Media originals](media.md), which also describes `coffer hooks install`, the git hooks that run the media commands on commit, push, checkout and merge.
 
 ## Validation
 

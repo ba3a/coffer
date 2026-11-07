@@ -1,4 +1,5 @@
 import { ConfigError, loadConfig } from '../config.js';
+import { MissingCredentialsError } from './credentials.js';
 import { LockError } from './lock.js';
 import { MediaStoreError } from './store.js';
 import { createStore } from './stores.js';
@@ -54,6 +55,7 @@ export function parseMediaArgs(args) {
     if (arg === '--config') {
       const value = rest[i + 1];
       if (value === undefined || value === '') return { error: '--config needs a path' };
+      if (value.startsWith('-')) return { error: `--config needs a path, but "${value}" looks like an option (write --config=${value} if that really is the path)` };
       configPath = value;
       i += 1;
     } else if (arg.startsWith('--config=') && arg.length > '--config='.length) {
@@ -82,7 +84,7 @@ export async function runMedia(args, io, services) {
   try {
     const config = loadConfig({ configPath: parsed.configPath });
     const context = mediaContext(config);
-    const storeContext = { env: services.env, configDir: config.dir };
+    const storeContext = { env: services.env, configDir: config.dir, warn: (/** @type {string} */ message) => io.err(`coffer: warning: ${message}\n`) };
     switch (parsed.subcommand) {
       case 'gitignore':
         io.out(gitignoreText(context));
@@ -97,8 +99,8 @@ export async function runMedia(args, io, services) {
         return 0;
       }
       case 'push': {
-        const store = await createStore(context.media.store, storeContext);
-        const result = await pushMedia(context, store);
+        // An empty or missing lock needs no store, so it needs no credentials either.
+        const result = await pushMedia(context, () => createStore(context.media.store, storeContext));
         const text = formatPush(result);
         if (result.errors.length > 0) {
           io.err(text);
@@ -127,7 +129,8 @@ export async function runMedia(args, io, services) {
       return 1;
     }
     if (error instanceof MediaStoreError) {
-      io.err(`coffer: ${error.message}\n`);
+      // The message about missing credentials is a whole paragraph of its own and says "coffer:" itself.
+      io.err(error instanceof MissingCredentialsError ? `${error.message}\n` : `coffer: ${error.message}\n`);
       return 1;
     }
     throw error;

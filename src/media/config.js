@@ -324,6 +324,10 @@ function normalizeStore(raw, context, add) {
   if (type === 'fs') {
     const dir = text('dir', { required: true });
     if (dir === undefined) return undefined;
+    if (/^~(?:[\\/]|$)/.test(dir)) {
+      add('store.dir', '"~" is not expanded here (neither are environment variables); write the full path of the folder, or a path relative to the configuration file');
+      return undefined;
+    }
     return ok ? { type: 'fs', dir: resolve(context.dir, dir) } : undefined;
   }
 

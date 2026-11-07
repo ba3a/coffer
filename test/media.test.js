@@ -24,7 +24,6 @@ import { LockError, parseLock, renderLock } from '../src/media/lock.js';
 import { checkMediaPath, compareBytes } from '../src/media/paths.js';
 import { HashCache } from '../src/media/state.js';
 import { isValidKey, MediaStoreError } from '../src/media/store.js';
-import { createStore } from '../src/media/stores.js';
 import { lockMedia, mediaContext } from '../src/media/sync.js';
 
 /** @param {string | Buffer} data */
@@ -427,14 +426,11 @@ test('an s3 store is checked: credentials come from named environment variables,
   assert.match(bad({ dir: 'x' }), /dir: unknown key for a "s3" store/);
 });
 
-test('an s3 store is accepted by the configuration but cannot be created in this build', async () => {
-  const config = normalizeConfig(configWith({ store: { type: 's3', endpoint: 'https://abc.example.com', bucket: 'my-media' } }), { file: '/w/coffer.yaml' });
-  await assert.rejects(createStore(/** @type {NonNullable<typeof config.media>} */ (config.media).store), (error) => {
-    assert.ok(error instanceof MediaStoreError);
-    assert.equal(error.code, 'unavailable');
-    assert.match(error.message, /"s3" media store is not implemented in this build/);
-    return true;
-  });
+test('a folder store does not expand "~", and says so', () => {
+  const message = problemsOf(configWith({ store: { type: 'fs', dir: '~/originals' } })).join(' ');
+  assert.match(message, /media\.store\.dir: "~" is not expanded here \(neither are environment variables\)/);
+  assert.match(problemsOf(configWith({ store: { type: 'fs', dir: '~' } })).join(' '), /not expanded/);
+  assert.deepEqual(problemsOf(configWith({ store: { type: 'fs', dir: '../~backup' } })), []);
 });
 
 // ---------------------------------------------------------------------------
@@ -473,6 +469,14 @@ test('usage errors exit 2, apart from the 1 of a conflict or a failure', async (
     assert.equal(pull.code, 2);
     const noPath = await run(['media', 'pull', '--config'], { out: () => {}, err: () => {} }, {});
     assert.equal(noPath, 2);
+    // An option where the path belongs is a mistake in the call, not a file to look for.
+    const flagAsPath = await media(w.a, ['pull', '--config', '--force']);
+    assert.equal(flagAsPath.code, 2);
+    assert.match(flagAsPath.err, /--config needs a path, but "--force" looks like an option/);
+    let err = '';
+    const code = await run(['media', 'pull', '--config', '--force'], { out: () => {}, err: (text) => (err += text) }, {});
+    assert.equal(code, 2);
+    assert.match(err, /looks like an option/);
   } finally {
     cleanup(w.root);
   }
@@ -853,6 +857,23 @@ test('pull does nothing when there is no lock file, even for files it synced bef
   }
 });
 
+test('push says, for an entry this working copy never fetched, that another copy has to upload it', async () => {
+  const w = workspace();
+  try {
+    put(w.a, PHOTO_1, 'one');
+    assert.equal((await media(w.a, ['lock'])).code, 0);
+    // The lock reaches a copy that has not fetched the photo, and the store does not have it either.
+    sendLock(w.a, w.b);
+    const result = await media(w.b, ['push']);
+    assert.equal(result.code, 1);
+    assert.match(result.err, /IMG_0001.JPG: the store lacks its content, and this working copy does not have the file/);
+    assert.match(result.err, /run "coffer media pull" on a working copy that has the file/);
+    assert.ok(!result.err.includes('run "coffer media lock"'), 'locking would change nothing here');
+  } finally {
+    cleanup(w.root);
+  }
+});
+
 test('push says what it cannot upload and exits non-zero', async () => {
   const w = workspace();
   try {
@@ -1052,30 +1073,9 @@ test('gitignore prints the patterns of the originals and the working folder', as
     const lines = result.out.split('\n').filter((line) => line !== '' && !line.startsWith('#'));
     assert.ok(lines.includes('content/**/*.[jJ][pP][eE][gG]'));
     assert.ok(lines.includes('content/**/*.[mM][oO][vV]'));
-    assert.equal(lines.at(-1), '.coffer/');
+    assert.deepEqual(lines.slice(-2), ['.coffer/', '.env.local'], 'the working folder and the file with the credentials');
     assert.ok(!lines.includes('media.lock.json'));
     assert.equal(existsSync(join(w.a, '.coffer')), false);
-  } finally {
-    cleanup(w.root);
-  }
-});
-
-test('push, pull and status --remote fail clearly with an s3 store, and lock still works', async () => {
-  const w = workspace(`sites:
-  - { id: s, baseUrl: "https://example.org", title: T, contentDir: content }
-media:
-  store: { type: s3, endpoint: "https://abc.example.com", bucket: my-media }
-`);
-  try {
-    put(w.a, PHOTO_1, 'one');
-    assert.equal((await media(w.a, ['lock'])).code, 0);
-    assert.equal((await media(w.a, ['status'])).code, 0);
-    assert.equal((await media(w.a, ['gitignore'])).code, 0);
-    for (const args of [['push'], ['pull'], ['status', '--remote']]) {
-      const result = await media(w.a, args, { COFFER_MEDIA_ACCESS_KEY_ID: 'x', COFFER_MEDIA_SECRET_ACCESS_KEY: 'y' });
-      assert.equal(result.code, 1, args.join(' '));
-      assert.match(result.err, /"s3" media store is not implemented in this build/);
-    }
   } finally {
     cleanup(w.root);
   }
