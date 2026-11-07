@@ -209,14 +209,24 @@ test('the issue template configuration parses and keeps blank issues off', () =>
   assert.equal(config.blank_issues_enabled, false);
 });
 
-test('the changelog follows Keep a Changelog and has an Unreleased section', () => {
+test('the changelog follows Keep a Changelog and has a section for the next release', () => {
   const text = read('CHANGELOG.md');
   assert.match(text, /^# Changelog\n/);
   assert.match(text, /keepachangelog\.com/);
   assert.match(text, /^## Unreleased$/m);
-  assert.match(text, /^### Added$/m);
-  const unreleased = text.slice(text.indexOf('## Unreleased'));
-  assert.ok((unreleased.match(/^- /gm) ?? []).length >= 10, 'Unreleased lists the features');
+});
+
+test('the 0.1.0 section lists the features and has a date, or YYYY-MM-DD until it is dated', () => {
+  const text = read('CHANGELOG.md');
+  const heading = /^## 0\.1\.0 - (YYYY-MM-DD|\d{4}-\d{2}-\d{2})$/m.exec(text);
+  assert.ok(heading, 'the heading is "## 0.1.0 - " and a date, or YYYY-MM-DD');
+  if (heading[1] !== 'YYYY-MM-DD') assert.ok(!Number.isNaN(Date.parse(heading[1])), 'the date is a real date');
+  const section = text.slice(heading.index + heading[0].length);
+  const next = section.search(/^## /m);
+  const body = next === -1 ? section : section.slice(0, next);
+  assert.match(body, /^### Added$/m);
+  assert.ok((body.match(/^- /gm) ?? []).length >= 10, 'the section lists the features');
+  assert.ok(text.indexOf('## Unreleased') < heading.index, 'Unreleased is above the released sections');
 });
 
 test('the changelog states the version policy', () => {
@@ -226,8 +236,10 @@ test('the changelog states the version policy', () => {
   assert.match(text, /tag/i);
 });
 
-test('the package version stays 0.0.0 until a release is prepared', () => {
-  assert.equal(JSON.parse(read('package.json')).version, '0.0.0');
+test('the package version is the version of the newest released section of the changelog', () => {
+  const newest = /^## (\d+\.\d+\.\d+) - /m.exec(read('CHANGELOG.md'));
+  assert.ok(newest, 'the changelog has a released section');
+  assert.equal(JSON.parse(read('package.json')).version, newest[1]);
 });
 
 test('the files outside the package are where the project expects them', () => {

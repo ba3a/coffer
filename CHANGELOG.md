@@ -10,6 +10,10 @@ Every release is a git tag named `v` followed by the version, for example `v0.1.
 
 ## Unreleased
 
+Nothing yet.
+
+## 0.1.0 - YYYY-MM-DD
+
 ### Added
 
 - A build that turns a `coffer.yaml`, Markdown posts and a theme into static files, one output directory per site, with a build manifest and a build report.

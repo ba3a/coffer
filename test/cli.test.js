@@ -67,10 +67,11 @@ test('inherited object keys are not commands', async () => {
   assert.equal(result.code, 1);
 });
 
-test('the executable prints 0.0.0 for --version', () => {
+test('the executable prints the package version for --version', () => {
   const result = runBin(['--version']);
   assert.equal(result.status, 0);
-  assert.equal(result.stdout.trim(), '0.0.0');
+  assert.equal(result.stdout.trim(), manifest.version);
+  assert.match(manifest.version, /^\d+\.\d+\.\d+$/);
 });
 
 test('the executable exits non-zero with usage for an unknown command', () => {
