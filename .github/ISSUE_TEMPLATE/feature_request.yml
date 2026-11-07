@@ -1,0 +1,36 @@
+name: Feature request
+description: Suggest something coffer should do.
+title: "Feature: "
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        coffer is a static site engine for people who make things and write about them. A feature fits when it is useful to many such sites; it has to work without naming any particular person, product or site. See CONTRIBUTING.md for how a proposal is handled.
+  - type: textarea
+    id: problem
+    attributes:
+      label: The problem
+      description: What are you trying to do that coffer does not let you do, or makes hard?
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: What you would like
+      description: "How you imagine it working (for example configuration keys, front matter, commands or the look of the result)."
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives
+      description: What you do today instead, and other solutions you considered.
+    validations:
+      required: false
+  - type: checkboxes
+    id: contribution
+    attributes:
+      label: Contribution
+      options:
+        - label: I am willing to work on this myself.
