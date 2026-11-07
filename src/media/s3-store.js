@@ -351,13 +351,25 @@ export async function createS3Store(config, options = {}) {
     if (upload !== undefined) headers['content-length'] = String(upload.size);
     const transport = target.protocol === 'https:' ? https : http;
     return new Promise((resolve, reject) => {
-      const request = transport.request(url, { method, headers, agent, signal }, resolve);
       /**
        * The reason the upload itself failed (a file that cannot be read, a file that is not its key), which is more telling than the closed connection it causes.
        *
        * @type {Error | undefined}
        */
       let uploadError;
+      /** Settles when the body has been sent or the sending has failed; stays unsettled for a request without a body. */
+      let sending = Promise.resolve();
+      // A server that has all the bytes the length promised may answer before the check of the content fails, and that answer (an error about the hash) must not hide the check.
+      const request = transport.request(url, { method, headers, agent, signal }, (response) => {
+        void sending.then(() => {
+          if (uploadError === undefined) {
+            resolve(response);
+          } else {
+            response.destroy();
+            reject(uploadError);
+          }
+        });
+      });
       request.on('error', (error) => reject(uploadError ?? error));
       request.setTimeout(limits.idleTimeoutMs, () => {
         request.destroy(Object.assign(new Error(`no data for ${Math.round(limits.idleTimeoutMs / 1000)} seconds`), { code: 'ETIMEDOUT' }));
@@ -390,7 +402,7 @@ export async function createS3Store(config, options = {}) {
       source.on('error', (error) => (uploadError ??= error));
       verify.on('error', (error) => (uploadError ??= error));
       // A failure of the pipeline destroys the request, which rejects the promise above.
-      pipeline(source, verify, request).catch(() => {});
+      sending = pipeline(source, verify, request).catch(() => {});
     });
   }
 

@@ -268,7 +268,8 @@ test('a build error is reported in the terminal and the browser, and the server 
     assert.match(html, /<script src="\/__coffer\/reload\.js"><\/script>/);
     assert.equal((await get(personal, '/')).status, 500, 'every site shows the error: they are built together');
 
-    // The event stream is still open and the next fix builds again.
+    // The event stream is still open and the next fix builds again. The failed build was instant; chokidar ignores a second change of a file within 50 ms.
+    await new Promise((resolve) => setTimeout(resolve, 200));
     write('content/devlog/wip/index.md', post('Fixed again', 'date: 2026-02-01\ndraft: true\n'));
     await events.waitFor(2);
     await running.idle();
