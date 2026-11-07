@@ -17,7 +17,9 @@
     "theme",
     "i18n",
     "LICENSE",
-    "NOTICE"
+    "NOTICE",
+    "docs",
+    "CHANGELOG.md"
   ],
   "engines": {
     "node": ">=24"
