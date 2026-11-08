@@ -18,7 +18,7 @@ import { ReferenceFailure, backBarHtml, generateReference, publishReferenceFolde
 import { fetchDocsSources, manifestDocs } from './docs/sources.js';
 import {
   FEED_FILE_NAME,
-  absoluteUrl,
+  absoluteUri,
   createFeedEntry,
   excerptOf,
   feedUrlFor,
@@ -2435,14 +2435,14 @@ async function buildSite(config, site, options, outRoot, version, report) {
     const writeFeed = ({ type, page, title, subtitle, entries: candidates, limit, tag = null, series = null }) => {
       const chosen = selectEntries(candidates, limit);
       const url = feedUrlFor(page);
-      const selfUrl = absoluteUrl(site.baseUrl, url);
+      const selfUrl = absoluteUri(site.baseUrl, url);
       writeOutput(
         outDir,
         url.slice(1),
         renderFeed({
           lang: site.lang,
           selfUrl,
-          alternateUrl: absoluteUrl(site.baseUrl, page),
+          alternateUrl: absoluteUri(site.baseUrl, page),
           title,
           subtitle,
           author: site.author,
@@ -2518,7 +2518,7 @@ async function buildSite(config, site, options, outRoot, version, report) {
         continue;
       }
       const chosen = selectEntries(projectFeedEntries.get(project.slug) ?? [], site.feeds.limit);
-      const selfUrl = absoluteUrl(site.baseUrl, feedUrl);
+      const selfUrl = absoluteUri(site.baseUrl, feedUrl);
       const title = `${project.name} | ${siteTitle}`;
       writeOutput(
         outDir,
@@ -2526,7 +2526,7 @@ async function buildSite(config, site, options, outRoot, version, report) {
         renderFeed({
           lang: site.lang,
           selfUrl,
-          alternateUrl: absoluteUrl(site.baseUrl, url),
+          alternateUrl: absoluteUri(site.baseUrl, url),
           title,
           subtitle: project.pitch,
           author: site.author,

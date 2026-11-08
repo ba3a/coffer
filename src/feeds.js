@@ -60,6 +60,20 @@ export function absoluteUrl(baseUrl, path) {
 }
 
 /**
+ * Joins the site's base URL and a site-relative path into an address fit for a
+ * feed. Atom wants URIs, so every character outside printable ASCII is
+ * percent-encoded (a tag in Cyrillic would otherwise make an IRI). Escapes
+ * already present stay as they are.
+ *
+ * @param {string} baseUrl Absolute URL without a trailing slash.
+ * @param {string} path Site-relative path starting with `/`.
+ * @returns {string}
+ */
+export function absoluteUri(baseUrl, path) {
+  return absoluteUrl(baseUrl, path).replace(/[^\x21-\x7e]|["<>\\^`{|}]/gu, (char) => encodeURIComponent(char));
+}
+
+/**
  * Rewrites every relative `href`, `src`, `srcset` and `poster` of an HTML
  * fragment into an absolute URL, so the text still works in a feed reader.
  * Paths starting with `/` are read from the site root (`baseUrl`, with its
@@ -155,7 +169,7 @@ export function rfc3339(date) {
  * @returns {FeedEntry}
  */
 export function createFeedEntry({ baseUrl, url, title, date, summary, html, tags, tagsIndexUrl }) {
-  const permalink = absoluteUrl(baseUrl, url);
+  const permalink = absoluteUri(baseUrl, url);
   const full = absolutizeHtml(simplifyPictures(html), permalink, baseUrl);
   return {
     url: permalink,
@@ -167,7 +181,7 @@ export function createFeedEntry({ baseUrl, url, title, date, summary, html, tags
     categories: tags.map((tag) => ({
       term: tag.path,
       label: tag.name,
-      scheme: absoluteUrl(baseUrl, tagsIndexUrl),
+      scheme: absoluteUri(baseUrl, tagsIndexUrl),
     })),
   };
 }

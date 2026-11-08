@@ -6,6 +6,7 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { buildSites } from '../src/build.js';
+import { absoluteUri } from '../src/feeds.js';
 import { validateFeed } from '../src/check/feed-validator.js';
 import { loadConfig } from '../src/config.js';
 import { parseXml } from '../src/xml.js';
@@ -366,4 +367,14 @@ test('a post named feed.xml would collide with the blog feed and fails the build
     addPost(root, 'feed.xml.md', '---\ntitle: Clash\ndate: 2025-05-01\n---\n\nText.\n');
     await assert.rejects(build(root), /slug "feed\.xml".*collide with the blog's feed/);
   });
+});
+
+test('feed addresses are URIs: non-ASCII characters are percent-encoded, existing escapes stay', () => {
+  assert.equal(
+    absoluteUri('https://example.com', '/tags/программирование/feed.xml'),
+    'https://example.com/tags/%D0%BF%D1%80%D0%BE%D0%B3%D1%80%D0%B0%D0%BC%D0%BC%D0%B8%D1%80%D0%BE%D0%B2%D0%B0%D0%BD%D0%B8%D0%B5/feed.xml',
+  );
+  assert.equal(absoluteUri('https://example.com', '/tags/мой тег/feed.xml'), 'https://example.com/tags/%D0%BC%D0%BE%D0%B9%20%D1%82%D0%B5%D0%B3/feed.xml');
+  assert.equal(absoluteUri('https://example.com/', '/a%20b/😀/'), 'https://example.com/a%20b/%F0%9F%98%80/');
+  assert.equal(absoluteUri('https://example.com', '/plain/feed.xml'), 'https://example.com/plain/feed.xml');
 });
