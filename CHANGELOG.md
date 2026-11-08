@@ -12,6 +12,12 @@ Every release is a git tag named `v` followed by the version, for example `v0.1.
 
 Nothing yet.
 
+## 0.1.1 - 2026-11-08
+
+### Fixed
+
+- Feed addresses are percent-encoded, so a tag with non-ASCII characters or spaces no longer produces a feed that fails W3C validation.
+
 ## 0.1.0 - 2026-11-07
 
 ### Added
