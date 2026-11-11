@@ -34,6 +34,8 @@ export const DEFAULT_CODE_THEMES = Object.freeze({
  * @property {ImageOptions} [images] Turns images into responsive figures; without it an image stays a plain `<img>`.
  * @property {Partial<CarouselLabels>} [carousel] The words the carousels need, in the language of the site (English when left out).
  * @property {boolean} [readme] Whether the text may hold `::readme` directives (default false: one is then an error). Only the page of a project with a docs source can show a section of the project's README.
+ * @property {number} [headingShift] Whole number added to the level of every heading the Markdown makes, the result kept between h1 and h6 (default 0). A post shown inside a list page uses 1, so its h2 becomes h3 below the h2 that carries its title. Headings written as raw HTML are left as they are.
+ * @property {string} [idPrefix] Text put in front of every `id` of the output, so that several texts on one page have none in common (default: none; it must not contain whitespace). It applies to the ids of headings, of footnotes and of elements and anchors written as raw HTML, to the `aria-describedby`, `aria-labelledby` and `aria-controls` that point at them, and to every link of the text whose target is `#id` of such an id (links to other pages and to ids the text does not have stay as written). `toc`, `ids` and `links` in the result keep the values without the prefix, since they describe the text, not the page.
  */
 
 /**
@@ -523,6 +525,109 @@ function collect({ lineOffset, onResult }) {
 }
 
 /**
+ * @param {string} value
+ * @returns {string}
+ */
+function decodeFragment(value) {
+  try {
+    return decodeURIComponent(value);
+  } catch {
+    return value;
+  }
+}
+
+/**
+ * Puts the prefix in front of each id of a space separated list that the text has.
+ *
+ * @param {string} value
+ * @param {string} prefix
+ * @param {Set<string>} known
+ * @returns {string}
+ */
+function prefixReferences(value, prefix, known) {
+  return value
+    .split(/(\s+)/)
+    .map((part) => (known.has(part) ? prefix + part : part))
+    .join('');
+}
+
+/**
+ * Rewrites the ids, anchor names and `#id` links that raw HTML declares inside
+ * its tags. Text between the tags is not touched.
+ *
+ * @param {string} html
+ * @param {string} prefix
+ * @param {Set<string>} known
+ * @returns {string}
+ */
+function prefixRawHtml(html, prefix, known) {
+  return html.replace(/<[a-zA-Z][^>]*>/g, (tag) => {
+    const anchor = /^<a\s/i.test(tag);
+    return tag.replace(
+      /(\s)(id|name|href)(\s*=\s*)(?:"([^"]*)"|'([^']*)'|([^\s"'=<>`]+))/gi,
+      (match, space, name, equals, double, single, bare) => {
+        const attribute = String(name).toLowerCase();
+        const value = String(double ?? single ?? bare);
+        const quote = double !== undefined ? '"' : single !== undefined ? "'" : '';
+        let next;
+        if (attribute === 'id' || (attribute === 'name' && anchor)) {
+          next = value === '' ? value : prefix + value;
+        } else if (attribute === 'href' && value.startsWith('#') && known.has(decodeFragment(value.slice(1)))) {
+          next = `#${prefix}${value.slice(1)}`;
+        } else {
+          return match;
+        }
+        return `${space}${name}${equals}${quote}${next}${quote}`;
+      },
+    );
+  });
+}
+
+/**
+ * Rehype plugin: shifts the level of the headings and puts a prefix in front
+ * of the ids, together with everything that points at them. It runs after
+ * `collect`, so the table of contents, the ids and the links of the result
+ * describe the text as written.
+ *
+ * @param {{ shift: number, prefix: string, ids: () => Set<string> }} options
+ * @returns {(tree: import('hast').Root) => void}
+ */
+function shiftAndPrefix({ shift, prefix, ids }) {
+  return (tree) => {
+    if (shift === 0 && prefix === '') return;
+    const known = ids();
+    // A fragment in a link is percent-encoded when it holds more than ASCII.
+    const encodedPrefix = encodeURIComponent(prefix);
+    visit(tree, (node) => {
+      if (/** @type {string} */ (node.type) === 'raw') {
+        const raw = /** @type {{ value: string }} */ (/** @type {unknown} */ (node));
+        if (prefix !== '') raw.value = prefixRawHtml(raw.value, prefix, known);
+        return;
+      }
+      if (node.type !== 'element') return;
+      if (shift !== 0) {
+        const level = /^h([1-6])$/.exec(node.tagName);
+        if (level) node.tagName = `h${Math.min(6, Math.max(1, Number(level[1]) + shift))}`;
+      }
+      if (prefix === '') return;
+      const properties = node.properties;
+      if (typeof properties.id === 'string' && properties.id !== '') properties.id = prefix + properties.id;
+      const href = properties.href;
+      if (node.tagName === 'a' && typeof href === 'string' && href.startsWith('#')) {
+        const fragment = href.slice(1);
+        const decoded = decodeFragment(fragment);
+        if (known.has(decoded)) properties.href = `#${decoded === fragment ? prefix : encodedPrefix}${fragment}`;
+      }
+      for (const name of ['ariaDescribedBy', 'ariaLabelledBy', 'ariaControls']) {
+        const value = properties[name];
+        if (typeof value === 'string') properties[name] = prefixReferences(value, prefix, known);
+        else if (Array.isArray(value)) properties[name] = value.map((entry) => prefixReferences(String(entry), prefix, known));
+      }
+    });
+  };
+}
+
+/**
  * @param {string} tagName
  * @param {Record<string, string | number | undefined>} properties Properties with undefined values are left out.
  * @param {import('hast').ElementContent[]} [children]
@@ -786,6 +891,14 @@ export async function renderMarkdown(source, options = {}) {
   const themes = options.codeThemes ?? DEFAULT_CODE_THEMES;
   const lineOffset = startLine - 1;
   const labels = { ...DEFAULT_CAROUSEL_LABELS, ...options.carousel };
+  const headingShift = options.headingShift ?? 0;
+  if (typeof headingShift !== 'number' || !Number.isInteger(headingShift)) {
+    throw new TypeError('headingShift must be a whole number');
+  }
+  const idPrefix = options.idPrefix ?? '';
+  if (typeof idPrefix !== 'string' || /\s/.test(idPrefix)) {
+    throw new TypeError('idPrefix must be a string without whitespace');
+  }
 
   /** @type {Collected | undefined} */
   let collected;
@@ -828,6 +941,11 @@ export async function renderMarkdown(source, options = {}) {
       onResult: (found) => {
         collected = found;
       },
+    })
+    .use(shiftAndPrefix, {
+      shift: headingShift,
+      prefix: idPrefix,
+      ids: () => collected?.ids ?? new Set(),
     })
     .use(responsiveImages, {
       images: options.images ?? null,

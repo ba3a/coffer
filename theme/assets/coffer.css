@@ -6,6 +6,18 @@
    system preference and under [data-theme="dark"], and light is forced under
    [data-theme="light"]. Nothing here animates or transitions. */
 
+/* The measure is a registered length, set on :root only. An unregistered custom
+   property keeps the unresolved "68ch", and every element would resolve ch in
+   its own font size (the footer's smaller text made the footer narrower). A
+   registered <length> is computed once, at the root, so every element sees the
+   same width. The initial value is a placeholder: a registered length cannot
+   have a ch initial value. */
+@property --coffer-measure {
+  syntax: "<length>";
+  inherits: true;
+  initial-value: 0px;
+}
+
 :root {
   --coffer-bg: #ffffff;
   --coffer-text: #1b1b1f;
@@ -401,6 +413,29 @@ main > article > .post-layout {
 
 .post-summary {
   margin: 0;
+}
+
+/* A post shown in full on a list page: its title is an h2, so the h2 of the
+   text is an h3 there (and so on down). Each level keeps the size it has on the
+   post page. */
+.post-item .post-body {
+  margin-top: 1rem;
+}
+
+.post-item .post-body h3 {
+  margin: 2rem 0 0.75rem;
+  font-size: 1.5rem;
+}
+
+.post-item .post-body h4 {
+  margin: 2rem 0 0.75rem;
+  font-size: 1.25rem;
+}
+
+.post-item .post-body h5,
+.post-item .post-body h6 {
+  margin: 2rem 0 0.75rem;
+  font-size: 1.0625rem;
 }
 
 .post-layout {

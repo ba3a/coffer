@@ -300,3 +300,126 @@ test('clicks elsewhere on the page are ignored', () => {
   assert.equal(run.attributes.has('data-theme'), false);
   assert.equal(run.store['coffer-theme'], null);
 });
+
+/**
+ * Every top-level style rule of the stylesheet, nested at-rules flattened.
+ *
+ * @returns {{ selectors: string[], body: string }[]}
+ */
+function allRules() {
+  return [...bare.matchAll(/([^{}]+)\{([^{}]*)\}/g)]
+    .filter((match) => !/^\s*@/.test(match[1] ?? ''))
+    .map((match) => ({
+      selectors: (match[1] ?? '').split(',').map((selector) => selector.trim()),
+      body: match[2] ?? '',
+    }));
+}
+
+const FRAME = ['.site-header', '.site-footer', 'main'];
+
+test('--coffer-measure is a registered <length> that inherits, so ch is resolved once', () => {
+  const registered = declarations(ruleBody(bare, '@property --coffer-measure'));
+  assert.equal(registered.syntax, '"<length>"');
+  assert.equal(registered.inherits, 'true');
+  assert.match(registered['initial-value'] ?? '', /^0px$/, 'a registered length cannot start in ch');
+});
+
+test('--coffer-measure is declared on :root only', () => {
+  const declaring = allRules().filter((rule) => /(^|[;\s])--coffer-measure\s*:/.test(rule.body));
+  assert.equal(declaring.length, 1, 'one rule declares the measure');
+  assert.deepEqual(declaring[0]?.selectors, [':root']);
+  assert.match(declarations(declaring[0]?.body ?? '')['--coffer-measure'] ?? '', /^\d+ch$/);
+});
+
+test('header, main and footer share one max-width rule', () => {
+  const rules = allRules();
+  const together = rules.filter(
+    (rule) => rule.selectors.length === FRAME.length && FRAME.every((selector) => rule.selectors.includes(selector)),
+  );
+  // The print rule lists the three again to drop the limit; the screen rule is the one with the measure.
+  const shared = together.filter((rule) => declarations(rule.body)['max-width'] !== 'none');
+  assert.equal(shared.length, 1, 'one rule lists the three frame elements together');
+  assert.match(declarations(shared[0]?.body ?? '')['max-width'] ?? '', /var\(--coffer-measure\)/);
+
+  const alone = rules.filter(
+    (rule) => !together.includes(rule) && rule.selectors.some((selector) => FRAME.includes(selector)),
+  );
+  for (const rule of alone) {
+    const decl = declarations(rule.body);
+    for (const property of ['width', 'max-width', 'min-width']) {
+      assert.equal(decl[property], undefined, `${rule.selectors.join(', ')} does not set ${property} on its own`);
+    }
+  }
+});
+
+test('no frame element sets a width in a unit that depends on its own font size', () => {
+  const dependent = /(\d|\))(ch|ex|em|lh|cap|ic)\b/;
+  for (const rule of allRules()) {
+    if (!rule.selectors.some((selector) => FRAME.includes(selector))) continue;
+    const decl = declarations(rule.body);
+    for (const property of ['width', 'max-width', 'min-width']) {
+      const value = decl[property];
+      if (value !== undefined) assert.doesNotMatch(value, dependent, `${rule.selectors.join(', ')} ${property}`);
+    }
+  }
+  assert.equal(
+    declarations(ruleBody(bare, '.site-footer'))['font-size'],
+    '0.875rem',
+    'the footer keeps its smaller text, which is why its width must not depend on it',
+  );
+});
+
+/**
+ * The templates a template extends, nearest first.
+ *
+ * @param {string} name
+ * @returns {string[]}
+ */
+function extendsChain(name) {
+  /** @type {string[]} */
+  const chain = [];
+  let current = name;
+  while (current !== 'base.njk') {
+    const source = readFileSync(join(root, 'theme', 'templates', current), 'utf8');
+    const parent = /\{%-?\s*extends\s+"([^"]+)"/.exec(source)?.[1];
+    assert.ok(parent, `${current} extends a template`);
+    chain.push(parent);
+    current = parent;
+    assert.ok(chain.length < 6, `${name}: extends chain ends`);
+  }
+  return chain;
+}
+
+test('every page type of the example site extends base.njk, so the frame is the same three elements', () => {
+  const pageTypes = [
+    'home.njk',
+    'blog-index.njk',
+    'post.njk',
+    'tag.njk',
+    'tag-index.njk',
+    'series.njk',
+    'project.njk',
+    'project-tool.njk',
+    'project-game.njk',
+    'project-index.njk',
+    'docs.njk',
+    'search.njk',
+    '404.njk',
+    'page.njk',
+  ];
+  for (const name of pageTypes) {
+    const chain = extendsChain(name);
+    assert.equal(chain[chain.length - 1], 'base.njk', `${name} ends at base.njk`);
+    for (const template of [name, ...chain.filter((entry) => entry !== 'base.njk')]) {
+      const source = readFileSync(join(root, 'theme', 'templates', template), 'utf8');
+      assert.doesNotMatch(source, /<main[\s>]/, `${template} adds no second main`);
+      assert.doesNotMatch(source, /site-(header|footer)/, `${template} does not rebuild the frame`);
+      assert.doesNotMatch(source, /\{%-?\s*block\s+(header|footer)\b/, `${template} keeps the header and footer blocks`);
+    }
+  }
+
+  const base = readFileSync(join(root, 'theme', 'templates', 'base.njk'), 'utf8');
+  assert.equal(base.match(/<header class="site-header"/g)?.length, 1);
+  assert.equal(base.match(/<main\b/g)?.length, 1);
+  assert.equal(base.match(/<footer class="site-footer"/g)?.length, 1);
+});

@@ -90,6 +90,8 @@ The map shows:
 
 A click on a marker opens its first photo in the fullscreen viewer, which walks on through the other images of the post. In the viewer, the button **Show on map** (for images with a published position) closes the viewer, scrolls to the map, centres it on the photo's marker and opens the marker's name. With several maps on a page the one that shows the photo answers.
 
+On a blog index, tag page or series page that shows whole posts (setting `index`, see [Configuration](configuration.md)), each post brings its own maps, and each map works on its own: it shows its post's tracks and photos only. Leaflet, the map script and the map styles are included once per page. The markers point at the images of the page's one viewer, so a click opens the right photo (see [The image viewer](viewer.md#on-list-pages-of-full-blogs)), and **Show on map** answers on the map that shows the photo. Map markup has no `id` attributes, so nothing clashes between posts.
+
 The mouse wheel zooms a map only while the map has the keyboard focus, so scrolling the page past a map does not zoom it. A marker can be reached with the keyboard (Tab) and opened with Enter. Nothing is animated: the script turns off Leaflet's zoom, fade, marker and inertia animations, and `map.css` switches its remaining transitions off.
 
 ### Without JavaScript

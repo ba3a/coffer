@@ -10,7 +10,17 @@ Every release is a git tag named `v` followed by the version, for example `v0.1.
 
 ## Unreleased
 
-Nothing yet.
+### Added
+
+- A blog setting `index`: `summary` (the default) or `full`, or `{ type: full, pageSize: <positive whole number> }` to paginate a full index. The setting is validated and normalized to `blog.index = { type, pageSize }`; an invalid value, a `pageSize` that is not a positive whole number, a `pageSize` with type `summary` or an unknown key fails the configuration and names the blog. Feeds are never paginated.
+- A post front matter key `index` (`summary` or `full`) that overrides the blog's `index` setting for that post. The effective value is in the manifest (`posts[].index`) and in the template data of the post (`post.index`). Any other value fails the build and the message names the post.
+- Blogs with `index: full` (or a post with `index: full`) show the whole post on the blog index, the tag pages and the series pages: title (link), date, reading time, tags and the body rendered as on the post page, one heading level lower and with ids that start with the post slug, but without table of contents, series box, project blocks and share summary. Templates of those pages receive it as `post.html` (empty for a summary post) and the effective setting as `post.index`; `post.tagLinks` is filled on them too. The default `blog-index.njk` supports `full`; its output for `summary` posts is unchanged. The images of a full post are processed once. The front matter `summary` still feeds descriptions and link previews. Pagination of these pages follows in a later change. Tag and series pages show full posts the same way, and the per-post `index` override works on them, so one page can mix full and summary posts; ids stay unique on each page.
+- Two internal options of `renderMarkdown`, for showing a post inside a list page: `headingShift` (added to each heading level, h6 at most) and `idPrefix` (put in front of heading ids, footnote ids and back references, ids and anchor names written as raw HTML, and every in-text `#id` link that points at one of them). The table of contents, `ids` and `links` of the result keep the unprefixed values. Without the options the output is unchanged.
+- The image viewer, carousels and maps work on list pages that show full posts (blog index, tag and series pages). The page has one viewer whose list holds the images of every full post in page order (`data-viewer` and the photo indexes of map markers count on across posts); `carousel.js`, the viewer and Leaflet, with their styles, are included once per page. Each carousel and each map works on its own; neither has `id` attributes. `renderPostMaps` takes an optional `viewerOffset`.
+
+### Fixed
+
+- The header, main and footer of the default theme have one width on every page. `--coffer-measure` is now a registered `<length>` set on `:root`, so `68ch` is resolved once with the root font size instead of in the font size of each element that uses it; the smaller footer text no longer makes the footer narrower. The text column is about 1 px narrower than before (root font 16 px instead of body 17 px). A theme that overrides `--coffer-measure` must set it on `:root` as a length.
 
 ## 0.1.1 - 2026-11-08
 

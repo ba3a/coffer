@@ -15,6 +15,23 @@
 {% for post in posts %}
 <li class="post-item">
 {% block item %}
+{% if post.index == 'full' %}
+<h2><a href="{{ post.url | url }}">{{ post.title }}</a></h2>
+<p class="post-meta">
+<time datetime="{{ post.date | date('iso') }}">{{ post.date | date }}</time>
+<span aria-hidden="true">&middot;</span>
+<span class="reading-time">{{ 'post.reading_time' | t({ count: post.readingMinutes }) }}</span>
+</p>
+{% if post.tagLinks.length %}
+<ul class="post-tags" aria-label="{{ 'tags.post_tags' | t }}">
+{% for tag in post.tagLinks %}
+<li><a href="{{ tag.url | url }}">{{ tag.name }}</a></li>
+{% endfor %}
+</ul>
+{% endif %}
+{% include "partials/banner.njk" %}
+<div class="post-body">{{ post.html | safe }}</div>
+{% else %}
 <h2><a href="{{ post.url | url }}">{{ post.title }}</a></h2>
 <p class="post-meta">
 <time datetime="{{ post.date | date('iso') }}">{{ post.date | date }}</time>
@@ -24,6 +41,7 @@
 {% if post.summary %}<p class="post-summary">{{ post.summary }}</p>
 {% endif %}
 {% include "partials/banner.njk" %}
+{% endif %}
 {% endblock %}
 </li>
 {% endfor %}

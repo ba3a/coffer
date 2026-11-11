@@ -154,6 +154,7 @@ test('a valid two-site configuration loads with its values', () => {
         dir: join(dir, 'content/english/journal'),
         prefix: 'journal',
         title: 'Journal',
+        index: { type: 'summary', pageSize: null },
       },
     ]);
     assert.deepEqual(english.urls, {
@@ -235,8 +236,58 @@ test('blog defaults: dir and prefix follow the id, title follows the site', () =
       dir: resolve('/work/devlog'),
       prefix: 'devlog',
       title: 'Main',
+      index: { type: 'summary', pageSize: null },
     },
   ]);
+});
+
+/**
+ * @param {unknown} index The `index` value of a blog named `notes`.
+ * @returns {import('../src/config.js').BlogIndexConfig}
+ */
+function indexOf(index) {
+  return normalize(oneSite({ blogs: [{ id: 'notes', index }] })).sites[0].blogs[0].index;
+}
+
+test('blog index: summary is the default and full is accepted in both forms', () => {
+  assert.deepEqual(normalize(oneSite({ blogs: [{ id: 'notes' }] })).sites[0].blogs[0].index, { type: 'summary', pageSize: null });
+  assert.deepEqual(indexOf(null), { type: 'summary', pageSize: null });
+  assert.deepEqual(indexOf('summary'), { type: 'summary', pageSize: null });
+  assert.deepEqual(indexOf('full'), { type: 'full', pageSize: null });
+  assert.deepEqual(indexOf({ type: 'summary' }), { type: 'summary', pageSize: null });
+  assert.deepEqual(indexOf({ type: 'full' }), { type: 'full', pageSize: null });
+  assert.deepEqual(indexOf({ type: 'full', pageSize: 10 }), { type: 'full', pageSize: 10 });
+  assert.deepEqual(indexOf({ type: 'full', pageSize: 1 }), { type: 'full', pageSize: 1 });
+});
+
+test('blog index: invalid values fail and name the blog', () => {
+  const expectError = (/** @type {unknown} */ index, /** @type {RegExp} */ pattern) => {
+    const errors = normalizeErrors(oneSite({ blogs: [{ id: 'notes', index }] }));
+    assert.equal(errors.length, 1, errors.join(' '));
+    assert.match(errors[0], pattern);
+    assert.match(errors[0], /blog "notes"/);
+  };
+  expectError('everything', /: sites\[0\]\.blogs\[0\]\.index: must be "summary" or "full"/);
+  expectError('', /\.index: must be "summary" or "full"/);
+  expectError(true, /\.index: must be "summary" or "full"/);
+  expectError(10, /\.index: must be "summary" or "full"/);
+  expectError(['full'], /\.index: must be "summary" or "full"/);
+  expectError({}, /\.index\.type: must be "summary" or "full"/);
+  expectError({ type: 'cards' }, /\.index\.type: must be "summary" or "full"/);
+  expectError({ pageSize: 10 }, /\.index\.type: must be "summary" or "full"/);
+  expectError({ type: 'full', pageSize: 0 }, /\.index\.pageSize: must be a positive whole number/);
+  expectError({ type: 'full', pageSize: -3 }, /\.index\.pageSize: must be a positive whole number/);
+  expectError({ type: 'full', pageSize: 2.5 }, /\.index\.pageSize: must be a positive whole number/);
+  expectError({ type: 'full', pageSize: '10' }, /\.index\.pageSize: must be a positive whole number/);
+  expectError({ type: 'full', pageSize: true }, /\.index\.pageSize: must be a positive whole number/);
+  expectError({ type: 'summary', pageSize: 10 }, /\.index\.pageSize: only has an effect with type full/);
+  expectError({ type: 'full', size: 10 }, /\.index\.size: unknown key \(expected one of: type, pageSize\)/);
+});
+
+test('blog index: an unknown key next to a valid type is the only error', () => {
+  const errors = normalizeErrors(oneSite({ blogs: [{ id: 'notes', index: { type: 'full', pagesize: 5 } }] }));
+  assert.equal(errors.length, 1);
+  assert.match(errors[0], /\.index\.pagesize: unknown key/);
 });
 
 test('an empty prefix is kept as the root blog', () => {

@@ -39,6 +39,15 @@ export const CONFIG_FILE_NAME = 'coffer.yaml';
  * @property {string} [newPostTemplate] Absolute path of the Markdown file whose text `coffer new` puts below the front matter of a new post; absent when the blog has none.
  * @property {true} [shareSummary] Present when every post of the blog gets a copy-friendly share summary: a `share.txt` file and a collapsed block at the end of the post. Absent when the blog has none.
  * @property {true} [shareHashtags] Present when the share summary ends with hashtags made from the tags of the post. Absent when it does not.
+ * @property {BlogIndexConfig} index What the index page of the blog lists.
+ */
+
+/**
+ * What the index page of a blog lists.
+ *
+ * @typedef {object} BlogIndexConfig
+ * @property {'summary' | 'full'} type `summary` lists a card per post, `full` lists whole posts.
+ * @property {number | null} pageSize Posts per page of a `full` index; `null` for a single page. Always `null` for `summary`. Feeds are never paginated.
  */
 
 /**
@@ -562,6 +571,55 @@ export function isValidLinkUrl(value) {
 }
 
 /**
+ * Reads the `index` setting of a blog: `summary`, `full`, or a mapping with
+ * `type` and an optional `pageSize`.
+ *
+ * @param {Record<string, unknown>} entry The blog entry.
+ * @param {string} here Path of the blog entry.
+ * @param {string | undefined} id Id of the blog, for messages.
+ * @param {Problems} problems
+ * @returns {BlogIndexConfig}
+ */
+function readBlogIndex(entry, here, id, problems) {
+  /** @type {BlogIndexConfig} */
+  const fallback = { type: 'summary', pageSize: null };
+  const raw = entry.index;
+  if (raw === undefined || raw === null) return fallback;
+  const path = `${here}.index`;
+  const blog = id === undefined ? 'the blog' : `blog "${id}"`;
+  /** @type {unknown} */
+  let type = raw;
+  /** @type {unknown} */
+  let pageSize;
+  if (isMapping(raw)) {
+    for (const key of Object.keys(raw)) {
+      if (key !== 'type' && key !== 'pageSize') {
+        problems.add(`${path}.${key}`, `unknown key (expected one of: type, pageSize) (${blog})`);
+      }
+    }
+    type = raw.type;
+    pageSize = raw.pageSize;
+  }
+  if (type !== 'summary' && type !== 'full') {
+    problems.add(
+      isMapping(raw) ? `${path}.type` : path,
+      `must be "summary" or "full"${isMapping(raw) ? '' : ', or a mapping with "type" and "pageSize"'} (${blog})`,
+    );
+    return fallback;
+  }
+  if (pageSize === undefined || pageSize === null) return { type, pageSize: null };
+  if (type === 'summary') {
+    problems.add(`${path}.pageSize`, `only has an effect with type full (${blog})`);
+    return fallback;
+  }
+  if (typeof pageSize !== 'number' || !Number.isInteger(pageSize) || pageSize < 1) {
+    problems.add(`${path}.pageSize`, `must be a positive whole number (${blog})`);
+    return fallback;
+  }
+  return { type, pageSize };
+}
+
+/**
  * @param {unknown[]} list
  * @param {string} path
  * @param {string} baseDir
@@ -582,7 +640,7 @@ function normalizeBlogs(list, path, baseDir, siteTitle, problems) {
       problems.add(here, 'must be a mapping');
       return;
     }
-    rejectUnknownKeys(entry, ['id', 'dir', 'prefix', 'title', 'newPostTemplate', 'shareSummary', 'shareHashtags'], here, problems);
+    rejectUnknownKeys(entry, ['id', 'dir', 'prefix', 'title', 'newPostTemplate', 'shareSummary', 'shareHashtags', 'index'], here, problems);
     const id = readString(entry, 'id', here, problems, { required: true });
     if (id !== undefined) {
       if (!ID_RE.test(id)) {
@@ -636,6 +694,7 @@ function normalizeBlogs(list, path, baseDir, siteTitle, problems) {
     if (shareHashtags && !shareSummary) {
       problems.add(`${here}.shareHashtags`, 'only has an effect together with "shareSummary: true"');
     }
+    const blogIndex = readBlogIndex(entry, here, id, problems);
     if (
       id !== undefined &&
       dir !== undefined &&
@@ -652,6 +711,7 @@ function normalizeBlogs(list, path, baseDir, siteTitle, problems) {
           : { newPostTemplate: resolve(baseDir, templateValue) }),
         ...(shareSummary ? { shareSummary: true } : {}),
         ...(shareHashtags ? { shareHashtags: true } : {}),
+        index: blogIndex,
       });
     }
   });

@@ -43,6 +43,7 @@ The text of the post.
 | `date`           | yes      | `YYYY-MM-DD`, or `YYYY-MM-DD` and a time, see below.                                                         |
 | `tags`           | no       | List of tags. A tag is a slash path such as `woodworking/boxes`. Stored lowercase, without duplicates.      |
 | `summary`        | no       | Short text for lists, feeds and link previews.                                                              |
+| `index`          | no       | `summary` or `full`: whether the blog index, tag and series pages show this post as a summary or in full. Without it the blog's `index` setting applies. A post with `index: summary` and no `summary` shows its title and meta only. With `full` the list shows the whole body, as the post page does, one heading level lower and with ids that start with the slug. Any other value fails the build and the message names the post. See [Configuration](configuration.md). |
 | `cover`          | no       | Cover image: a path beside the post (JPEG, PNG, WebP or HEIC; it is resized like any image, see [Images](images.md)), or a URL. |
 | `series`         | no       | Slug of the series the post belongs to, such as `alps`; stored lowercase. See [Series](series.md).          |
 | `seriesPosition` | no       | Whole number that puts the post ahead of the unnumbered ones, by value. Needs `series`; see [Series](series.md). |

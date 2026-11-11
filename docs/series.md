@@ -35,7 +35,7 @@ With no `seriesPosition` anywhere, a series reads in date order. With a `seriesP
 
 ## The series page
 
-For a blog with the prefix `journal`, the page of the series `boxes-by-hand` is `/journal/series/boxes-by-hand/` (the segment `series` comes from `urls.series` in the [configuration](configuration.md)). It shows the name, the description, the number of parts and the list of parts in order, each with "part n of m", the date, the reading time and the summary. Only series that have a published post get a page.
+For a blog with the prefix `journal`, the page of the series `boxes-by-hand` is `/journal/series/boxes-by-hand/` (the segment `series` comes from `urls.series` in the [configuration](configuration.md)). It shows the name, the description, the number of parts and the list of parts in order, each with "part n of m", the date, the reading time and the summary, or the whole body for a post whose effective `index` is `full` (the blog's `index` setting or the post's own front matter, so a series page can mix both; see [Configuration](configuration.md)). Only series that have a published post get a page.
 
 ## Names and descriptions: `series.yaml`
 

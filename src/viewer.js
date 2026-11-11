@@ -42,6 +42,22 @@ export function viewerJson(data) {
 }
 
 /**
+ * Moves the viewer links of a rendered text to later places in the page's list
+ * of images, for a page that shows several texts: the n-th image of a text
+ * becomes the (n + offset)-th image of the page. Only the `data-viewer`
+ * attribute of a link (`<a ...>`) is changed; text that merely looks like one,
+ * such as a code sample, is left alone because its `<` is escaped.
+ *
+ * @param {string} html
+ * @param {number} offset Number of images the page lists before this text.
+ * @returns {string}
+ */
+export function shiftViewerIndexes(html, offset) {
+  if (offset === 0) return html;
+  return html.replace(/(<a\s[^>]*?\sdata-viewer=")(\d+)(")/g, (_match, before, index, after) => `${before}${Number(index) + offset}${after}`);
+}
+
+/**
  * Turns data into JSON that is safe inside a `<script>` element: `<` and the
  * two line separators that JavaScript treats as line ends are written as
  * `\uXXXX` escapes, which JSON reads back as the same characters, so the text

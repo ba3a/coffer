@@ -7,6 +7,7 @@ import { join } from 'node:path';
 import { BuildError, DEPLOY_EXCLUDES, MANIFEST_FILE_NAME, buildSites, postUrl } from '../src/build.js';
 import { parseBuildArgs, run } from '../src/cli.js';
 import { loadConfig } from '../src/config.js';
+import { PostError } from '../src/content/posts.js';
 import * as engine from '../src/index.js';
 
 const NOW = new Date('2026-06-01T12:00:00Z');
@@ -960,4 +961,39 @@ test('a site with no posts at all and a theme folder without templates builds, c
       assert.deepEqual(checked.failures, []);
     },
   );
+});
+
+/**
+ * @param {string} root
+ * @returns {Promise<import('../src/build.js').Manifest>}
+ */
+async function manifestOf(root) {
+  const [result] = await buildSites(loadConfig({ configPath: join(root, 'coffer.yaml') }), { out: join(root, 'out'), now: NOW });
+  return result.manifest;
+}
+
+/** @param {import('../src/build.js').Manifest} manifest */
+const indexOfPosts = (manifest) => Object.fromEntries(manifest.posts.map((entry) => [entry.slug, entry.index]));
+
+test('the manifest gives every post its effective index: the post value wins, else the blog value', async () => {
+  const posts = {
+    'notes/own-summary.md': post('Own summary', '2025-01-01', 'index: summary\n'),
+    'notes/own-full.md': post('Own full', '2025-01-02', 'index: full\n'),
+    'notes/plain.md': post('Plain', '2025-01-03'),
+  };
+  await inTree({ 'coffer.yaml': configYaml().replace('title: Notes }', 'title: Notes, index: full }'), ...posts }, async (root) => {
+    assert.deepEqual(indexOfPosts(await manifestOf(root)), { 'own-summary': 'summary', 'own-full': 'full', plain: 'full' });
+  });
+  await inTree({ 'coffer.yaml': configYaml().replace('title: Notes }', 'title: Notes, index: summary }'), ...posts }, async (root) => {
+    assert.deepEqual(indexOfPosts(await manifestOf(root)), { 'own-summary': 'summary', 'own-full': 'full', plain: 'summary' });
+  });
+  await inTree({ 'coffer.yaml': configYaml(), ...posts }, async (root) => {
+    assert.deepEqual(indexOfPosts(await manifestOf(root)), { 'own-summary': 'summary', 'own-full': 'full', plain: 'summary' });
+  });
+});
+
+test('a post with an invalid index fails the build and names the post', async () => {
+  await inTree({ 'coffer.yaml': configYaml(), 'notes/odd.md': post('Odd', '2025-01-01', 'index: everything\n') }, async (root) => {
+    await assert.rejects(manifestOf(root), (error) => error instanceof PostError && /odd\.md: index: must be "summary" or "full"/.test(error.message));
+  });
 });

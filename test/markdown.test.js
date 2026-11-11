@@ -308,3 +308,115 @@ test('collects the ids a link can point at, from headings, elements and raw HTML
   // The footnote mark is a link at the place it is written; the back reference the renderer adds is not.
   assert.deepEqual(links.map((link) => link.url), ['#user-content-fn-1']);
 });
+
+const SHIFT_SOURCE = '# One\n\n## Two\n\n### Three\n\n#### Four\n\n##### Five\n\n###### Six\n';
+
+test('headingShift adds to each heading level and stops at h6', async () => {
+  const { html } = await renderMarkdown(SHIFT_SOURCE, { headingShift: 1 });
+  assert.match(html, /<h2 id="one">One<\/h2>/);
+  assert.match(html, /<h3 id="two">Two<\/h3>/);
+  assert.match(html, /<h4 id="three">Three<\/h4>/);
+  assert.match(html, /<h5 id="four">Four<\/h5>/);
+  assert.match(html, /<h6 id="five">Five<\/h6>/);
+  assert.match(html, /<h6 id="six">Six<\/h6>/);
+  assert.doesNotMatch(html, /<\/h1>/);
+  const far = await renderMarkdown(SHIFT_SOURCE, { headingShift: 10 });
+  assert.equal(far.html.match(/<h6 /g)?.length, 6);
+});
+
+test('headingShift leaves the table of contents and the ids as they are', async () => {
+  const source = '## A\n\n### B\n\n## C\n\n### D\n';
+  const plain = await renderMarkdown(source);
+  const shifted = await renderMarkdown(source, { headingShift: 1 });
+  assert.deepEqual(shifted.toc, plain.toc);
+  assert.deepEqual(shifted.ids, plain.ids);
+});
+
+test('idPrefix prefixes the ids of headings', async () => {
+  const { html } = await renderMarkdown('## Getting started\n\n### Details\n', { idPrefix: 'post-' });
+  assert.match(html, /<h2 id="post-getting-started">/);
+  assert.match(html, /<h3 id="post-details">/);
+});
+
+test('idPrefix keeps the table of contents and the ids of the result unprefixed', async () => {
+  const source = '## A\n\n### B\n\n## C\n\n### D\n\nSee [a](#a).\n';
+  const plain = await renderMarkdown(source);
+  const prefixed = await renderMarkdown(source, { idPrefix: 'post-' });
+  assert.equal(prefixed.toc.length, 4);
+  assert.deepEqual(prefixed.toc, plain.toc);
+  assert.deepEqual(prefixed.ids, plain.ids);
+  assert.deepEqual(prefixed.links, plain.links);
+});
+
+test('idPrefix prefixes footnote ids, their references and the back references', async () => {
+  const { html } = await renderMarkdown('Text[^1].\n\n[^1]: The note.\n', { idPrefix: 'p-' });
+  assert.match(html, /<a href="#p-user-content-fn-1" id="p-user-content-fnref-1" data-footnote-ref aria-describedby="p-footnote-label">/);
+  assert.match(html, /<h2 class="sr-only" id="p-footnote-label">/);
+  assert.match(html, /<li id="p-user-content-fn-1">/);
+  assert.match(html, /<a href="#p-user-content-fnref-1" data-footnote-backref/);
+});
+
+test('idPrefix rewrites links to an id of the same text and leaves other links alone', async () => {
+  const source = [
+    '## Setup',
+    '',
+    '## Ünïcode ключ',
+    '',
+    '<a id="manual"></a>',
+    '',
+    'See [setup](#setup), [key](#ünïcode-ключ), [manual](#manual), [missing](#nowhere),',
+    '[other page](/other/#setup), [site](https://example.org/#setup) and [top](#).',
+    '',
+  ].join('\n');
+  const { html } = await renderMarkdown(source, { idPrefix: 'p-' });
+  assert.match(html, /<h2 id="p-setup">/);
+  assert.match(html, /<a href="#p-setup">setup<\/a>/);
+  assert.match(html, /<a href="#p-%C3%BCn%C3%AFcode-%D0%BA%D0%BB%D1%8E%D1%87">key<\/a>/);
+  assert.match(html, /<a id="p-manual"><\/a>/);
+  assert.match(html, /<a href="#p-manual">manual<\/a>/);
+  assert.match(html, /<a href="#nowhere">missing<\/a>/);
+  assert.match(html, /<a href="\/other\/#setup">other page<\/a>/);
+  assert.match(html, /<a href="https:\/\/example\.org\/#setup">site<\/a>/);
+  assert.match(html, /<a href="#">top<\/a>/);
+});
+
+test('idPrefix also prefixes ids, names and in-text links written in raw HTML', async () => {
+  const source = '## Head\n\n<div id="box"><a name="spot" href="#head">x</a> <input name="email"></div>\n';
+  const { html } = await renderMarkdown(source, { idPrefix: 'p-' });
+  assert.match(html, /<div id="p-box">/);
+  assert.match(html, /<a name="p-spot" href="#p-head">/);
+  assert.match(html, /<input name="email">/);
+});
+
+test('two posts rendered with different prefixes have no id in common', async () => {
+  const source = '## Intro\n\n### Details\n\nNote[^1] and [intro](#intro).\n\n[^1]: The note.\n';
+  const first = await renderMarkdown(source, { idPrefix: 'one-' });
+  const second = await renderMarkdown(source, { idPrefix: 'two-' });
+  /** @param {string} html */
+  const idsOf = (html) => [...html.matchAll(/\sid="([^"]*)"/g)].map((match) => match[1]);
+  const a = idsOf(first.html);
+  const b = idsOf(second.html);
+  assert.ok(a.length >= 4);
+  assert.equal(a.length, b.length);
+  assert.deepEqual(a.filter((id) => b.includes(id)), []);
+  assert.ok(a.every((id) => id.startsWith('one-')));
+});
+
+test('without options the output is the same as with the neutral values', async () => {
+  const source = '# T\n\n## Intro\n\nNote[^1] and [intro](#intro) <a id="x"></a>.\n\n[^1]: The note.\n';
+  const plain = await renderMarkdown(source);
+  const neutral = await renderMarkdown(source, { headingShift: 0, idPrefix: '' });
+  assert.deepEqual(neutral, plain);
+  assert.match(plain.html, /<h1 id="t">T<\/h1>/);
+  assert.match(plain.html, /<a href="#intro">intro<\/a>/);
+  assert.match(plain.html, /<li id="user-content-fn-1">/);
+});
+
+test('headingShift and idPrefix work together and are validated', async () => {
+  const { html } = await renderMarkdown('## Two\n', { headingShift: 1, idPrefix: 'p-' });
+  assert.equal(html, '<h3 id="p-two">Two</h3>');
+  await assert.rejects(renderMarkdown('x', { headingShift: 1.5 }), /headingShift/);
+  await assert.rejects(renderMarkdown('x', { headingShift: /** @type {any} */ ('1') }), /headingShift/);
+  await assert.rejects(renderMarkdown('x', { idPrefix: /** @type {any} */ (1) }), /idPrefix/);
+  await assert.rejects(renderMarkdown('x', { idPrefix: 'a b' }), /idPrefix/);
+});

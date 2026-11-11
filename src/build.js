@@ -151,6 +151,7 @@ export class BuildError extends Error {
  * @property {boolean} draft True when the post is a draft.
  * @property {boolean} published False for a post that is only built because of preview mode.
  * @property {number} readingMinutes
+ * @property {'summary' | 'full'} index How list pages show the post: its own `index` front matter, else the blog's `index.type`.
  * @property {{ url: string, file: string } | null} share The post's share summary text file (`share.txt`: address and path), or null when the blog has no share summary. It is an output file of the build, not a page: it is in neither the sitemap, the feeds nor the search index.
  * @property {{ slug: string, number: number, count: number } | null} series The series the post belongs to, with its place in it ("part number of count"), or null.
  * @property {ManifestTrack[]} tracks The GPX tracks published with the post, in the order they are shown; empty when it has none.
@@ -452,8 +453,10 @@ function fileForUrl(url) {
  * @param {boolean} unpublished True when the post is only built because of preview mode.
  * @param {{ path: string, name: string, url: string }[]} [tagLinks] The post's tags with their names and page addresses.
  * @param {SeriesView | null} [series] The post's place in its series.
+ * @param {'summary' | 'full'} [blogIndex] The `index.type` of the post's blog, used when the post has no `index` of its own.
+ *     The view has an empty `html`; a list page fills it for a post whose effective `index` is `full`.
  */
-function postView(post, url, readingMinutes, unpublished, tagLinks = [], series = null) {
+function postView(post, url, readingMinutes, unpublished, tagLinks = [], series = null, blogIndex = 'summary') {
   return {
     slug: post.slug,
     url,
@@ -462,6 +465,8 @@ function postView(post, url, readingMinutes, unpublished, tagLinks = [], series 
     tags: post.tags,
     tagLinks,
     summary: post.summary,
+    index: post.index ?? blogIndex,
+    html: '',
     draft: post.draft,
     unpublished,
     readingMinutes,
@@ -601,24 +606,35 @@ async function buildSite(config, site, options, outRoot, version, report) {
     showOnMap: templates.translator.t('viewer.show_on_map'),
   };
   /**
+   * The part of a rendered text that decides what its page loads.
+   *
+   * @typedef {{ carousels: number, viewerImages: import('./markdown/render.js').ViewerImage[] }} PageText
+   */
+  /**
    * What a page needs besides its HTML, as template variables: the carousel
    * script when the page has a carousel and, when it has images the viewer can
    * open, the viewer (PhotoSwipe, its styles, the engine's script and styles)
    * and the list of those images as JSON for it. Pages without such images load
    * nothing of it.
    *
-   * @param {{ carousels: number, viewerImages: import('./markdown/render.js').ViewerImage[] } | null} rendered
+   * A page that shows several texts (a list page of full posts) passes them all,
+   * in the order they appear: the images are listed in that order, and each
+   * script and style is included once however many texts use it.
+   *
+   * @param {PageText | PageText[] | null} rendered
    * @param {boolean} [withMap] Whether the page has a map, which needs Leaflet and the engine's map script (after the viewer's, so that a marker finds the viewer ready).
    * @returns {{ scripts: string[], styles: string[], viewerData: string }}
    */
   const pageAssetsFor = (rendered, withMap = false) => {
-    const scripts = rendered && rendered.carousels > 0 ? ['/assets/carousel.js'] : [];
+    const texts = rendered === null ? [] : Array.isArray(rendered) ? rendered : [rendered];
+    const viewerImages = texts.flatMap((text) => text.viewerImages);
+    const scripts = texts.some((text) => text.carousels > 0) ? ['/assets/carousel.js'] : [];
     const styles = [];
     let viewerData = '';
-    if (rendered && rendered.viewerImages.length > 0) {
+    if (viewerImages.length > 0) {
       styles.push(...VIEWER_STYLES);
       scripts.push(...VIEWER_SCRIPTS);
-      viewerData = viewerJson({ labels: viewerLabels, images: rendered.viewerImages });
+      viewerData = viewerJson({ labels: viewerLabels, images: viewerImages });
     }
     if (withMap) {
       styles.push(...MAP_STYLES);
@@ -1015,7 +1031,7 @@ async function buildSite(config, site, options, outRoot, version, report) {
 
   // Every post of every blog is read and rendered first, so that links between posts
   // can be resolved before any page is written.
-  /** @type {Map<string, { selected: Post[], rendered: Map<Post, RenderedPost>, tagMeta: ReturnType<typeof loadTagMeta> }>} */
+  /** @type {Map<string, { selected: Post[], rendered: Map<Post, RenderedPost>, listRendered: Map<Post, RenderedPost>, tagMeta: ReturnType<typeof loadTagMeta> }>} */
   const prepared = new Map();
   /**
    * The GPX tracks of each selected post, read and analyzed.
@@ -1039,6 +1055,12 @@ async function buildSite(config, site, options, outRoot, version, report) {
     const resolver = createResolver(tagMeta.meta, tagMeta.file);
     /** @type {Map<Post, RenderedPost>} */
     const rendered = new Map();
+    /**
+     * The body of each post whose effective `index` is `full`, rendered for a
+     * list page: headings one level lower, ids prefixed with the slug.
+     * @type {Map<Post, RenderedPost>}
+     */
+    const listRendered = new Map();
     for (const post of selected) {
       const page = pageImagesOf(post.file, post, resolver);
       pageImages.set(post.file, page);
@@ -1053,17 +1075,58 @@ async function buildSite(config, site, options, outRoot, version, report) {
       for (const error of errors) report.addError({ site: site.id, file: error.file, message: error.reason });
       postTracks.set(post, tracks);
       page.tracks = tracks.length;
+      const imageOptions = imageOptionsFor(post.file, postUrl(blog, post.slug), page);
+      if ((post.index ?? blog.index.type) !== 'full') {
+        rendered.set(
+          post,
+          await renderMarkdown(post.body, {
+            file: post.file,
+            startLine: post.bodyLine,
+            images: imageOptions,
+            carousel: carouselLabels,
+          }),
+        );
+        continue;
+      }
+      // A full post is rendered twice, as a page and for list pages. The second
+      // pass takes the images from the first, so each image is processed,
+      // published and reported once.
+      /** @type {Map<string, Promise<import('./markdown/render.js').ResponsiveImage | null>>} */
+      const resolvedImages = new Map();
+      /** @param {import('./markdown/render.js').ImageRequest} request */
+      const imageKey = (request) => `${request.line}:${request.column}:${request.src}`;
       rendered.set(
         post,
         await renderMarkdown(post.body, {
           file: post.file,
           startLine: post.bodyLine,
-          images: imageOptionsFor(post.file, postUrl(blog, post.slug), page),
+          images: {
+            ...imageOptions,
+            resolve: (request) => {
+              const resolving = imageOptions.resolve(request);
+              resolvedImages.set(imageKey(request), resolving);
+              return resolving;
+            },
+          },
           carousel: carouselLabels,
         }),
       );
+      listRendered.set(
+        post,
+        await renderMarkdown(post.body, {
+          file: post.file,
+          startLine: post.bodyLine,
+          images: {
+            ...imageOptions,
+            resolve: (request) => resolvedImages.get(imageKey(request)) ?? imageOptions.resolve(request),
+          },
+          carousel: carouselLabels,
+          headingShift: 1,
+          idPrefix: `${post.slug}-`,
+        }),
+      );
     }
-    prepared.set(blog.id, { selected, rendered, tagMeta });
+    prepared.set(blog.id, { selected, rendered, listRendered, tagMeta });
     for (const post of found) {
       sourcePosts.push({ post, url: postUrl(blog, post.slug), rendered: rendered.get(post) ?? null });
     }
@@ -1971,7 +2034,7 @@ async function buildSite(config, site, options, outRoot, version, report) {
   const searchPageWriters = [];
 
   for (const blog of site.blogs) {
-    const { selected, rendered: renderedPosts, tagMeta } = /** @type {{ selected: Post[], rendered: Map<Post, RenderedPost>, tagMeta: ReturnType<typeof loadTagMeta> }} */ (
+    const { selected, rendered: renderedPosts, listRendered, tagMeta } = /** @type {{ selected: Post[], rendered: Map<Post, RenderedPost>, listRendered: Map<Post, RenderedPost>, tagMeta: ReturnType<typeof loadTagMeta> }} */ (
       prepared.get(blog.id)
     );
 
@@ -2073,6 +2136,13 @@ async function buildSite(config, site, options, outRoot, version, report) {
       title: t('feeds.series', { title: seriesNameOf(slug) }),
     });
     const tagsIndexUrl = tagUrl(blogBase, site.urls.tags);
+    /**
+     * The post bodies that list pages show in full (`post.html`), by the address
+     * of the post. Neither the table of contents, the series box, the project
+     * blocks nor the share summary are part of them.
+     * @type {Map<string, { post: Post, url: string, rendered: RenderedPost, hasMap: boolean }>}
+     */
+    const listBodies = new Map();
     for (const post of selected) {
       const rendered = /** @type {RenderedPost} */ (renderedPosts.get(post));
       const url = postUrl(blog, post.slug);
@@ -2093,6 +2163,9 @@ async function buildSite(config, site, options, outRoot, version, report) {
         report.addError({ site: site.id, file: shownFile, line: problem.line, column: problem.column, message: problem.message });
       }
       for (const warning of mapped.warnings) warnings.push(`${shownFile}: ${warning}`);
+      const forLists = listRendered.get(post);
+      // The maps are the same as on the post page; their problems were reported there.
+      if (forLists) listBodies.set(url, { post, url, rendered: forLists, hasMap: mapped.maps.length > 0 });
 
       const aboutProjects = aboutPost.get(post) ?? [];
       if (!unpublished) {
@@ -2124,6 +2197,7 @@ async function buildSite(config, site, options, outRoot, version, report) {
         unpublished,
         post.tags.map((path) => ({ path, name: nameOf(path), url: urlOf(path) })),
         seriesOf.get(post) ?? null,
+        blog.index.type,
       );
       const projectBlocks = aboutProjects.map((slug) => projectBlockOf(slug, url));
       const previewImage = await previewImageOf(post, url);
@@ -2234,6 +2308,7 @@ async function buildSite(config, site, options, outRoot, version, report) {
         draft: post.draft,
         published: !unpublished,
         readingMinutes: rendered.readingMinutes,
+        index: view.index,
         share: share ? { url: share.url, file: share.file } : null,
         series: view.series
           ? { slug: view.series.slug, number: view.series.number, count: view.series.count }
@@ -2244,9 +2319,62 @@ async function buildSite(config, site, options, outRoot, version, report) {
     }
 
     const views = entries.map(({ post, url, readingMinutes, unpublished }) =>
-      postView(post, url, readingMinutes, unpublished),
+      postView(
+        post,
+        url,
+        readingMinutes,
+        unpublished,
+        post.tags.map((path) => ({ path, name: nameOf(path), url: urlOf(path) })),
+        null,
+        blog.index.type,
+      ),
     );
     if (blog === site.blogs[0]) firstBlogPosts = views;
+
+    /** The maps of a post body on a list page, by post address and number of images before it (a map is drawn once per place). */
+    const listMaps = new Map();
+    /**
+     * Puts the body into each post of a list page that shows its post in full
+     * and returns what the page needs for those bodies. The page has one viewer:
+     * the images of the bodies are listed in the order of the page, and the
+     * links and map markers of each body count on from the images before it.
+     * The result goes into the page's template variables.
+     *
+     * @template {{ url: string }} V
+     * @param {V[]} listed The posts of the page, in order.
+     * @returns {{ posts: (V & { html: string })[], scripts: string[], styles: string[], viewerData: string }}
+     */
+    const withBodies = (listed) => {
+      /** @type {PageText[]} */
+      const texts = [];
+      let offset = 0;
+      let withMap = false;
+      const posts = listed.map((view) => {
+        const body = listBodies.get(view.url);
+        if (!body) return { ...view, html: '' };
+        const key = `${view.url}@${offset}`;
+        let html = listMaps.get(key);
+        if (html === undefined) {
+          html = renderPostMaps({
+            lang: site.lang,
+            basePath: templates.basePath,
+            tiles: site.map,
+            templates,
+            rendered: body.rendered,
+            tracks: postTracks.get(body.post) ?? [],
+            url: body.url,
+            enabled: body.post.map !== false,
+            viewerOffset: offset,
+          }).html;
+          listMaps.set(key, html);
+        }
+        texts.push(body.rendered);
+        offset += body.rendered.viewerImages.length;
+        withMap ||= body.hasMap;
+        return { ...view, html };
+      });
+      return { posts, ...pageAssetsFor(texts, withMap) };
+    };
 
     const indexUrl = blogBase;
     const blogFeedLink = /** @type {FeedLink} */ (blogFeeds.get(blog.id));
@@ -2257,7 +2385,7 @@ async function buildSite(config, site, options, outRoot, version, report) {
       feedLinks: feedLinksFor(blog),
       meta: metaFor({ title: blog.title, description: site.description, url: indexUrl, image: cardFor(blog.title) }),
       pageFeed: blogFeedLink,
-      posts: views,
+      ...withBodies(views),
       tagsUrl: tagUrl(blogBase, site.urls.tags),
       page: { title: blog.title, description: site.description, content: '' },
     });
@@ -2361,7 +2489,7 @@ async function buildSite(config, site, options, outRoot, version, report) {
           .slice(0, -1)
           .map((path) => ({ path, name: nameOf(path), url: urlOf(path) })),
         children: view.children,
-        posts: tagPostUrls.flatMap((address) => viewByUrl.get(address) ?? []),
+        ...withBodies(tagPostUrls.flatMap((address) => viewByUrl.get(address) ?? [])),
         page: { title: view.name, description: view.description, content: '' },
       });
       const file = fileForUrl(view.url);
@@ -2392,7 +2520,7 @@ async function buildSite(config, site, options, outRoot, version, report) {
         feedLinks: feedLinksFor(blog, [seriesFeed]),
         meta: metaFor({ title: entry.name, description: entry.description ?? '', url, image: cardFor(entry.name) }),
         pageFeed: seriesFeed,
-        posts: parts,
+        ...withBodies(parts),
         series: {
           slug: entry.slug,
           name: entry.name,

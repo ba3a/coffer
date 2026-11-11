@@ -60,6 +60,10 @@ document.addEventListener('coffer:show-on-map', (event) => {
 });
 ```
 
+## On list pages of full blogs
+
+A blog index, tag page or series page that shows whole posts (see [Posts](posts.md) and [Configuration](configuration.md), setting `index`) has one viewer for the whole page. The list in `#coffer-viewer` holds the images of every post shown in full, in the order of the page: the posts one after the other, each in document order. The n-th link of the page has `data-viewer="n"` and the viewer walks from the last image of one post on to the first of the next. A post shown as a summary adds nothing. PhotoSwipe, the script and the styles are included once, however many posts the page shows, and the post page itself keeps its own list that starts at 0.
+
 ## Files
 
 | File                                                          | What it is                                                                        |

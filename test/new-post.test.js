@@ -258,7 +258,7 @@ test('a missing newPostTemplate file is reported and nothing is written', async 
 
 test('createPost throws a NewPostError that lists every problem', () => {
   assert.throws(
-    () => createPost({ blog: { id: 'b', dir: join(tmpdir(), 'coffer-never'), prefix: 'b', title: 'B' }, timezone: 'UTC', title: ' ', date: 'x', tags: ['!'] }),
+    () => createPost({ blog: { id: 'b', dir: join(tmpdir(), 'coffer-never'), prefix: 'b', title: 'B', index: { type: 'summary', pageSize: null } }, timezone: 'UTC', title: ' ', date: 'x', tags: ['!'] }),
     (error) => error instanceof NewPostError && error.errors.length === 4,
   );
 });

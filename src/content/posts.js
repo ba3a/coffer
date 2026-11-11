@@ -17,6 +17,7 @@ import { normalizeImageKey } from '../images/policy.js';
  * @property {boolean} dateOnly True when the front matter gave a date without a time.
  * @property {string[]} tags Normalized tag paths: lowercase, slash separated, no empty segments, no duplicates.
  * @property {string | null} summary Short summary, if given.
+ * @property {'summary' | 'full' | null} index Whether list pages show the post as a summary or in full (`index: summary | full`); null when the front matter does not say, which means the blog's `index` setting.
  * @property {string | null} cover Cover image reference as written (a path beside the post or a URL), if given.
  * @property {string | null} series Slug of the series the post belongs to, if any: lowercase, made of letters, digits, ".", "_" and "-". It is the last segment of the series page's URL.
  * @property {number | null} seriesPosition Explicit position in the series, if given.
@@ -476,6 +477,12 @@ function parseInto(file, text, slug, kind, dir, options, errors) {
 
   const summary = optionalString('summary');
   const cover = optionalString('cover');
+  /** @type {'summary' | 'full' | null} */
+  let index = null;
+  if (fm.index !== undefined && fm.index !== null) {
+    if (fm.index === 'summary' || fm.index === 'full') index = fm.index;
+    else fail('index', 'must be "summary" or "full"');
+  }
   const rawSeries = optionalString('series');
   /** @type {string | null | undefined} */
   let series = rawSeries;
@@ -556,6 +563,7 @@ function parseInto(file, text, slug, kind, dir, options, errors) {
     dateOnly: when.dateOnly,
     tags,
     summary: summary ?? null,
+    index,
     cover: cover ?? null,
     series: series ?? null,
     seriesPosition,

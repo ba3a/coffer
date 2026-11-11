@@ -285,6 +285,7 @@ test('optional fields default to empty values', () => {
   assert.deepEqual(post.tags, []);
   assert.deepEqual(post.aliases, []);
   assert.equal(post.summary, null);
+  assert.equal(post.index, null);
   assert.equal(post.cover, null);
   assert.equal(post.series, null);
   assert.equal(post.seriesPosition, null);
@@ -319,12 +320,21 @@ test('tags with empty segments are rejected with the field name', () => {
   }
 });
 
+test('index accepts summary and full', () => {
+  for (const value of ['summary', 'full']) {
+    const post = parsePostSource({ file: 'x.md', slug: 'x', text: doc(`title: T\ndate: 2024-05-01\nindex: ${value}`) });
+    assert.equal(post.index, value);
+  }
+});
+
 test('other field mistakes name the file and the field', () => {
   /** @type {[string, RegExp][]} */
   const cases = [
     ['tags: nope', /^x\.md: tags: must be a list$/],
     ['tags: [1]', /^x\.md: tags\[0\]: must be a string$/],
     ['summary: 5', /^x\.md: summary: must be a non-empty string$/],
+    ['index: both', /^x\.md: index: must be "summary" or "full"$/],
+    ['index: true', /^x\.md: index: must be "summary" or "full"$/],
     ['cover: ""', /^x\.md: cover: /],
     ['series: [a]', /^x\.md: series: /],
     ['series: Alps trip', /^x\.md: series: "Alps trip" must be a slug/],

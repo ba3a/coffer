@@ -83,6 +83,10 @@ The script has no special handling of right-to-left layouts: the arrow keys mean
 
 The images of a carousel are images of the post, in document order: a carousel in the middle of a post is walked through between the image before it and the image after it. `renderMarkdown` returns the list as `images` (see [Markdown](markdown.md#result)), with `carousel: true` for slides. Clicking a slide opens the fullscreen viewer on that image and the viewer walks on through the rest of the post (see [The image viewer](viewer.md)); without scripts a slide links to its full-size file.
 
+## On list pages of full blogs
+
+A blog index, tag page or series page that shows whole posts (setting `index`, see [Configuration](configuration.md)) can hold several carousels, one or more per post. Each works on its own: the buttons, the position and the keys act on the carousel they are in. `carousel.js` is included once per page, and a slide opens the one viewer of the page, which walks on through the images of the other posts (see [The image viewer](viewer.md#on-list-pages-of-full-blogs)). Carousel markup has no `id` attributes, so nothing clashes between posts.
+
 ## Styling
 
 The default stylesheet styles `.carousel`, `.carousel-track`, `.carousel-slide`, `.carousel-controls`, `.carousel-button` and `.carousel-position` with the custom properties of the theme (see [Themes](themes.md)). A site theme replaces the script by putting its own `carousel.js` in its `assets/` folder.

@@ -22,7 +22,7 @@ For a blog with the prefix `journal` (the segment `tags` comes from `urls.tags` 
 | `/journal/tags/workshop/`         | The tag page of `workshop`.                                                                |
 | `/journal/tags/workshop/boxes/`   | The tag page of `workshop/boxes`.                                                          |
 
-A **tag page** lists the posts that have the tag **or any tag below it**, newest first: a post tagged `workshop/boxes` appears on `workshop/` and on `workshop/boxes/`, and not on `workshop/tools/`. It also shows a breadcrumb trail (the tag tree, then each ancestor) and links to the child tags with their counts.
+A **tag page** lists the posts that have the tag **or any tag below it**, newest first: a post tagged `workshop/boxes` appears on `workshop/` and on `workshop/boxes/`, and not on `workshop/tools/`. Like the blog index, it shows a post in full when the post's effective `index` is `full` (the blog's `index` setting or the post's own front matter), so one tag page can mix full and summary posts; see [Configuration](configuration.md). It also shows a breadcrumb trail (the tag tree, then each ancestor) and links to the child tags with their counts.
 
 The **count** of a node is the number of distinct posts in its subtree: a post tagged both `a/b` and `a/c` counts once for `a`.
 

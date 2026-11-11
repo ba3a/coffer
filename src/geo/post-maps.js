@@ -3,7 +3,7 @@
  * photos each one shows, and writes them into the page.
  */
 
-import { jsonForScript } from '../viewer.js';
+import { jsonForScript, shiftViewerIndexes } from '../viewer.js';
 import { MAP_PLACEHOLDER_ATTRIBUTE } from '../markdown/directives/map.js';
 import { SELECT_ALL, boundsOf, formatLength, markersFor, selectMapContent } from './map.js';
 import { TRACK_COLORS, renderStaticMap } from './static-map.js';
@@ -49,6 +49,7 @@ export function withoutMapPlaceholders(html) {
  * @property {import('./gpx.js').LoadedTrack[]} tracks The post's tracks.
  * @property {string} url Site-relative address of the post, ending in a slash.
  * @property {boolean} enabled False when the post's front matter says `map: false`.
+ * @property {number} [viewerOffset] Number of images the page lists in its viewer before this text (default 0). A list page shows several posts; the image links and the markers of this post then count on from there.
  */
 
 /**
@@ -71,7 +72,7 @@ export function withoutMapPlaceholders(html) {
  * @param {PostMapsInput} input
  * @returns {PostMapsResult}
  */
-export function renderPostMaps({ lang, basePath, tiles, templates, rendered, tracks, url, enabled }) {
+export function renderPostMaps({ lang, basePath, tiles, templates, rendered, tracks, url, enabled, viewerOffset = 0 }) {
   const { translator } = templates;
   /** @type {PostMapsResult['problems']} */
   const problems = [];
@@ -80,13 +81,14 @@ export function renderPostMaps({ lang, basePath, tiles, templates, rendered, tra
   /** @type {PostMap[]} */
   const maps = [];
   const feedHtml = withoutMapPlaceholders(rendered.html);
+  const bodyHtml = shiftViewerIndexes(rendered.html, viewerOffset);
 
   /** The photos that can be markers: images the viewer opens and that publish a position. */
   const photos = rendered.viewerImages.flatMap((image, index) =>
     image.latitude !== undefined && image.longitude !== undefined && image.precision !== undefined
       ? [
           {
-            index,
+            index: index + viewerOffset,
             address: rendered.viewerSources[index] ?? '',
             src: image.src,
             latitude: image.latitude,
@@ -195,13 +197,13 @@ export function renderPostMaps({ lang, basePath, tiles, templates, rendered, tra
     };
   };
 
-  if (!enabled) return { html: feedHtml, feedHtml, maps, problems, warnings };
+  if (!enabled) return { html: shiftViewerIndexes(feedHtml, viewerOffset), feedHtml, maps, problems, warnings };
 
   if (rendered.maps.length === 0) {
     const map = build({ tracks: SELECT_ALL, photos: SELECT_ALL }, null);
-    if (map === null) return { html: rendered.html, feedHtml, maps, problems, warnings };
+    if (map === null) return { html: bodyHtml, feedHtml, maps, problems, warnings };
     maps.push(map);
-    return { html: `${rendered.html}\n${map.html}`, feedHtml, maps, problems, warnings };
+    return { html: `${bodyHtml}\n${map.html}`, feedHtml, maps, problems, warnings };
   }
 
   /** @type {Map<number, string>} */
@@ -211,6 +213,6 @@ export function renderPostMaps({ lang, basePath, tiles, templates, rendered, tra
     if (map !== null) maps.push(map);
     placed.set(directive.index, map === null ? '' : map.html);
   }
-  const html = rendered.html.replace(PLACEHOLDER_RE, (_match, index) => placed.get(Number(index)) ?? '');
+  const html = bodyHtml.replace(PLACEHOLDER_RE, (_match, index) => placed.get(Number(index)) ?? '');
   return { html, feedHtml, maps, problems, warnings };
 }
