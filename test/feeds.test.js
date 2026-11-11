@@ -378,3 +378,102 @@ test('feed addresses are URIs: non-ASCII characters are percent-encoded, existin
   assert.equal(absoluteUri('https://example.com/', '/a%20b/😀/'), 'https://example.com/a%20b/%F0%9F%98%80/');
   assert.equal(absoluteUri('https://example.com', '/plain/feed.xml'), 'https://example.com/plain/feed.xml');
 });
+
+test('every feed of the example site has an <icon> with the absolute URL of the PNG and no <logo>', async () => {
+  await withExampleCopy(async (root) => {
+    const result = await build(root);
+    const { feeds } = result.manifest;
+    assert.deepEqual([...new Set(feeds.map((feed) => feed.type))].sort(), ['blog', 'project', 'series', 'tag']);
+    assert.ok(existsSync(join(result.outDir, 'assets', 'icon.png')));
+    for (const feed of feeds) {
+      const xml = feedText(result, feed.url);
+      const root = parseXml(xml);
+      const icons = root.children.filter((child) => child.local === 'icon');
+      assert.equal(icons.length, 1, feed.url);
+      assert.equal(icons[0].text, `${SITE}/assets/icon.png`, feed.url);
+      assert.equal(root.children.some((child) => child.local === 'logo'), false, feed.url);
+      // The icon follows the generator.
+      assert.match(xml, /<\/generator>\n {2}<icon>https:\/\/tove-marlowe\.example\/assets\/icon\.png<\/icon>\n(?: {2}<entry>|<\/feed>)/, feed.url);
+      const verdict = validateFeed(xml, { selfUrl: feed.selfUrl });
+      assert.deepEqual(verdict.errors, [], feed.url);
+      assert.deepEqual(verdict.warnings, [], feed.url);
+    }
+  });
+});
+
+test('a configured logo is written as <logo> after the <icon> in every feed', async () => {
+  await withExampleCopy(async (root) => {
+    cpSync(join(root, 'theme', 'assets', 'icon.png'), join(root, 'theme', 'assets', 'banner.png'));
+    const file = join(root, 'coffer.yaml');
+    const original = readFileSync(file, 'utf8');
+    const changed = original.replace(/^(\s+)icon: assets\/icon\.png/m, '$&\n$1logo: assets/banner.png');
+    assert.notEqual(changed, original);
+    writeFileSync(file, changed);
+    const result = await build(root);
+    for (const feed of result.manifest.feeds) {
+      const xml = feedText(result, feed.url);
+      assert.match(
+        xml,
+        /<\/generator>\n {2}<icon>https:\/\/tove-marlowe\.example\/assets\/icon\.png<\/icon>\n {2}<logo>https:\/\/tove-marlowe\.example\/assets\/banner\.png<\/logo>\n/,
+        feed.url,
+      );
+      const verdict = validateFeed(xml, { selfUrl: feed.selfUrl });
+      assert.deepEqual(verdict.errors, [], feed.url);
+    }
+  });
+});
+
+test('a non-ASCII icon or logo path is percent-encoded in every feed and the feed validates', async () => {
+  await withExampleCopy(async (root) => {
+    cpSync(join(root, 'theme', 'assets', 'icon.png'), join(root, 'theme', 'assets', 'значок.png'));
+    cpSync(join(root, 'theme', 'assets', 'icon.png'), join(root, 'theme', 'assets', 'логотип.png'));
+    const file = join(root, 'coffer.yaml');
+    const original = readFileSync(file, 'utf8');
+    const changed = original.replace(/^(\s+)icon: assets\/icon\.png/m, '$1icon: assets/значок.png\n$1logo: assets/логотип.png');
+    assert.notEqual(changed, original);
+    writeFileSync(file, changed);
+    const result = await build(root);
+    assert.ok(result.manifest.feeds.length > 0);
+    for (const feed of result.manifest.feeds) {
+      const xml = feedText(result, feed.url);
+      assert.match(
+        xml,
+        /<\/generator>\n {2}<icon>https:\/\/tove-marlowe\.example\/assets\/%D0%B7%D0%BD%D0%B0%D1%87%D0%BE%D0%BA\.png<\/icon>\n {2}<logo>https:\/\/tove-marlowe\.example\/assets\/%D0%BB%D0%BE%D0%B3%D0%BE%D1%82%D0%B8%D0%BF\.png<\/logo>\n/,
+        feed.url,
+      );
+      assert.doesNotMatch(xml, /[^\x00-\x7f]/u, feed.url);
+      const verdict = validateFeed(xml, { selfUrl: feed.selfUrl });
+      assert.deepEqual(verdict.errors, [], feed.url);
+    }
+  });
+});
+
+test('without icon and logo settings no feed has an <icon> or a <logo>', async () => {
+  await withExampleCopy(async (root) => {
+    const file = join(root, 'coffer.yaml');
+    const original = readFileSync(file, 'utf8');
+    const changed = original.replace(/^\s+icon: assets\/icon\.png\r?\n/m, '');
+    assert.notEqual(changed, original);
+    writeFileSync(file, changed);
+    const result = await build(root);
+    assert.ok(result.manifest.feeds.length > 0);
+    for (const feed of result.manifest.feeds) {
+      const xml = feedText(result, feed.url);
+      assert.doesNotMatch(xml, /<icon>|<logo>/, feed.url);
+      assert.deepEqual(validateFeed(xml, { selfUrl: feed.selfUrl }).errors, [], feed.url);
+    }
+  });
+});
+
+test('the feed validator rejects a relative or repeated <icon> or <logo>', async () => {
+  await withExampleCopy(async (root) => {
+    const result = await build(root);
+    const xml = feedText(result, '/journal/feed.xml');
+    const icon = `<icon>${SITE}/assets/icon.png</icon>`;
+    assert.ok(xml.includes(icon));
+    const relative = validateFeed(xml.replace(icon, '<icon>/assets/icon.png</icon>'));
+    assert.match(relative.errors.join('\n'), /<icon> is not an absolute URL/);
+    const twice = validateFeed(xml.replace(icon, `${icon}\n  <logo>${SITE}/a.png</logo>\n  <logo>${SITE}/b.png</logo>`));
+    assert.match(twice.errors.join('\n'), /more than one <logo>/);
+  });
+});

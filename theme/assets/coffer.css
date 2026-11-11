@@ -415,6 +415,26 @@ main > article > .post-layout {
   margin: 0;
 }
 
+/* Previous and next page of a paginated list; the current page is in the middle. */
+.pagination ul {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.5rem 1.5rem;
+  margin: 1.5rem 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.pagination-current {
+  margin-inline: auto;
+  color: var(--coffer-muted);
+}
+
+.pagination-next {
+  margin-left: auto;
+}
+
 /* A post shown in full on a list page: its title is an h2, so the h2 of the
    text is an h3 there (and so on down). Each level keeps the size it has on the
    post page. */

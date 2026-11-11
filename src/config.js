@@ -142,6 +142,12 @@ export const CONFIG_FILE_NAME = 'coffer.yaml';
  * @property {string | null} theme Absolute path of the theme directory, or null for the default theme.
  * @property {string} contentLicense Content license text shown in the footer; may be empty.
  * @property {string} defaultImage Preview image of pages that have none: a site-relative path starting with `/` or an absolute http(s) URL.
+ * @property {string | null} icon Path, relative to the root of the built site (no leading `/`), of the site's square PNG icon of at least 128 px; null when the site sets none. The build checks the file.
+ * @property {string | null} logo Path, relative to the root of the built site, of the site's PNG logo; null when the site sets none. The build checks the file.
+ * @property {string | null} favicon Path, relative to the root of the built site, of the file the build copies to `/favicon.ico` (an `.ico` or PNG file); null when the site sets none. The build checks the file.
+ * @property {string | null} appleTouchIcon Path, relative to the root of the built site, of the PNG the build copies to `/apple-touch-icon.png`; null when the site sets none. The build checks the file.
+ * @property {string} [iconUrl] Absolute address of `icon`, set by the build once the file is checked; absent without an icon.
+ * @property {string} [logoUrl] Absolute address of `logo`, set by the build once the file is checked; absent without a logo.
  * @property {AuthorConfig} author Author named in feeds.
  * @property {FeedsConfig} feeds Settings of the Atom feeds.
  * @property {LinkConfig[]} links Links of the site.
@@ -232,6 +238,10 @@ const SITE_KEYS = [
   'theme',
   'contentLicense',
   'defaultImage',
+  'icon',
+  'logo',
+  'favicon',
+  'appleTouchIcon',
   'author',
   'feeds',
   'links',
@@ -342,6 +352,57 @@ function readString(mapping, key, path, problems, options = {}) {
     return undefined;
   }
   return value.trim();
+}
+
+/**
+ * Reads a path inside the built site, such as `assets/brand/icon-192.png`: a
+ * plain relative path with `/` between the segments. An absolute URL, a path
+ * that starts with `/`, an empty, `.` or `..` segment, a backslash, a query,
+ * a fragment, a space or a `%` is reported. An absent key is `null`. With
+ * `extensions`, the file name must end in one of them (in any case).
+ *
+ * @param {Record<string, unknown>} mapping
+ * @param {string} key
+ * @param {string} path Path of `mapping`.
+ * @param {Problems} problems
+ * @param {string[]} [extensions] Allowed endings of the file name, such as `['.png']`; any when absent.
+ * @returns {string | null}
+ */
+function readOutputPath(mapping, key, path, problems, extensions) {
+  const here = path === '' ? key : `${path}.${key}`;
+  const value = mapping[key];
+  if (value === undefined || value === null) return null;
+  const example = 'a path relative to the root of the built site, such as "assets/brand/icon-192.png"';
+  if (typeof value !== 'string' || value.trim() === '') {
+    problems.add(here, `must be ${example}`);
+    return null;
+  }
+  const text = value.trim();
+  const reason = outputPathProblem(text);
+  if (reason !== null) {
+    problems.add(here, `${reason}; use ${example}`);
+    return null;
+  }
+  if (extensions && !extensions.some((extension) => text.toLowerCase().endsWith(extension))) {
+    problems.add(here, `must be a ${extensions.map((extension) => `"${extension}"`).join(' or ')} file, but "${text}" is not`);
+    return null;
+  }
+  return text;
+}
+
+/**
+ * @param {string} text
+ * @returns {string | null} What is wrong with `text` as a path inside the built site, or null.
+ */
+function outputPathProblem(text) {
+  if (/^[a-z][a-z0-9+.-]*:/i.test(text) || text.startsWith('//')) return 'must not be a URL';
+  if (text.startsWith('/')) return 'must not start with "/"';
+  if (/[\\?#]/.test(text)) return 'must not contain a backslash, "?" or "#"';
+  if (/[\s%]/.test(text)) return 'must not contain spaces or "%", which would need encoding in an address';
+  const segments = text.split('/');
+  if (segments.includes('..')) return 'must not contain ".." segments';
+  if (segments.some((segment) => segment === '' || segment === '.')) return 'must not contain empty or "." segments';
+  return null;
 }
 
 /**
@@ -1087,6 +1148,10 @@ function normalizeSite(raw, index, baseDir, problems) {
       'must be an http(s) URL or a path starting with "/"',
     );
   }
+  const icon = readOutputPath(raw, 'icon', path, problems);
+  const logo = readOutputPath(raw, 'logo', path, problems);
+  const favicon = readOutputPath(raw, 'favicon', path, problems, ['.ico', '.png']);
+  const appleTouchIcon = readOutputPath(raw, 'appleTouchIcon', path, problems, ['.png']);
   const author = normalizeAuthor(raw.author, `${path}.author`, title ?? '', problems);
   const feeds = normalizeFeeds(
     readMapping(raw, 'feeds', path, problems),
@@ -1206,6 +1271,10 @@ function normalizeSite(raw, index, baseDir, problems) {
     theme,
     contentLicense,
     defaultImage,
+    icon,
+    logo,
+    favicon,
+    appleTouchIcon,
     author,
     feeds,
     links,

@@ -46,6 +46,19 @@
 </li>
 {% endfor %}
 </ol>
+{% block pagination %}
+{% if pagination %}
+<nav class="pagination" aria-label="{{ 'pagination.label' | t }}">
+<ul>
+{% if pagination.previous %}<li class="pagination-previous"><a rel="prev" href="{{ pagination.previous | url }}">{{ 'pagination.previous' | t }}</a></li>
+{% endif %}
+<li class="pagination-current" aria-current="page">{{ 'pagination.page' | t({ page: pagination.page, pages: pagination.pages }) }}</li>
+{% if pagination.next %}<li class="pagination-next"><a rel="next" href="{{ pagination.next | url }}">{{ 'pagination.next' | t }}</a></li>
+{% endif %}
+</ul>
+</nav>
+{% endif %}
+{% endblock %}
 {% else %}
 <p class="empty">{{ 'blog.empty' | t }}</p>
 {% endif %}

@@ -35,6 +35,8 @@ export const MAX_EXCERPT_LENGTH = 240;
  * @property {{ name: string, email: string | null, url: string | null }} author
  * @property {Date} updated Moment of the newest entry, or of the build for an empty feed.
  * @property {{ name: string, version: string }} generator
+ * @property {string | null} [icon] Absolute URL of the site icon, written as `<icon>`; nothing is written when null or absent.
+ * @property {string | null} [logo] Absolute URL of the site logo, written as `<logo>`; nothing is written when null or absent.
  * @property {FeedEntry[]} entries Newest first.
  */
 
@@ -229,6 +231,8 @@ export function renderFeed(feed) {
   lines.push(
     `  <generator version="${escapeXmlAttribute(feed.generator.version)}">${escapeXml(feed.generator.name)}</generator>`,
   );
+  if (feed.icon) lines.push(tag('icon', feed.icon));
+  if (feed.logo) lines.push(tag('logo', feed.logo));
   for (const entry of feed.entries) {
     lines.push('  <entry>');
     lines.push(tag('id', entry.url, '    '));

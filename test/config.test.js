@@ -203,6 +203,8 @@ test('defaults are applied to a minimal site', () => {
     theme: null,
     contentLicense: '',
     defaultImage: '/assets/social-default.png',
+    icon: null,
+    logo: null,
     author: { name: 'Main', email: null, url: null },
     feeds: { limit: 20 },
     links: [],
@@ -282,6 +284,42 @@ test('blog index: invalid values fail and name the blog', () => {
   expectError({ type: 'full', pageSize: true }, /\.index\.pageSize: must be a positive whole number/);
   expectError({ type: 'summary', pageSize: 10 }, /\.index\.pageSize: only has an effect with type full/);
   expectError({ type: 'full', size: 10 }, /\.index\.size: unknown key \(expected one of: type, pageSize\)/);
+});
+
+test('icon and logo are paths inside the built site, null when absent', () => {
+  const site = normalize(oneSite({ icon: 'assets/brand/icon-192.png', logo: ' assets/brand/logo.png ' })).sites[0];
+  assert.equal(site.icon, 'assets/brand/icon-192.png');
+  assert.equal(site.logo, 'assets/brand/logo.png');
+  const bare = normalize(oneSite({})).sites[0];
+  assert.equal(bare.icon, null);
+  assert.equal(bare.logo, null);
+  assert.equal(normalize(oneSite({ icon: null })).sites[0].icon, null);
+});
+
+test('icon and logo: URLs, absolute paths, .. segments and non-strings fail and name the setting', () => {
+  for (const setting of ['icon', 'logo']) {
+    const expectError = (/** @type {unknown} */ value, /** @type {RegExp} */ pattern) => {
+      const errors = normalizeErrors(oneSite({ [setting]: value }));
+      assert.equal(errors.length, 1, `${setting}: ${JSON.stringify(value)}: ${errors.join(' ')}`);
+      assert.ok(errors[0].includes(`sites[0].${setting}: `), errors[0]);
+      assert.match(errors[0], pattern);
+    };
+    expectError('https://example.org/icon.png', /must not be a URL/);
+    expectError('//example.org/icon.png', /must not be a URL/);
+    expectError('data:image/png;base64,AAAA', /must not be a URL/);
+    expectError('/assets/icon.png', /must not start with "\/"/);
+    expectError('../icon.png', /must not contain "\.\." segments/);
+    expectError('assets/../../icon.png', /must not contain "\.\." segments/);
+    expectError('assets\\icon.png', /backslash/);
+    expectError('assets/icon.png?v=2', /backslash, "\?" or "#"/);
+    expectError('assets//icon.png', /empty or "\." segments/);
+    expectError('assets/my icon.png', /spaces or "%"/);
+    expectError('assets/icon%20x.png', /spaces or "%"/);
+    expectError('', /must be a path relative to the root of the built site/);
+    expectError(128, /must be a path relative to the root of the built site/);
+    expectError(true, /must be a path relative to the root of the built site/);
+    expectError(['assets/icon.png'], /must be a path relative to the root of the built site/);
+  }
 });
 
 test('blog index: an unknown key next to a valid type is the only error', () => {
@@ -737,6 +775,8 @@ test('docs/configuration.md documents every configuration key', () => {
     'theme',
     'contentLicense',
     'defaultImage',
+    'icon',
+    'logo',
     'links',
     'label',
     'url',

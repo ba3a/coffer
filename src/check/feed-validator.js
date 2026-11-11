@@ -279,6 +279,15 @@ export function validateFeed(xml, options = {}) {
     report.warn(root, 'feed has no <link rel="alternate"> to the page it belongs to');
   }
 
+  for (const name of ['icon', 'logo']) {
+    const found = atomChildren(root, name);
+    if (found.length > 1) report.error(found[1], `feed has more than one <${name}>`);
+    for (const element of found) {
+      const value = element.text.trim();
+      if (!isAbsoluteUrl(value) || /\s/.test(value)) report.error(element, `feed <${name}> is not an absolute URL: "${value}"`);
+    }
+  }
+
   const entries = atomChildren(root, 'entry');
   const feedAuthors = atomChildren(root, 'author');
   for (const author of feedAuthors) checkAuthor(report, author, 'feed');

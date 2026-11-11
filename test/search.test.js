@@ -231,6 +231,50 @@ test('a site with one blog gets a plain "Search" link; the posts mark their body
   );
 });
 
+test('a blog that shows full posts on its list pages still gives one search hit per post, never a list page', async () => {
+  const entry = (/** @type {string} */ title, /** @type {string} */ date, /** @type {string} */ body) =>
+    `---
+title: ${title}
+date: ${date}
+tags: [trips]
+series: tour
+---
+
+${body}
+`;
+  await inTree(
+    {
+      'coffer.yaml': config('en', '      - { id: notes, dir: notes, prefix: log, title: Notes, index: { type: full, pageSize: 1 } }'),
+      'notes/one.md': entry('One', '2026-04-01', 'The zebrafinch sings in the first post.'),
+      'notes/two.md': entry('Two', '2026-04-02', 'A narwhal swims through the second post.'),
+      'notes/three.md': entry('Three', '2026-04-03', 'The third post mentions a quokka.'),
+    },
+    async (root) => {
+      const result = await build(root);
+      for (const file of ['log/index.html', 'log/page/2/index.html', 'log/tags/trips/index.html', 'log/series/tour/index.html']) {
+        const html = readFileSync(join(result.outDir, ...file.split('/')), 'utf8');
+        assert.ok(!html.includes('data-pagefind-body'), `${file} is not marked for the index`);
+      }
+      assert.ok(
+        readFileSync(join(result.outDir, 'log', 'index.html'), 'utf8').includes('zebrafinch') ||
+          readFileSync(join(result.outDir, 'log', 'page', '2', 'index.html'), 'utf8').includes('zebrafinch') ||
+          readFileSync(join(result.outDir, 'log', 'page', '3', 'index.html'), 'utf8').includes('zebrafinch'),
+        'the list pages do carry the body text',
+      );
+      const search = await openSearch(result.outDir);
+      for (const [word, url] of [
+        ['zebrafinch', '/log/one/'],
+        ['narwhal', '/log/two/'],
+        ['quokka', '/log/three/'],
+      ]) {
+        assert.deepEqual((await search.search(/** @type {string} */ (word), { blog: 'notes' })).map((hit) => hit.url), [url], `"${word}" finds only its post page`);
+        assert.deepEqual((await search.search(/** @type {string} */ (word))).map((hit) => hit.url), [url], `"${word}" finds only its post page without a filter`);
+      }
+      assert.equal(result.search.pages, 3, 'only the three post pages are indexed');
+    },
+  );
+});
+
 test('a site with no published post gets a search page that says there is nothing yet', async () => {
   await inTree(
     {

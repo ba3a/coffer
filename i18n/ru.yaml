@@ -36,6 +36,11 @@ series:
     other: "{count} части"
 blog:
   empty: Записей пока нет.
+pagination:
+  label: Страницы
+  previous: Предыдущая страница
+  next: Следующая страница
+  page: "Страница {page} из {pages}"
 tags:
   title: Теги
   breadcrumbs: Путь тега

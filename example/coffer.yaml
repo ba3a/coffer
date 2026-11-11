@@ -9,6 +9,8 @@ sites:
     description: Small wooden things, and notes on making them.
     contentDir: content
     contentLicense: CC BY 4.0
+    theme: theme
+    icon: assets/icon.png
     links:
       - { label: LinkedIn, url: "https://www.linkedin.example/in/tove-marlowe" }
       - { label: GitHub, url: "https://github.example/tove-marlowe" }

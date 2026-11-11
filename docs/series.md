@@ -37,6 +37,8 @@ With no `seriesPosition` anywhere, a series reads in date order. With a `seriesP
 
 For a blog with the prefix `journal`, the page of the series `boxes-by-hand` is `/journal/series/boxes-by-hand/` (the segment `series` comes from `urls.series` in the [configuration](configuration.md)). It shows the name, the description, the number of parts and the list of parts in order, each with "part n of m", the date, the reading time and the summary, or the whole body for a post whose effective `index` is `full` (the blog's `index` setting or the post's own front matter, so a series page can mix both; see [Configuration](configuration.md)). Only series that have a published post get a page.
 
+In a blog with `index: { type: full, pageSize: N }` (see [Configuration](configuration.md#blogs)) a series with more than N parts is split into pages, like the blog index: page 1 stays at `/journal/series/boxes-by-hand/`, page n is at `/journal/series/boxes-by-hand/page/n/`. The parts stay in order across the pages and keep their numbers ("part 3 of 5"); the count of parts is that of the whole series. Each page has previous and next links, its own canonical address and sitemap entry, and `/journal/series/boxes-by-hand/page/1/` redirects to the series page with `301`. A series with at most N parts is one page. The series feed is never split. See [URLs](urls.md).
+
 ## Names and descriptions: `series.yaml`
 
 Without further setup a series is shown by its slug. An optional `series.yaml` in the blog's directory (beside the posts and `tags.yaml`) gives it a name and a description:

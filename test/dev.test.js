@@ -391,3 +391,25 @@ test('the helpers escape errors and describe them', () => {
   assert.equal(describeBuildError(Object.assign(new Error('x'), { errors: ['a', 'b'] })), 'a\nb');
   assert.match(describeBuildError(new TypeError('boom')), /TypeError: boom\n\s+at /);
 });
+
+test('coffer dev serves /favicon.ico and /apple-touch-icon.png from the theme assets', async () => {
+  const ico = Buffer.from([0, 0, 1, 0, 1, 0, 1, 2, 3, 4, 5, 6]);
+  const touch = Buffer.from('89504e470d0a1a0a0000000d49484452' + '00000000'.repeat(2), 'hex');
+  write('coffer.yaml', CONFIG.replace('    title: Pro\n', '    title: Pro\n    theme: theme\n    favicon: assets/brand/favicon.ico\n    appleTouchIcon: assets/brand/touch.png\n'));
+  mkdirSync(join(dir, 'theme', 'assets', 'brand'), { recursive: true });
+  writeFileSync(join(dir, 'theme', 'assets', 'brand', 'favicon.ico'), ico);
+  writeFileSync(join(dir, 'theme', 'assets', 'brand', 'touch.png'), touch);
+
+  const running = await start();
+  const [pro, personal] = running.sites;
+  const favicon = await get(pro, '/favicon.ico');
+  assert.equal(favicon.status, 200);
+  assert.equal(favicon.headers.get('content-type'), 'image/x-icon');
+  assert.ok(Buffer.from(await favicon.arrayBuffer()).equals(ico));
+  const appleTouch = await get(pro, '/apple-touch-icon.png');
+  assert.equal(appleTouch.status, 200);
+  assert.equal(appleTouch.headers.get('content-type'), 'image/png');
+  assert.ok(Buffer.from(await appleTouch.arrayBuffer()).equals(touch));
+  // The other site sets neither.
+  assert.equal((await get(personal, '/favicon.ico')).status, 404);
+});

@@ -33,6 +33,11 @@ series:
     other: "{count} parts"
 blog:
   empty: No posts yet.
+pagination:
+  label: Pages
+  previous: Previous page
+  next: Next page
+  page: "Page {page} of {pages}"
 tags:
   title: Tags
   breadcrumbs: Tag path

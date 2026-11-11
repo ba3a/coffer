@@ -26,6 +26,10 @@ A **tag page** lists the posts that have the tag **or any tag below it**, newest
 
 The **count** of a node is the number of distinct posts in its subtree: a post tagged both `a/b` and `a/c` counts once for `a`.
 
+### Pagination
+
+In a blog with `index: { type: full, pageSize: N }` (see [Configuration](configuration.md#blogs)) a tag page with more than N posts is split into pages, like the blog index. Every node of the tree is paginated on its own, and it counts the posts of its whole subtree: with `pageSize: 2`, a tag `workshop` with 5 posts in total (its own and those of `workshop/boxes` and the other tags below it) has 3 pages. Page 1 stays at `/journal/tags/workshop/`, page n is at `/journal/tags/workshop/page/n/`. Each page has previous and next links, its own canonical address and sitemap entry, and the title of the pages after the first ends in "(Page n of m)". `/journal/tags/workshop/page/1/` redirects to the tag page with `301`. The breadcrumbs and the child tags with their counts are on every page. A tag with at most N posts is one page and has no `page/` directory. The tag tree page (`/journal/tags/`) is never split, and neither are the feeds: a tag's feed lists the same recent posts whatever the page size. A tag whose path would be the address of a page of its parent (`workshop/page/2` while `workshop` has several pages) fails the build and names the tag; see [URLs](urls.md).
+
 The blog index links to the tag tree, and a post page links each of its tags. A blog without tags still gets a tag tree page, which says that there are no tags yet. A post cannot have the slug of the tags segment (`/journal/tags/` would be two pages), and an alias cannot be one either; both fail the build.
 
 ## Names and descriptions: `tags.yaml`

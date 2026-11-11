@@ -59,6 +59,7 @@ import {
 } from './redirects.js';
 import { createTemplates, siteUrl } from './render/templates.js';
 import { REPORT_DIR_NAME, REPORT_FILE_NAME, Report, ReportError, writeReport } from './report.js';
+import { PAGE_URL_NAME, firstPageAliases, pageUrl, paginate } from './pagination.js';
 import { BLOG_FILTER, SEARCH_DIR_NAME, SEARCH_URL_NAME, buildSearchIndex, searchPageUrl } from './search.js';
 import { SHARE_FILE_NAME, SHARE_SCRIPT, hashtagsFor, renderShareText, shareUrlFor } from './share.js';
 import { ROBOTS_FILE_NAME, SITEMAP_FILE_NAME, renderRobots, renderSitemap } from './sitemap.js';
@@ -275,6 +276,17 @@ export class BuildError extends Error {
  * @property {ManifestFeed[]} feeds Every Atom feed, with the page it belongs to.
  * @property {string[]} sitemap Site-relative URLs listed in `sitemap.xml`, sorted.
  * @property {ManifestImage[]} images Every image used by a page, with the files made from it; sorted by page, then original.
+ * @property {ManifestRootFile[]} files The files the build copies to the root of the site from the `favicon` and `appleTouchIcon` settings (`/favicon.ico`, `/apple-touch-icon.png`); empty without those settings. They are files, not pages, so they are not in `pages` or the sitemap.
+ */
+
+/**
+ * A file the build copies to the root of the site.
+ *
+ * @typedef {object} ManifestRootFile
+ * @property {'favicon' | 'appleTouchIcon'} setting The site setting that names it.
+ * @property {string} source Value of the setting: the path of the original in the output (a theme asset), relative to the root of the site.
+ * @property {string} url Site-relative address of the copy.
+ * @property {string} file Path of the copy, relative to the site's output directory.
  */
 
 /**
@@ -534,6 +546,92 @@ function copyAssets(site, outDir) {
       cpSync(source, target, { recursive: true });
     }
   }
+}
+
+/**
+ * Reads the file a site setting names from the output.
+ *
+ * @param {SiteConfig} site
+ * @param {string} outDir
+ * @param {string} setting
+ * @param {string} path Value of the setting: a path relative to the root of the site.
+ * @returns {Buffer}
+ * @throws {BuildError} When there is no such file; the message names the setting and the site.
+ */
+function readSiteFile(site, outDir, setting, path) {
+  const file = join(outDir, ...path.split('/'));
+  if (!existsSync(file) || !statSync(file).isFile()) {
+    throw new BuildError(`site "${site.id}": ${setting}: "${path}" is not in the output; put the file in the "assets" folder of the theme`);
+  }
+  return readFileSync(file);
+}
+
+/**
+ * @param {Buffer} bytes
+ * @returns {boolean} Whether `bytes` start like a PNG file (signature and header chunk).
+ */
+function isPng(bytes) {
+  return bytes.length >= 24 && bytes.subarray(0, 8).equals(PNG_SIGNATURE) && bytes.toString('latin1', 12, 16) === 'IHDR';
+}
+
+/** The first bytes of an `.ico` file: reserved 0, type 1 (icon). */
+const ICO_SIGNATURE = Buffer.from([0x00, 0x00, 0x01, 0x00]);
+
+/** The root files the `favicon` and `appleTouchIcon` settings make: where each is served. */
+const ROOT_ICON_FILES = /** @type {const} */ ({ favicon: 'favicon.ico', appleTouchIcon: 'apple-touch-icon.png' });
+
+/**
+ * Reads and checks the file of the `favicon` or `appleTouchIcon` setting: it
+ * exists in the output, and is an `.ico` or PNG file (`favicon`) or a PNG file
+ * (`appleTouchIcon`).
+ *
+ * @param {SiteConfig} site
+ * @param {string} outDir
+ * @param {'favicon' | 'appleTouchIcon'} setting
+ * @param {string} path Value of the setting.
+ * @returns {Buffer}
+ * @throws {BuildError} When the file does not qualify; the message names the setting and the site.
+ */
+function checkRootIcon(site, outDir, setting, path) {
+  const bytes = readSiteFile(site, outDir, setting, path);
+  const png = isPng(bytes);
+  const ico = bytes.length >= 6 && bytes.subarray(0, 4).equals(ICO_SIGNATURE);
+  if (setting === 'appleTouchIcon' ? !png : !png && !ico) {
+    throw new BuildError(`site "${site.id}": ${setting}: "${path}" is not ${setting === 'appleTouchIcon' ? 'a PNG file' : 'an ICO or PNG file'}`);
+  }
+  return bytes;
+}
+
+/** The smallest side in pixels of a site's `icon`: feed readers show it at up to 128 px. */
+const MIN_ICON_SIZE = 128;
+const PNG_SIGNATURE = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
+
+/**
+ * Checks a picture a site setting names (`icon`, `logo`) in the output: the
+ * file exists and is a PNG; with `square`, it is also square and at least
+ * `MIN_ICON_SIZE` pixels on a side.
+ *
+ * @param {SiteConfig} site
+ * @param {string} outDir
+ * @param {'icon' | 'logo'} setting
+ * @param {string} path Value of the setting: a path relative to the root of the site.
+ * @param {boolean} square Whether the picture must be a square of at least `MIN_ICON_SIZE`.
+ * @returns {string} Absolute address of the picture, percent-encoded as for any URL in a feed.
+ * @throws {BuildError} When the picture does not qualify; the message names the setting and the site.
+ */
+function checkSitePicture(site, outDir, setting, path, square) {
+  const fail = (/** @type {string} */ problem) => {
+    throw new BuildError(`site "${site.id}": ${setting}: "${path}" ${problem}`);
+  };
+  const bytes = readSiteFile(site, outDir, setting, path);
+  if (!isPng(bytes)) return fail('is not a PNG file');
+  if (square) {
+    const width = bytes.readUInt32BE(16);
+    const height = bytes.readUInt32BE(20);
+    if (width !== height) return fail(`must be square, but it is ${width} x ${height} px`);
+    if (width < MIN_ICON_SIZE) return fail(`must be at least ${MIN_ICON_SIZE} x ${MIN_ICON_SIZE} px, but it is ${width} x ${height} px`);
+  }
+  return absoluteUri(site.baseUrl, `/${path}`);
 }
 
 /**
@@ -2033,6 +2131,18 @@ async function buildSite(config, site, options, outRoot, version, report) {
   /** @type {((searchable: boolean) => void)[]} */
   const searchPageWriters = [];
 
+  // The pictures of the site settings `icon` and `logo` are checked once the
+  // theme assets are in the output and before any feed is written.
+  if (site.icon !== null) site.iconUrl = checkSitePicture(site, outDir, 'icon', site.icon, true);
+  if (site.logo !== null) site.logoUrl = checkSitePicture(site, outDir, 'logo', site.logo, false);
+  // The files for the root of the site are read now, so that a wrong setting fails early, and written once every page is.
+  /** @type {{ setting: 'favicon' | 'appleTouchIcon', source: string, file: string, bytes: Buffer }[]} */
+  const rootIcons = [];
+  for (const setting of /** @type {const} */ (['favicon', 'appleTouchIcon'])) {
+    const source = site[setting];
+    if (source !== null) rootIcons.push({ setting, source, file: ROOT_ICON_FILES[setting], bytes: checkRootIcon(site, outDir, setting, source) });
+  }
+
   for (const blog of site.blogs) {
     const { selected, rendered: renderedPosts, listRendered, tagMeta } = /** @type {{ selected: Post[], rendered: Map<Post, RenderedPost>, listRendered: Map<Post, RenderedPost>, tagMeta: ReturnType<typeof loadTagMeta> }} */ (
       prepared.get(blog.id)
@@ -2060,12 +2170,41 @@ async function buildSite(config, site, options, outRoot, version, report) {
         `a post with the slug "${FEED_FILE_NAME}" in the blog "${blog.id}" would collide with the blog's feed (${feedUrlFor(blogBase)}); rename the post`,
       );
     }
+    if (blog.index.pageSize !== null) {
+      const pageClash = selected.find((post) => post.slug === PAGE_URL_NAME);
+      if (pageClash) {
+        throw new BuildError(
+          `${pageClash.file}: slug: "${pageClash.slug}" is the address of the pages of the paginated index of the blog "${blog.id}" (${blogBase}${PAGE_URL_NAME}/2/); rename the post`,
+        );
+      }
+      if (site.urls.tags === PAGE_URL_NAME || site.urls.series === PAGE_URL_NAME) {
+        throw new BuildError(
+          `"urls.${site.urls.tags === PAGE_URL_NAME ? 'tags' : 'series'}" is "${PAGE_URL_NAME}", the address of the pages of the paginated index of the blog "${blog.id}" (${blogBase}${PAGE_URL_NAME}/2/); choose another name`,
+        );
+      }
+    }
     const tagTree = buildTagTree(selected);
     const clashingTag = tagTree.all.find((node) => node.path.includes('/') && node.path.split('/').pop() === FEED_FILE_NAME);
     if (clashingTag) {
       throw new BuildError(
         `the tag "${clashingTag.path}" of the blog "${blog.id}" would collide with the feed of its parent; rename the tag`,
       );
+    }
+    if (blog.index.pageSize !== null) {
+      // The pages after the first of a tag page are at `{tag}/page/n/`, which a tag of that path would share.
+      const taken = new Set(tagTree.all.map((node) => node.path));
+      for (const node of tagTree.all) {
+        const pageCount = Math.ceil(node.posts.length / blog.index.pageSize);
+        if (pageCount < 2) continue;
+        for (let n = 1; n <= pageCount; n += 1) {
+          const path = `${node.path}/${PAGE_URL_NAME}/${n}`;
+          if (taken.has(path)) {
+            throw new BuildError(
+              `the tag "${path}" of the blog "${blog.id}" would collide with page ${n} of the tag "${node.path}" (${pageUrl(tagUrl(blogBase, site.urls.tags, node.path), n)}); rename the tag`,
+            );
+          }
+        }
+      }
     }
     if (tagMeta.file !== null) {
       const shown = posix(relative(config.dir, tagMeta.file));
@@ -2378,20 +2517,56 @@ async function buildSite(config, site, options, outRoot, version, report) {
 
     const indexUrl = blogBase;
     const blogFeedLink = /** @type {FeedLink} */ (blogFeeds.get(blog.id));
-    const indexHtml = templates.render('blog-index.njk', {
-      site,
-      nav,
-      blog,
-      feedLinks: feedLinksFor(blog),
-      meta: metaFor({ title: blog.title, description: site.description, url: indexUrl, image: cardFor(blog.title) }),
-      pageFeed: blogFeedLink,
-      ...withBodies(views),
-      tagsUrl: tagUrl(blogBase, site.urls.tags),
-      page: { title: blog.title, description: site.description, content: '' },
+    // A blog with a page size splits its lists (the index, every tag page and
+    // every series page) into pages when they have more posts than fit on one.
+    // The first page stays at the address of the list and the non-canonical
+    // spelling of it redirects there. Feeds are never paginated.
+    /**
+     * @template T
+     * @param {object} list
+     * @param {string} list.url Address of the list, ending in a slash.
+     * @param {T[]} list.items
+     * @param {string} list.title Title of the list; pages after the first add "(Page n of m)" to the one in the meta tags.
+     * @param {'blog-index' | 'tag' | 'series'} list.type
+     * @param {string} list.source What the redirect of the first page is for, in messages.
+     * @param {(listPage: import('./pagination.js').ListPage<T>, metaTitle: string) => string} list.render
+     */
+    const writeListPages = ({ url, items, title, type, source, render }) => {
+      const listPages = paginate(items, blog.index.pageSize, url);
+      const firstAliases = firstPageAliases(url, listPages);
+      if (firstAliases.length > 0) aliasing.push({ url, aliasUrls: firstAliases, source });
+      for (const listPage of listPages) {
+        const { pagination } = listPage;
+        const metaTitle =
+          pagination && pagination.page > 1
+            ? `${title} (${templates.translator.t('pagination.page', { page: pagination.page, pages: pagination.pages })})`
+            : title;
+        const file = fileForUrl(listPage.url);
+        writeOutput(outDir, file, render(listPage, metaTitle));
+        pages.push({ url: listPage.url, file, type, title });
+      }
+    };
+
+    writeListPages({
+      url: indexUrl,
+      items: views,
+      title: blog.title,
+      type: 'blog-index',
+      source: `blog "${blog.id}"`,
+      render: (listPage, metaTitle) =>
+        templates.render('blog-index.njk', {
+          site,
+          nav,
+          blog,
+          feedLinks: feedLinksFor(blog),
+          meta: metaFor({ title: metaTitle, description: site.description, url: listPage.url, image: cardFor(blog.title) }),
+          pageFeed: blogFeedLink,
+          ...withBodies(listPage.items),
+          pagination: listPage.pagination,
+          tagsUrl: tagUrl(blogBase, site.urls.tags),
+          page: { title: blog.title, description: site.description, content: '' },
+        }),
     });
-    const indexFile = fileForUrl(indexUrl);
-    writeOutput(outDir, indexFile, indexHtml);
-    pages.push({ url: indexUrl, file: indexFile, type: 'blog-index', title: blog.title });
 
     // The posts of a tag page are the same objects as on the blog index, found
     // by their address.
@@ -2476,25 +2651,33 @@ async function buildSite(config, site, options, outRoot, version, report) {
       const view = treeView(node);
       const tagPostUrls = node.posts.map((post) => postUrl(blog, post.slug));
       const tagFeed = tagFeedLink(node.path);
-      const html = templates.render('tag.njk', {
-        site,
-        nav,
-        blog,
-        feedLinks: feedLinksFor(blog, [tagFeed]),
-        meta: metaFor({ title: view.name, description: view.description, url: view.url, image: cardFor(view.name) }),
-        pageFeed: tagFeed,
-        tagsUrl: tagsIndexUrl,
-        tag: view,
-        ancestors: tagPaths(node.path)
-          .slice(0, -1)
-          .map((path) => ({ path, name: nameOf(path), url: urlOf(path) })),
-        children: view.children,
-        ...withBodies(tagPostUrls.flatMap((address) => viewByUrl.get(address) ?? [])),
-        page: { title: view.name, description: view.description, content: '' },
+      const tagViews = tagPostUrls.flatMap((address) => viewByUrl.get(address) ?? []);
+      writeListPages({
+        url: view.url,
+        items: tagViews,
+        title: view.name,
+        type: 'tag',
+        source: `tag "${node.path}" of blog "${blog.id}"`,
+        render: (listPage, metaTitle) =>
+          templates.render('tag.njk', {
+            site,
+            nav,
+            blog,
+            feedLinks: feedLinksFor(blog, [tagFeed]),
+            meta: metaFor({ title: metaTitle, description: view.description, url: listPage.url, image: cardFor(view.name) }),
+            pageFeed: tagFeed,
+            tagsUrl: tagsIndexUrl,
+            tag: view,
+            ancestors: tagPaths(node.path)
+              .slice(0, -1)
+              .map((path) => ({ path, name: nameOf(path), url: urlOf(path) })),
+            children: view.children,
+            ...withBodies(listPage.items),
+            pagination: listPage.pagination,
+            page: { title: view.name, description: view.description, content: '' },
+          }),
       });
       const file = fileForUrl(view.url);
-      writeOutput(outDir, file, html);
-      pages.push({ url: view.url, file, type: 'tag', title: view.name });
       manifestTags.push({
         blog: blog.id,
         path: node.path,
@@ -2513,26 +2696,33 @@ async function buildSite(config, site, options, outRoot, version, report) {
         return view ? [{ ...view, part: part.number }] : [];
       });
       const seriesFeed = seriesFeedLink(entry.slug);
-      const html = templates.render('series.njk', {
-        site,
-        nav,
-        blog,
-        feedLinks: feedLinksFor(blog, [seriesFeed]),
-        meta: metaFor({ title: entry.name, description: entry.description ?? '', url, image: cardFor(entry.name) }),
-        pageFeed: seriesFeed,
-        ...withBodies(parts),
-        series: {
-          slug: entry.slug,
-          name: entry.name,
-          description: entry.description ?? '',
-          url,
-          count: entry.count,
-        },
-        page: { title: entry.name, description: entry.description ?? '', content: '' },
+      writeListPages({
+        url,
+        items: parts,
+        title: entry.name,
+        type: 'series',
+        source: `series "${entry.slug}" of blog "${blog.id}"`,
+        render: (listPage, metaTitle) =>
+          templates.render('series.njk', {
+            site,
+            nav,
+            blog,
+            feedLinks: feedLinksFor(blog, [seriesFeed]),
+            meta: metaFor({ title: metaTitle, description: entry.description ?? '', url: listPage.url, image: cardFor(entry.name) }),
+            pageFeed: seriesFeed,
+            ...withBodies(listPage.items),
+            pagination: listPage.pagination,
+            series: {
+              slug: entry.slug,
+              name: entry.name,
+              description: entry.description ?? '',
+              url,
+              count: entry.count,
+            },
+            page: { title: entry.name, description: entry.description ?? '', content: '' },
+          }),
       });
       const file = fileForUrl(url);
-      writeOutput(outDir, file, html);
-      pages.push({ url, file, type: 'series', title: entry.name });
       manifestSeries.push({
         blog: blog.id,
         slug: entry.slug,
@@ -2576,6 +2766,8 @@ async function buildSite(config, site, options, outRoot, version, report) {
           author: site.author,
           updated: chosen[0]?.updated ?? now,
           generator: { name: 'coffer', version },
+          icon: site.iconUrl ?? null,
+          logo: site.logoUrl ?? null,
           entries: chosen,
         }),
       );
@@ -2660,6 +2852,8 @@ async function buildSite(config, site, options, outRoot, version, report) {
           author: site.author,
           updated: chosen[0]?.updated ?? now,
           generator: { name: 'coffer', version },
+          icon: site.iconUrl ?? null,
+          logo: site.logoUrl ?? null,
           entries: chosen,
         }),
       );
@@ -2953,6 +3147,24 @@ async function buildSite(config, site, options, outRoot, version, report) {
   const redirectRules = renderRedirectsFile(redirects);
   if (redirectRules !== '') writeOutput(outDir, REDIRECTS_FILE_NAME, redirectRules);
 
+  // The icons for the root of the site. Anything already there (a page, a
+  // redirect, a file of a project) would be overwritten or hidden, so it is an error.
+  /** @type {ManifestRootFile[]} */
+  const manifestFiles = [];
+  for (const icon of rootIcons) {
+    if (existsSync(join(outDir, icon.file))) {
+      const url = `/${icon.file}`;
+      const page = pages.find((entry) => entry.file === icon.file || entry.file.startsWith(`${icon.file}/`));
+      const redirect = redirects.find((entry) => entry.from === url || entry.from.startsWith(`${url}/`));
+      const what = page ? `the ${page.type} page ${page.url}` : redirect ? `the redirect from ${redirect.from}` : 'a file of the content';
+      throw new BuildError(
+        `site "${site.id}": ${icon.setting}: "${icon.source}" would be copied to ${url}, where ${what} is already; move or rename it, or remove the setting`,
+      );
+    }
+    writeOutput(outDir, icon.file, icon.bytes);
+    manifestFiles.push({ setting: icon.setting, source: icon.source, url: `/${icon.file}`, file: icon.file });
+  }
+
   // The sitemap lists the canonical pages a visitor can reach. The 404 page, the
   // redirect stubs and, in a preview build, posts that are not published yet
   // (and tag or series pages with nothing else on them) stay out.
@@ -3025,6 +3237,7 @@ async function buildSite(config, site, options, outRoot, version, report) {
     feeds: manifestFeeds,
     sitemap: sitemapEntries.map((entry) => entry.url).sort(),
     images: manifestImages,
+    files: manifestFiles,
   };
   writeFileSync(join(outDir, MANIFEST_FILE_NAME), `${JSON.stringify(manifest, null, 2)}\n`);
 

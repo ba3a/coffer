@@ -3,10 +3,11 @@ import assert from 'node:assert/strict';
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import sharp from 'sharp';
 
 import { BuildError, DEPLOY_EXCLUDES, MANIFEST_FILE_NAME, buildSites, postUrl } from '../src/build.js';
 import { parseBuildArgs, run } from '../src/cli.js';
-import { loadConfig } from '../src/config.js';
+import { ConfigError, loadConfig } from '../src/config.js';
 import { PostError } from '../src/content/posts.js';
 import * as engine from '../src/index.js';
 
@@ -996,4 +997,201 @@ test('a post with an invalid index fails the build and names the post', async ()
   await inTree({ 'coffer.yaml': configYaml(), 'notes/odd.md': post('Odd', '2025-01-01', 'index: everything\n') }, async (root) => {
     await assert.rejects(manifestOf(root), (error) => error instanceof PostError && /odd\.md: index: must be "summary" or "full"/.test(error.message));
   });
+});
+
+/**
+ * A plain PNG of the given size.
+ *
+ * @param {number} width
+ * @param {number} height
+ * @returns {Promise<Buffer>}
+ */
+function png(width, height) {
+  return sharp({ create: { width, height, channels: 3, background: '#336699' } }).png().toBuffer();
+}
+
+/**
+ * Builds a site whose theme holds the given files below `assets/brand/`, with
+ * the given site settings.
+ *
+ * @param {string} settings Extra site settings, one line each, indented by four spaces.
+ * @param {Record<string, Buffer | string>} brand File name to content.
+ * @returns {Promise<import('../src/config.js').SiteConfig>}
+ */
+async function buildWithBrand(settings, brand) {
+  const yaml = configYaml().replace('    lang: en\n', `    lang: en\n    theme: theme\n${settings}`);
+  return inTree({ 'coffer.yaml': yaml, 'notes/hello.md': post('Hello', '2025-05-05') }, async (root) => {
+    mkdirSync(join(root, 'theme', 'assets', 'brand'), { recursive: true });
+    for (const [name, content] of Object.entries(brand)) {
+      writeFileSync(join(root, 'theme', 'assets', 'brand', name), content);
+    }
+    const config = loadConfig({ configPath: join(root, 'coffer.yaml') });
+    await buildSites(config, { out: join(root, 'out'), now: NOW });
+    return config.sites[0];
+  });
+}
+
+test('a square PNG icon of 128 px or more and a PNG logo are accepted and their addresses kept', async () => {
+  const site = await buildWithBrand('    icon: assets/brand/icon.png\n    logo: assets/brand/logo.png\n', {
+    'icon.png': await png(128, 128),
+    'logo.png': await png(400, 200),
+  });
+  assert.equal(site.iconUrl, 'https://demo.example/assets/brand/icon.png');
+  assert.equal(site.logoUrl, 'https://demo.example/assets/brand/logo.png');
+});
+
+test('a site without icon and logo has no addresses for them', async () => {
+  const site = await buildWithBrand('', {});
+  assert.equal(site.iconUrl, undefined);
+  assert.equal(site.logoUrl, undefined);
+});
+
+test('an icon that is missing, not a PNG, not square or smaller than 128 px fails the build and names the setting and the site', async () => {
+  const cases = /** @type {[string, Record<string, Buffer | string>, string][]} */ ([
+    ['missing', {}, 'site "demo": icon: "assets/brand/icon.png" is not in the output; put the file in the "assets" folder of the theme'],
+    ['not a PNG', { 'icon.png': 'GIF89a not a png at all, only text' }, 'site "demo": icon: "assets/brand/icon.png" is not a PNG file'],
+    ['not square', { 'icon.png': await png(256, 192) }, 'site "demo": icon: "assets/brand/icon.png" must be square, but it is 256 x 192 px'],
+    ['64 px', { 'icon.png': await png(64, 64) }, 'site "demo": icon: "assets/brand/icon.png" must be at least 128 x 128 px, but it is 64 x 64 px'],
+  ]);
+  for (const [name, brand, message] of cases) {
+    await assert.rejects(
+      buildWithBrand('    icon: assets/brand/icon.png\n', brand),
+      (error) => error instanceof BuildError && error.message.includes(message) && !error.message.includes('content directory'),
+      name,
+    );
+  }
+});
+
+test('a logo that is missing or not a PNG fails the build and names the setting and the site', async () => {
+  await assert.rejects(
+    buildWithBrand('    logo: assets/brand/logo.png\n', {}),
+    (error) => error instanceof BuildError && error.message.includes('site "demo": logo: "assets/brand/logo.png" is not in the output'),
+  );
+  await assert.rejects(
+    buildWithBrand('    logo: assets/brand/logo.png\n', { 'logo.png': '<svg xmlns="http://www.w3.org/2000/svg"/>' }),
+    (error) => error instanceof BuildError && error.message.includes('site "demo": logo: "assets/brand/logo.png" is not a PNG file'),
+  );
+});
+
+test('an icon path with .. fails when the configuration is loaded', async () => {
+  await assert.rejects(
+    buildWithBrand('    icon: ../icon.png\n', {}),
+    (error) => error instanceof ConfigError && error.message.includes('sites[0].icon: must not contain ".." segments'),
+  );
+});
+
+/** The first bytes of an ICO file, then filler. */
+const ICO = Buffer.concat([Buffer.from([0, 0, 1, 0, 1, 0]), Buffer.from('not a real icon, but it starts like one')]);
+
+/**
+ * Builds a site as `buildWithBrand` does and runs `body` with the output
+ * directory of the site and its manifest, before the tree is removed.
+ *
+ * @param {string} settings
+ * @param {Record<string, Buffer | string>} brand
+ * @param {(site: string, manifest: import('../src/build.js').Manifest) => Promise<void>} body
+ * @param {Record<string, string>} [files] More files of the tree.
+ */
+async function withRootIcons(settings, brand, body, files = {}) {
+  const yaml = configYaml().replace('    lang: en\n', `    lang: en\n    theme: theme\n${settings}`);
+  await inTree({ 'coffer.yaml': yaml, 'notes/hello.md': post('Hello', '2025-05-05'), ...files }, async (root) => {
+    mkdirSync(join(root, 'theme', 'assets', 'brand'), { recursive: true });
+    for (const [name, content] of Object.entries(brand)) {
+      writeFileSync(join(root, 'theme', 'assets', 'brand', name), content);
+    }
+    const [result] = await buildSites(loadConfig({ configPath: join(root, 'coffer.yaml') }), { out: join(root, 'out'), now: NOW });
+    await body(result.outDir, result.manifest);
+  });
+}
+
+test('favicon and appleTouchIcon are copied to the root with the bytes of the source and listed in the manifest', async () => {
+  const touch = await png(180, 180);
+  await withRootIcons(
+    '    favicon: assets/brand/favicon.ico\n    appleTouchIcon: assets/brand/touch.png\n',
+    { 'favicon.ico': ICO, 'touch.png': touch },
+    async (outDir, manifest) => {
+      assert.ok(readFileSync(join(outDir, 'favicon.ico')).equals(ICO));
+      assert.ok(readFileSync(join(outDir, 'apple-touch-icon.png')).equals(touch));
+      assert.deepEqual(manifest.files, [
+        { setting: 'favicon', source: 'assets/brand/favicon.ico', url: '/favicon.ico', file: 'favicon.ico' },
+        { setting: 'appleTouchIcon', source: 'assets/brand/touch.png', url: '/apple-touch-icon.png', file: 'apple-touch-icon.png' },
+      ]);
+      // They are files, not pages: neither the manifest pages nor the sitemap list them.
+      assert.ok(!manifest.pages.some((page) => page.file.includes('favicon') || page.file.includes('apple-touch')));
+      assert.ok(!manifest.sitemap.some((url) => url.includes('favicon') || url.includes('apple-touch')));
+      assert.doesNotMatch(readFileSync(join(outDir, 'sitemap.xml'), 'utf8'), /favicon|apple-touch/);
+      // The check knows them: it passes, and fails when a copy changed.
+      const { checkSite } = await import('../src/check/index.js');
+      assert.deepEqual((await checkSite(outDir, 'demo')).failures, []);
+      writeFileSync(join(outDir, 'favicon.ico'), 'changed');
+      assert.match(
+        (await checkSite(outDir, 'demo')).failures.map((failure) => `${failure.file}: ${failure.message}`).join('\n'),
+        /favicon\.ico: \/favicon\.ico is not a copy of assets\/brand\/favicon\.ico, the file the favicon setting names/,
+      );
+      rmSync(join(outDir, 'apple-touch-icon.png'));
+      assert.match(
+        (await checkSite(outDir, 'demo')).failures.map((failure) => `${failure.file}: ${failure.message}`).join('\n'),
+        /apple-touch-icon\.png: the manifest lists \/apple-touch-icon\.png \(the appleTouchIcon setting\), but the file is missing/,
+      );
+    },
+  );
+});
+
+test('a PNG file is accepted as the favicon, and a site without the settings has no root icons', async () => {
+  const picture = await png(32, 32);
+  await withRootIcons('    favicon: assets/brand/favicon.png\n', { 'favicon.png': picture }, async (outDir, manifest) => {
+    assert.ok(readFileSync(join(outDir, 'favicon.ico')).equals(picture));
+    assert.equal(existsSync(join(outDir, 'apple-touch-icon.png')), false);
+    assert.deepEqual(manifest.files.map((file) => file.url), ['/favicon.ico']);
+  });
+  await withRootIcons('', {}, async (outDir, manifest) => {
+    assert.equal(existsSync(join(outDir, 'favicon.ico')), false);
+    assert.equal(existsSync(join(outDir, 'apple-touch-icon.png')), false);
+    assert.deepEqual(manifest.files, []);
+  });
+});
+
+test('a favicon or touch icon that is missing or of the wrong kind fails the build and names the setting and the site', async () => {
+  const cases = /** @type {[string, string, Record<string, Buffer | string>, string][]} */ ([
+    ['favicon missing', 'favicon: assets/brand/favicon.ico', {}, 'site "demo": favicon: "assets/brand/favicon.ico" is not in the output; put the file in the "assets" folder of the theme'],
+    ['favicon text', 'favicon: assets/brand/favicon.ico', { 'favicon.ico': 'GIF89a nothing' }, 'site "demo": favicon: "assets/brand/favicon.ico" is not an ICO or PNG file'],
+    ['touch missing', 'appleTouchIcon: assets/brand/touch.png', {}, 'site "demo": appleTouchIcon: "assets/brand/touch.png" is not in the output'],
+    ['touch ICO', 'appleTouchIcon: assets/brand/touch.png', { 'touch.png': ICO }, 'site "demo": appleTouchIcon: "assets/brand/touch.png" is not a PNG file'],
+  ]);
+  for (const [name, setting, brand, message] of cases) {
+    await assert.rejects(
+      buildWithBrand(`    ${setting}\n`, brand),
+      (error) => error instanceof BuildError && error.message.includes(message),
+      name,
+    );
+  }
+});
+
+test('favicon must be an .ico or .png path and appleTouchIcon a .png path when the configuration is loaded', async () => {
+  for (const [setting, value, message] of [
+    ['favicon', 'assets/brand/favicon.gif', 'sites[0].favicon: must be a ".ico" or ".png" file, but "assets/brand/favicon.gif" is not'],
+    ['appleTouchIcon', 'assets/brand/touch.ico', 'sites[0].appleTouchIcon: must be a ".png" file, but "assets/brand/touch.ico" is not'],
+    ['appleTouchIcon', '/assets/touch.png', 'sites[0].appleTouchIcon: must not start with "/"'],
+  ]) {
+    await assert.rejects(
+      buildWithBrand(`    ${setting}: ${value}\n`, {}),
+      (error) => error instanceof ConfigError && error.message.includes(message),
+      `${setting}: ${value}`,
+    );
+  }
+});
+
+test('a page at the target of a root icon fails the build and names the setting, the source and the page', async () => {
+  const brand = { 'favicon.ico': ICO };
+  await assert.rejects(
+    withRootIcons(
+      '',
+      brand,
+      async () => {},
+      { 'coffer.yaml': configYaml().replace('    lang: en\n', '    lang: en\n    theme: theme\n    favicon: assets/brand/favicon.ico\n').replace('prefix: log', 'prefix: favicon.ico') },
+    ),
+    (error) =>
+      error instanceof BuildError &&
+      error.message.includes('site "demo": favicon: "assets/brand/favicon.ico" would be copied to /favicon.ico, where the post page /favicon.ico/hello/ is already'),
+  );
 });

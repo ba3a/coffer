@@ -25,6 +25,8 @@ Entries are listed newest first. Blog, tag and project feeds hold the latest `fe
 
 Feed level: `id` (the feed's own address), `title`, `subtitle` (the site, tag or series description, when there is one), `updated` (the date of the newest entry; the time of the build for an empty feed), a `self` link and an `alternate` link to the HTML page, the author and a `generator` element. The feed's `xml:lang` is the site language.
 
+When the site sets `icon` (see [Configuration](configuration.md)), every feed that the engine writes has an `icon` element after the `generator`: the absolute address of that picture, `baseUrl` followed by the path (characters outside ASCII are percent-encoded, as in every other address of a feed). This covers blog, tag, series and project feeds; project feeds use the site's icon. A site that sets `logo` also gets a `logo` element after the `icon`. Without the settings no `icon` or `logo` element is written and the feed is unchanged. `coffer check` accepts both elements and reports one that is repeated or not an absolute URL.
+
 Entry level:
 
 - `id` and the `alternate` link: the permalink of the post. The address of a post never depends on its date or tags, so the id is stable.

@@ -312,6 +312,16 @@ export async function checkSite(outDir, siteId, options = {}) {
     for (const message of checkFeedLinks(xml, { baseUrl, pageUrl: feed.url, resolver })) fail(feed.file, message);
   }
 
+  // The icons the build copies to the root of the site (the `favicon` and `appleTouchIcon` settings).
+  for (const rootFile of manifest.files ?? []) {
+    const path = join(outDir, ...rootFile.file.split('/'));
+    const source = join(outDir, ...rootFile.source.split('/'));
+    if (!existsSync(path)) {
+      fail(rootFile.file, `the manifest lists ${rootFile.url} (the ${rootFile.setting} setting), but the file is missing`);
+    } else if (!existsSync(source) || !readFileSync(path).equals(readFileSync(source))) {
+      fail(rootFile.file, `${rootFile.url} is not a copy of ${rootFile.source}, the file the ${rootFile.setting} setting names`);
+    }
+  }
   for (const message of checkSitemap(outDir, manifest, resolver)) fail('sitemap.xml', message);
   for (const message of checkBuildInfoFile(outDir, manifest)) fail(BUILD_INFO_FILE_NAME, message);
 
