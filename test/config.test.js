@@ -205,6 +205,8 @@ test('defaults are applied to a minimal site', () => {
     defaultImage: '/assets/social-default.png',
     icon: null,
     logo: null,
+    favicon: null,
+    appleTouchIcon: null,
     author: { name: 'Main', email: null, url: null },
     feeds: { limit: 20 },
     links: [],
@@ -320,6 +322,29 @@ test('icon and logo: URLs, absolute paths, .. segments and non-strings fail and 
     expectError(true, /must be a path relative to the root of the built site/);
     expectError(['assets/icon.png'], /must be a path relative to the root of the built site/);
   }
+});
+
+test('favicon and appleTouchIcon are paths inside the built site with a fixed file type, null when absent', () => {
+  const site = normalize(oneSite({ favicon: 'assets/brand/favicon.ico', appleTouchIcon: ' assets/brand/touch.PNG ' })).sites[0];
+  assert.equal(site.favicon, 'assets/brand/favicon.ico');
+  assert.equal(site.appleTouchIcon, 'assets/brand/touch.PNG');
+  assert.equal(normalize(oneSite({ favicon: 'assets/favicon.png' })).sites[0].favicon, 'assets/favicon.png');
+  const bare = normalize(oneSite({})).sites[0];
+  assert.equal(bare.favicon, null);
+  assert.equal(bare.appleTouchIcon, null);
+
+  const expectError = (/** @type {string} */ setting, /** @type {unknown} */ value, /** @type {RegExp} */ pattern) => {
+    const errors = normalizeErrors(oneSite({ [setting]: value }));
+    assert.equal(errors.length, 1, `${setting}: ${JSON.stringify(value)}: ${errors.join(' ')}`);
+    assert.ok(errors[0].includes(`sites[0].${setting}: `), errors[0]);
+    assert.match(errors[0], pattern);
+  };
+  expectError('favicon', 'assets/favicon.gif', /must be a "\.ico" or "\.png" file/);
+  expectError('favicon', 'https://example.org/favicon.ico', /must not be a URL/);
+  expectError('favicon', '/favicon.ico', /must not start with "\/"/);
+  expectError('favicon', 128, /must be a path relative to the root of the built site/);
+  expectError('appleTouchIcon', 'assets/touch.ico', /must be a "\.png" file/);
+  expectError('appleTouchIcon', 'assets/../touch.png', /must not contain "\.\." segments/);
 });
 
 test('blog index: an unknown key next to a valid type is the only error', () => {
@@ -777,6 +802,8 @@ test('docs/configuration.md documents every configuration key', () => {
     'defaultImage',
     'icon',
     'logo',
+    'favicon',
+    'appleTouchIcon',
     'links',
     'label',
     'url',

@@ -472,7 +472,7 @@ test('the feed validator rejects a relative or repeated <icon> or <logo>', async
     const icon = `<icon>${SITE}/assets/icon.png</icon>`;
     assert.ok(xml.includes(icon));
     const relative = validateFeed(xml.replace(icon, '<icon>/assets/icon.png</icon>'));
-    assert.match(relative.errors.join('\n'), /<icon> is not an absolute URL/);
+    assert.match(relative.errors.join('\n'), /<icon> is not an absolute http\(s\) URL/);
     const twice = validateFeed(xml.replace(icon, `${icon}\n  <logo>${SITE}/a.png</logo>\n  <logo>${SITE}/b.png</logo>`));
     assert.match(twice.errors.join('\n'), /more than one <logo>/);
   });

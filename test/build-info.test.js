@@ -773,3 +773,126 @@ test('the engine can be run as a program: rebuild-needed with a usage error exit
   assert.equal(result.status, 2);
   assert.match(result.stderr, /--url is required/);
 });
+
+// --- The landing file ---------------------------------------------------------------------------
+
+test('checkBuildInfo reads the landing file of a source and refuses a broken one; compareBuildInfo notices a different file', () => {
+  const source = { url: 'https://example.org/a/lathe.git', ref: 'main', sha: SHA_A };
+  const landing = { file: 'site/landing.md', sha: SHA_A };
+  const checked = checkBuildInfo(validInfo({ sources: { lathe: { ...source, landing } } }));
+  assert.ok('value' in checked);
+  assert.deepEqual([...checked.value.sources], [['lathe', { ...source, landing }]]);
+  for (const bad of [null, 'site/landing.md', [], {}, { file: '', sha: SHA_A }, { file: 7, sha: SHA_A }, { file: 'a.md' }, { file: 'a.md', sha: 'abc' }]) {
+    assert.ok('problem' in checkBuildInfo(validInfo({ sources: { lathe: { ...source, landing: bad } } })), JSON.stringify(bad));
+  }
+  const now = new Date('2026-06-01T12:00:00Z');
+  const codes = (/** @type {Record<string, unknown>} */ was, /** @type {Record<string, unknown>} */ is) => {
+    const deployed = checkBuildInfo(validInfo({ sources: { lathe: was } }));
+    assert.ok('value' in deployed);
+    return compareBuildInfo(deployed.value, new Map([['lathe', /** @type {never} */ (is)]]), now).map((reason) => reason.code);
+  };
+  assert.deepEqual(codes({ ...source, landing }, { ...source, landing }), []);
+  assert.deepEqual(codes({ ...source, landing }, { ...source, landing: { ...landing, file: 'site/home.md' } }), ['source-landing-changed']);
+  assert.deepEqual(codes(source, { ...source, landing }), ['source-landing-changed']);
+  assert.deepEqual(codes({ ...source, landing }, source), ['source-landing-changed']);
+  // A moved branch is reported once, as a moved branch.
+  assert.deepEqual(codes({ ...source, landing }, { ...source, sha: SHA_B, landing: { ...landing, sha: SHA_B } }), ['source-sha-changed']);
+});
+
+/**
+ * A git repository with a landing file and nothing else a build would use.
+ *
+ * @param {string} parent
+ * @returns {string} Its path.
+ */
+function makeLandingRepository(parent) {
+  const repo = join(parent, 'lathe-repo');
+  mkdirSync(join(repo, 'site'), { recursive: true });
+  writeFileSync(join(repo, 'site', 'landing.md'), 'The lathe turns wood.\n');
+  git(repo, ['init', '-q', '-b', 'main']);
+  git(repo, ['add', '-A']);
+  git(repo, ['commit', '-q', '-m', 'first']);
+  return repo;
+}
+
+/**
+ * The files of a site whose only project has a landing file in its git `docs.source`, no guides and no `index.md`.
+ *
+ * @param {string} url Address of the project repository.
+ * @returns {Record<string, string | Buffer>}
+ */
+function landingSiteFiles(url) {
+  const files = siteFiles(`landing: { file: site/landing.md }\ndocs:\n  source: { git: "${url}", ref: main }\n${NO_GUIDES}`, { 'past.md': postText('2026-05-01') });
+  delete files['content/projects/lathe/index.md'];
+  return files;
+}
+
+test('the manifest and build-info.json name the landing file and the commit it was read at', { skip: NO_GIT }, async () => {
+  await inTemp(async (parent) => {
+    const repo = makeLandingRepository(parent);
+    const url = pathToFileURL(repo).href;
+    const head = git(repo, ['rev-parse', 'HEAD']);
+    await inSite(landingSiteFiles(url), async (dir) => {
+      const [result] = await buildSites(loadConfig({ configPath: join(dir, 'coffer.yaml') }), { out: join(dir, 'out'), now: new Date('2026-06-01T12:00:00Z') });
+      const entry = /** @type {import('../src/build.js').ManifestProject} */ (result.manifest.projects[0]);
+      assert.deepEqual(entry.docs?.landing, { file: 'site/landing.md', sha: head });
+      assert.deepEqual(entry.docs?.source, { type: 'git', git: url, ref: 'main', sha: head });
+      const info = JSON.parse(readFileSync(join(dir, 'out', 'demo', BUILD_INFO_FILE_NAME), 'utf8'));
+      assert.deepEqual(info.sources, { lathe: { url, ref: 'main', sha: head, landing: { file: 'site/landing.md', sha: head } } });
+      assert.deepEqual(result.manifest.buildInfo, info);
+      assert.deepEqual((await checkOutput(loadConfig({ configPath: join(dir, 'coffer.yaml') }), { out: join(dir, 'out') })).failures, []);
+    });
+  });
+  // A project without a landing file has none in either place.
+  await inTemp(async (parent) => {
+    const repo = makeRepository(parent);
+    const url = pathToFileURL(repo).href;
+    await inSite(siteFiles(`docs:\n  source: { git: "${url}", ref: main }\n${NO_GUIDES}`, { 'past.md': postText('2026-05-01') }), async (dir) => {
+      const [result] = await buildSites(loadConfig({ configPath: join(dir, 'coffer.yaml') }), { out: join(dir, 'out') });
+      assert.equal(/** @type {import('../src/build.js').ManifestProject} */ (result.manifest.projects[0]).docs?.landing, null);
+      assert.ok(!('landing' in JSON.parse(readFileSync(join(dir, 'out', 'demo', BUILD_INFO_FILE_NAME), 'utf8')).sources.lathe));
+    });
+  });
+});
+
+test('a push to the repository of a project with a landing file and no guides makes rebuild-needed say yes, with no change in the site', { skip: NO_GIT }, async () => {
+  await inTemp(async (parent) => {
+    const repo = makeLandingRepository(parent);
+    const url = pathToFileURL(repo).href;
+    const first = git(repo, ['rev-parse', 'HEAD']);
+    await inSite(landingSiteFiles(url), async (dir) => {
+      const config = loadConfig({ configPath: join(dir, 'coffer.yaml') });
+      await buildSites(config, { out: join(dir, 'out'), now: new Date('2026-06-01T12:00:00Z') });
+      // The deployed site is the file the build wrote.
+      const body = readFileSync(join(dir, 'out', 'demo', BUILD_INFO_FILE_NAME), 'utf8');
+      await withServer({ '/build-info.json': { body } }, async (origin) => {
+        const ask = () => runCli(['rebuild-needed', '--config', join(dir, 'coffer.yaml'), '--url', `${origin}/build-info.json`], { now: new Date('2026-06-01T13:00:00Z') });
+        const before = await ask();
+        assert.deepEqual([before.code, before.out], [0, 'no\n']);
+
+        // Only the project repository changes: its landing file is edited and pushed.
+        writeFileSync(join(repo, 'site', 'landing.md'), 'The lathe turns wood and metal.\n');
+        git(repo, ['commit', '-q', '-am', 'edit the landing page']);
+        const second = git(repo, ['rev-parse', 'HEAD']);
+        const answer = await ask();
+        assert.equal(answer.code, 0);
+        assert.equal(answer.out, `yes\n- source-sha-changed: lathe: main moved from ${first} to ${second}\n`);
+      });
+    });
+  });
+});
+
+test('rebuild-needed says yes when the landing file of a project is a different one than the deployed build used', { skip: NO_GIT }, async () => {
+  await inTemp(async (parent) => {
+    const repo = makeLandingRepository(parent);
+    const url = pathToFileURL(repo).href;
+    const head = git(repo, ['rev-parse', 'HEAD']);
+    await inSite(landingSiteFiles(url), async (dir) => {
+      const deployedBody = deployed({ lathe: { url, ref: 'main', sha: head, landing: { file: 'site/old.md', sha: head } } });
+      await withServer({ '/b.json': { body: deployedBody } }, async (origin) => {
+        const result = await runCli(['rebuild-needed', '--config', join(dir, 'coffer.yaml'), '--url', `${origin}/b.json`]);
+        assert.deepEqual([result.code, result.out], [0, 'yes\n- source-landing-changed: lathe: the landing file changed from site/old.md to site/landing.md\n']);
+      });
+    });
+  });
+});

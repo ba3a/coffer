@@ -747,9 +747,10 @@ const FIRST_H1 = /<h1(\s[^>]*)?>([\s\S]*?)<\/h1>\s*/i;
  * @param {string} input.indexTitle The title of the docs index when its file has no heading.
  * @param {import('./symbols.js').SymbolIndex | null} [input.symbols] The symbols of the project's reference.
  * @param {boolean} [input.autoLink] Whether inline code that is exactly the name of a symbol becomes a link to it (default true; needs `symbols`). Code in code blocks and inside links is never linked.
+ * @param {boolean} [input.keepTitle] Leave the first H1 in `html` (default false). For a text that is not a guide page, such as the landing file of a project, whose H1 is part of the page.
  * @returns {FinishedGuide}
  */
-export function finishGuidePage({ page, html, rewrites, refused, indexTitle, symbols = null, autoLink = true }) {
+export function finishGuidePage({ page, html, rewrites, refused, indexTitle, symbols = null, autoLink = true, keepTitle = false }) {
   let body = html;
   let title = '';
   /** @type {string | null} */
@@ -759,7 +760,7 @@ export function finishGuidePage({ page, html, rewrites, refused, indexTitle, sym
     title = decodeEntities(match[2].replace(/<[^>]*>/g, ''), { html: true }).replace(/\s+/g, ' ').trim();
     const id = /\sid\s*=\s*(?:"([^"]*)"|'([^']*)')/i.exec(match[1] ?? '');
     titleId = id ? (id[1] ?? id[2]) : null;
-    if (title !== '') body = body.slice(0, match.index) + body.slice(match.index + match[0].length);
+    if (title !== '' && !keepTitle) body = body.slice(0, match.index) + body.slice(match.index + match[0].length);
   }
   if (title === '') title = page.isIndex ? indexTitle : titleFromName(posix.basename(page.inGuide));
   body = applyLinkRewrites(body, rewrites);

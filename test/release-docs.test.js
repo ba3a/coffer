@@ -229,6 +229,29 @@ test('the 0.1.0 section lists the features and has a date, or YYYY-MM-DD until i
   assert.ok(text.indexOf('## Unreleased') < heading.index, 'Unreleased is above the released sections');
 });
 
+test('the 0.1.2 section is dated and groups its entries under Added and Fixed', () => {
+  const text = read('CHANGELOG.md');
+  const heading = /^## 0\.1\.2 - (\d{4}-\d{2}-\d{2})$/m.exec(text);
+  assert.ok(heading, 'the heading is "## 0.1.2 - " and a date');
+  assert.ok(!Number.isNaN(Date.parse(heading[1])), 'the date is a real date');
+  const section = text.slice(heading.index + heading[0].length);
+  const next = section.search(/^## /m);
+  const body = next === -1 ? section : section.slice(0, next);
+  assert.match(body, /^### Added$/m);
+  assert.match(body, /^### Fixed$/m);
+  assert.ok(text.indexOf('## Unreleased') < heading.index, 'Unreleased is above the released sections');
+  assert.ok(heading.index < text.indexOf('## 0.1.1 - '), '0.1.2 is above 0.1.1');
+  const unreleased = text.slice(text.indexOf('## Unreleased'), heading.index);
+  assert.doesNotMatch(unreleased, /^### Added$/m, 'the entries moved from Unreleased to 0.1.2');
+});
+
+test('package-lock.json has the version of package.json', () => {
+  const version = JSON.parse(read('package.json')).version;
+  const lock = JSON.parse(read('package-lock.json'));
+  assert.equal(lock.version, version);
+  assert.equal(lock.packages[''].version, version);
+});
+
 test('the changelog states the version policy', () => {
   const text = read('CHANGELOG.md');
   assert.match(text, /semver\.org/);

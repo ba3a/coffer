@@ -1,6 +1,6 @@
 {
   "name": "coffer",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "A static site engine for a person who makes things and writes about them.",
   "license": "Apache-2.0",
   "type": "module",

@@ -59,6 +59,22 @@ A theme changes its cards by putting files in its directory (see [Themes](themes
 - `card.svg.njk`, its own SVG template;
 - `fonts/`, its own `.ttf` or `.otf` files, which replace the bundled font.
 
+## Root icons
+
+Browsers and phones ask for `/favicon.ico` and `/apple-touch-icon.png` at the root of a domain without being told. The site settings `favicon` and `appleTouchIcon` (see [Configuration](configuration.md)) name a file in the output, usually an asset of the theme such as `assets/brand/favicon.ico`, and the build copies its bytes to those two addresses:
+
+```yaml
+sites:
+  - id: main
+    favicon: assets/brand/favicon.ico        # .ico or .png, served as /favicon.ico
+    appleTouchIcon: assets/brand/touch.png   # .png, served as /apple-touch-icon.png
+```
+
+- The file must exist in the output and have the right type (ICO or PNG for `favicon`, PNG for `appleTouchIcon`), or the build fails and names the setting and the site. Without a setting, nothing is written.
+- If a page, a redirect or a file is already at the target address, the build fails and names the setting, the source and what is in the way.
+- `coffer dev`, `coffer serve` and a local build write the same files as a deployment, so the icons look the same everywhere.
+- The two files are not pages: they are not in `sitemap.xml`, the manifest `pages` or the search index. The manifest lists them under `files` (`setting`, `source`, `url`, `file`), and `coffer check` verifies that each exists and has the bytes of its source. Deploy them: they are not in `DEPLOY_EXCLUDES`.
+
 ## `sitemap.xml`
 
 `{out}/{siteId}/sitemap.xml` lists the canonical address of every published page, in the sitemaps.org format, sorted by address, each as an absolute URL. Posts also carry `lastmod`, their date. It lists:

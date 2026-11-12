@@ -284,7 +284,9 @@ export function validateFeed(xml, options = {}) {
     if (found.length > 1) report.error(found[1], `feed has more than one <${name}>`);
     for (const element of found) {
       const value = element.text.trim();
-      if (!isAbsoluteUrl(value) || /\s/.test(value)) report.error(element, `feed <${name}> is not an absolute URL: "${value}"`);
+      if (!/^https?:\/\/[^\s/]/i.test(value) || /\s/.test(value)) {
+        report.error(element, `feed <${name}> is not an absolute http(s) URL: "${value}"`);
+      }
     }
   }
 

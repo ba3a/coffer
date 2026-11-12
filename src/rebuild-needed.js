@@ -67,16 +67,19 @@ function pickSite(config, id) {
 /**
  * The git documentation sources the site is configured with.
  *
+ * A project counts when it has a git `docs.source`, whatever else it has: a project with a
+ * landing file and no guides is compared too, because a push to its repository changes the page.
+ *
  * @param {import('./config.js').SiteConfig} site
- * @returns {{ slug: string, source: { git: string, ref: string } }[]}
+ * @returns {{ slug: string, source: { git: string, ref: string }, landing: string | null }[]}
  */
 function configuredSources(site) {
   if (!site.projects) return [];
-  /** @type {{ slug: string, source: { git: string, ref: string } }[]} */
+  /** @type {{ slug: string, source: { git: string, ref: string }, landing: string | null }[]} */
   const sources = [];
   for (const project of loadProjects(site.projects.dir)) {
     const docs = /** @type {import('./docs/sources.js').DocsConfig | null | undefined} */ (project.fields.docs);
-    if (docs && 'git' in docs.source) sources.push({ slug: project.slug, source: docs.source });
+    if (docs && 'git' in docs.source) sources.push({ slug: project.slug, source: docs.source, landing: project.landing?.file ?? null });
   }
   return sources;
 }
@@ -113,8 +116,9 @@ export async function rebuildNeeded({ config, url, site: siteId, now = new Date(
   const commits = await readRemoteCommits(configured, git);
   /** @type {Map<string, import('./build-info.js').BuildInfoSource>} */
   const current = new Map();
-  for (const { slug, source } of configured) {
-    current.set(slug, { url: displayAddress(source.git), ref: source.ref, sha: /** @type {string} */ (commits.get(slug)) });
+  for (const { slug, source, landing } of configured) {
+    const sha = /** @type {string} */ (commits.get(slug));
+    current.set(slug, { url: displayAddress(source.git), ref: source.ref, sha, ...(landing === null ? {} : { landing: { file: landing, sha } }) });
   }
   return answer(compareBuildInfo(fetched.info, current, now));
 }

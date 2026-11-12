@@ -1,7 +1,7 @@
 import { readFileSync, realpathSync, statSync } from 'node:fs';
 import { extname, isAbsolute, relative, resolve, sep } from 'node:path';
 
-import { checkDocsConfig } from '../docs/sources.js';
+import { checkDocsConfig, cleanRelativePath } from '../docs/sources.js';
 import { IMAGE_EXTENSIONS } from '../images/defaults.js';
 import { inspectSvg } from '../images/svg.js';
 
@@ -21,6 +21,7 @@ import { inspectSvg } from '../images/svg.js';
  *
  * @typedef {object} FieldContext
  * @property {string} dir Absolute path of the project's folder.
+ * @property {boolean} [hasDocsSource] Whether the project sets `docs.source`; only then is a picture written `repo:path` accepted.
  * @property {(path: (string | number)[]) => number | undefined} [lineOf] The 1-based line of `project.yaml` on which the value at a path (such as `['pressKit', 'longDescription']`) starts, or undefined when it is not known.
  */
 
@@ -106,6 +107,47 @@ function realPathStaysInside(root, target) {
   } catch {
     return false;
   }
+}
+
+/** The prefix that makes the path of a picture a path inside the project's `docs.source` instead of the project folder. */
+export const REPO_PICTURE_PREFIX = 'repo:';
+
+/**
+ * A picture that is in the project's docs source, written `repo:site/card.png`.
+ * The file is not looked for here: the source is fetched later, and the
+ * reference is resolved after the fetch.
+ *
+ * @typedef {object} RepoPicture
+ * @property {string} repo Path of the picture inside the docs source, with `/`.
+ */
+
+/**
+ * @param {unknown} value
+ * @returns {value is string} Whether a picture value is written with the `repo:` prefix.
+ */
+export function isRepoPicture(value) {
+  return typeof value === 'string' && value.trim().startsWith(REPO_PICTURE_PREFIX);
+}
+
+/**
+ * Checks a picture written `repo:path`: it needs `docs.source`, and the path
+ * has to stay inside the source and name a picture file.
+ *
+ * @param {string} value The text, with the prefix.
+ * @param {boolean} hasDocsSource
+ * @returns {{ value: RepoPicture } | { problem: string }}
+ */
+export function checkRepoPicture(value, hasDocsSource) {
+  const text = value.trim();
+  if (!hasDocsSource) {
+    return { problem: `"${text}" is a picture in the docs source: it needs docs.source in project.yaml` };
+  }
+  const cleaned = cleanRelativePath(text.slice(REPO_PICTURE_PREFIX.length));
+  if ('problem' in cleaned) return { problem: `the path in "${text}" ${cleaned.problem}` };
+  if (!IMAGE_EXTENSIONS.includes(extname(cleaned.value).toLowerCase())) {
+    return { problem: `"${text}" must be a picture: one of ${IMAGE_EXTENSIONS.join(', ')}` };
+  }
+  return { value: { repo: cleaned.value } };
 }
 
 /** The keys a `pressKit` mapping can have. */
@@ -426,9 +468,12 @@ export const FIELD_TYPES = Object.freeze({
         : { problem: 'must be a colour written as #rgb or #rrggbb' },
   },
   image: {
-    describe: 'a picture in the project folder',
+    describe: 'a picture in the project folder, or in the docs source when written repo:path',
     empty: () => null,
-    check: (value, { dir }) => fileInProject(value, dir, IMAGE_EXTENSIONS, 'a picture'),
+    check: (value, { dir, hasDocsSource }) =>
+      isRepoPicture(value)
+        ? checkRepoPicture(value, hasDocsSource === true)
+        : fileInProject(value, dir, IMAGE_EXTENSIONS, 'a picture'),
   },
   'font-file': {
     describe: 'a font file in the project folder',
@@ -558,6 +603,8 @@ export const COMMON_PROJECT_KEYS = Object.freeze([
   'order',
   'tag',
   'license',
+  'landing',
+  'brand',
 ]);
 
 /** @type {Map<string, ProjectKind>} */

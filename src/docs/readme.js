@@ -110,7 +110,7 @@ function readmeNames(root) {
  * @param {string} path
  * @returns {boolean}
  */
-function exactCase(root, path) {
+export function exactCase(root, path) {
   const base = resolveInside(root, '.');
   if (!base.ok) return false;
   let dir = base.path;

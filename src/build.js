@@ -11,6 +11,8 @@ import { FONT_FILE_FORMATS, getProjectKind } from './content/project-kinds.js';
 import { PROJECT_BLOCK_POSTS, newestFirst, projectsOfPost, unknownProjectMessage } from './content/project-posts.js';
 import { projectStyle } from './content/project-style.js';
 import { loadProjects, projectUrl, showcaseOf } from './content/projects.js';
+import { readLanding } from './docs/landing.js';
+import { claimThemeAssets, publishBrandFiles, resolveRepoPicture } from './docs/repo-assets.js';
 import { finishGuidePage, githubRefOf, githubUrl, locateGuideImage, planGuides, resolveGuideLinks } from './docs/guides.js';
 import { fillReadmeSections, readSection } from './docs/readme.js';
 import { SymbolIndexError, indexOfHtmlReference, indexOfView } from './docs/symbols.js';
@@ -306,7 +308,7 @@ export class BuildError extends Error {
  * @property {string | null} tag The devlog tag that marks posts about the project.
  * @property {string[]} posts Site-relative URLs of the published posts about the project (by its tag or by `projects:`), newest first, from every blog.
  * @property {string | null} feed Site-relative URL of the project's feed; null when the site has no blog.
- * @property {string} card Path of the card picture, relative to the configuration file.
+ * @property {string} card Path of the card picture, relative to the configuration file; `repo:` and its path in the docs source for a card written `repo:path`.
  * @property {ManifestProjectFile[]} files The files copied unchanged to the output for the project, such as a trailer video or a font; empty when it has none. Pictures are listed under `images`.
  * @property {ManifestProjectDocs | null} docs The documentation of a tool: where it comes from (for a git repository the address without credentials, the ref and the commit that was built; for a folder its path and the commit of the repository it is in), the GitHub repository, the guides, and the pages built from them. Null when the project has no `docs`.
  * @property {ManifestDownload[]} downloads The full-resolution logos and screenshots of the project's press kit; empty when it has none. `coffer check` reads each one back against its policy.
@@ -1241,11 +1243,12 @@ async function buildSite(config, site, options, outRoot, version, report) {
    * @param {string} url Site-relative URL of the project's page.
    * @param {PageImages} page
    * @param {'card' | 'press-kit'} [use] What the manifest says the picture is used for (default `card`).
+   * @param {string} [shown] How the picture is named in messages and in the page's image overrides when it is not in the project folder: `repo:` and its path in the docs source.
    * @returns {Promise<ProjectPicture | null>} Null when the picture cannot be made; the problem is reported.
    */
-  const makeProjectPicture = async (project, field, file, alt, url, page, use = 'card') => {
+  const makeProjectPicture = async (project, field, file, alt, url, page, use = 'card', shown = posix(relative(project.dir, file))) => {
     try {
-      const policy = page.policyFor(posix(relative(project.dir, file)));
+      const policy = page.policyFor(shown);
       const processed = await images.process(file, {
         location: policy.location.value,
         camera: policy.camera.value,
@@ -1263,7 +1266,7 @@ async function buildSite(config, site, options, outRoot, version, report) {
       report.addError({
         site: site.id,
         file: posix(relative(config.dir, project.file)),
-        message: `${field}: image '${posix(relative(project.dir, file))}': ${error.message}`,
+        message: `${field}: image '${shown}': ${error.message}`,
       });
       return null;
     }
@@ -1530,6 +1533,8 @@ async function buildSite(config, site, options, outRoot, version, report) {
    * @property {PreparedPressKit | null} pressKit The press kit of a game that has one.
    * @property {import('./check/source-links.js').SourceFile} source The page as the link check sees it.
    * @property {Map<number, PreparedReadmeSection>} readmes The sections of the project's repository that the page's `::readme` directives show, by the number of the directive; a directive whose section could not be read has no entry (the problem is reported).
+   * @property {string} pageLabel How findings name the page's text: its path relative to the configuration file for an `index.md`, `{repo}:{path}` for a landing file.
+   * @property {Record<string, unknown> | null} landing What templates see as `project.landing`: the front matter of the landing file with `file` (its path in the docs source) added; null when the page is an `index.md`.
    */
   /**
    * A section of the README of a project, rendered for the project's page.
@@ -1558,7 +1563,18 @@ async function buildSite(config, site, options, outRoot, version, report) {
   const preparedProjects = [];
   /** @type {Map<string, import('./docs/sources.js').FetchedDocs>} */
   let docsFetched = new Map();
+  /** The `landing.file` of the projects that have one, by slug: the manifest and `build-info.json` record it with the commit it was read at. @type {Map<string, string>} */
+  const landingFiles = new Map();
 
+  /**
+   * The landing file of a project, rendered, on its way through the guide
+   * pipeline.
+   *
+   * @typedef {object} LandingPage
+   * @property {import('./docs/guides.js').GuidePage} page
+   * @property {RenderedPost} rendered
+   * @property {string | null} html The page text once its links are resolved and made safe; null before that.
+   */
   /**
    * A page of a project's documentation, rendered and ready to be written.
    *
@@ -1624,9 +1640,10 @@ async function buildSite(config, site, options, outRoot, version, report) {
    * @param {PreparedReference | undefined} reference The generated reference of the project, if it has one.
    * @param {readonly import('./markdown/directives/readme.js').ReadmeDirective[]} directives The `::readme` directives of the project's page; their sections are rendered with the guides' link rewriting and put into `sections`.
    * @param {Map<number, PreparedReadmeSection>} sections Filled with the sections that could be read, by the number of the directive.
+   * @param {LandingPage | null} landing The landing file of the project, rendered; its links are resolved like those of a section, and `html` is filled with the finished page text.
    * @returns {Promise<PreparedDocs | null>} Null when the project publishes no guide page and has no reference.
    */
-  const prepareDocs = async (project, projectPageUrl, fetched, resolver, reference, directives, sections) => {
+  const prepareDocs = async (project, projectPageUrl, fetched, resolver, reference, directives, sections, landing) => {
     const plan = planGuides(fetched);
     for (const issue of plan.issues) report.addError({ site: site.id, ...issue });
     for (const warning of plan.warnings) warnings.push(warning);
@@ -1659,7 +1676,7 @@ async function buildSite(config, site, options, outRoot, version, report) {
       }
     }
     // The sections of the README that the project's page shows are texts of the repository too: they are rendered like guides and their links are resolved from their own file.
-    const pageFile = posix(relative(config.dir, project.pageFile));
+    const pageFile = landing ? landing.page.label : posix(relative(config.dir, project.pageFile));
     /** @type {{ directive: import('./markdown/directives/readme.js').ReadmeDirective, page: import('./docs/guides.js').GuidePage }[]} */
     const sectionPages = [];
     for (const directive of directives) {
@@ -1699,8 +1716,10 @@ async function buildSite(config, site, options, outRoot, version, report) {
       }
     }
     const ref = githubRefOf(fetched);
+    // The landing file is the text of the project's page; its links are resolved from its own folder in the repository, like those of a guide.
+    if (landing) renderedPages.set(landing.page, landing.rendered);
     const links = resolveGuideLinks(plan.pages, {
-      sections: sectionPages.map((entry) => entry.page),
+      sections: [...sectionPages.map((entry) => entry.page), ...(landing ? [landing.page] : [])],
       root: fetched.root,
       repo: plan.repo,
       github: fetched.github,
@@ -1727,6 +1746,20 @@ async function buildSite(config, site, options, outRoot, version, report) {
       });
       for (const issue of finished.issues) report.addError({ site: site.id, ...issue });
       sections.set(directive.index, { html: finished.html, carousels: rendered.carousels });
+    }
+    if (landing) {
+      const finished = finishGuidePage({
+        page: landing.page,
+        html: landing.rendered.html,
+        rewrites: links.rewrites.get(landing.page),
+        refused: links.refused.get(landing.page),
+        indexTitle: '',
+        symbols: reference?.symbols ?? null,
+        autoLink: reference?.autoLink ?? true,
+        keepTitle: true,
+      });
+      for (const issue of finished.issues) report.addError({ site: site.id, ...issue });
+      landing.html = finished.html;
     }
     /** @type {PreparedDocsPage[]} */
     const pagesOut = [];
@@ -1841,6 +1874,7 @@ async function buildSite(config, site, options, outRoot, version, report) {
   if (site.projects) {
     const projectResolver = createResolver(new Map(), null);
     const loadedProjects = loadProjects(site.projects.dir);
+    for (const project of loadedProjects) if (project.landing) landingFiles.set(project.slug, project.landing.file);
     // The documentation sources are fetched before anything is rendered, and a source that cannot be fetched fails the build: there is no fallback to empty documentation.
     docsFetched = await fetchDocsSources(
       loadedProjects.flatMap((project) =>
@@ -1849,22 +1883,60 @@ async function buildSite(config, site, options, outRoot, version, report) {
       { cacheDir: join(cacheRoot, DOCS_REPOS_CACHE_DIR), ...options.docsFetch },
     );
     await prepareReferences(loadedProjects);
+    // The addresses the theme's assets already hold; the brand files of the projects must not take one of them.
+    const outputClaims = claimThemeAssets(outDir);
     for (const project of loadedProjects) {
       const url = projectUrl(site.urls.projects, project.slug);
-      const page = pageImagesOf(project.pageFile, null, projectResolver);
+      const fetchedDocs = docsFetched.get(project.slug);
+      // The landing file of the docs source is the text of the page instead of an index.md; a file that cannot be used is reported (the build fails) and the page is built without text so that other problems are still found.
+      const landingText =
+        project.landing && fetchedDocs
+          ? readLanding(fetchedDocs, project.landing.file, (issue) => report.addError({ site: site.id, ...issue }))
+          : null;
+      const landingRoot = fetchedDocs?.root ?? '';
+      const textFile = landingText ? join(landingRoot, ...landingText.page.rel.split('/')) : project.pageFile;
+      const pageLabel = landingText ? landingText.page.label : posix(relative(config.dir, project.pageFile));
+      const page = pageImagesOf(textFile, null, projectResolver);
       pageImages.set(project.pageFile, page);
-      const rendered = await renderMarkdown(project.body, {
-        file: project.pageFile,
-        startLine: project.bodyLine,
+      page.shown = pageLabel;
+      const ownImages = landingText
+        ? { shown: pageLabel, locate: (/** @type {string} */ src) => locateGuideImage(landingRoot, landingText.page.rel, src) }
+        : undefined;
+      const rendered = await renderMarkdown(landingText ? landingText.body : project.body, {
+        file: landingText ? pageLabel : project.pageFile,
+        startLine: landingText ? landingText.bodyLine : project.bodyLine,
         // A game page starts with its logo or key art, which is the eager image; the pictures of the text then are all lazy.
-        images: { ...imageOptionsFor(project.pageFile, url, page), leadingImage: Boolean(project.fields.logo || project.fields.keyArt) },
+        images: { ...imageOptionsFor(textFile, url, page, ownImages), leadingImage: Boolean(project.fields.logo || project.fields.keyArt) },
         carousel: carouselLabels,
         // Only the page of a project with a docs source can show a section of its README.
         readme: docsFetched.has(project.slug),
       });
-      const makePicture = (/** @type {string} */ field, /** @type {string} */ file, /** @type {string} */ alt) =>
-        makeProjectPicture(project, field, file, alt, url, page);
-      const picture = await makePicture('card', project.card, project.cardAlt);
+      const yamlFile = posix(relative(config.dir, project.file));
+      // The brand folder of the docs source is published unchanged below /assets/{slug}/.
+      if (project.brand && fetchedDocs) {
+        const brand = publishBrandFiles({ fetched: fetchedDocs, dir: project.brand.dir, slug: project.slug, outDir, claims: outputClaims });
+        for (const problem of brand.problems) report.addError({ site: site.id, file: yamlFile, message: `brand.dir: ${problem}` });
+      }
+      /**
+       * A picture of the project: a file of the project folder, or a `repo:` reference that is resolved to a file of the fetched docs source. A reference that cannot be resolved is reported, naming the key and the path.
+       *
+       * @param {string} field
+       * @param {string | { repo: string }} file Absolute path of the file, or the reference.
+       * @param {string} alt
+       */
+      const makePicture = async (field, file, alt) => {
+        if (typeof file === 'string') return makeProjectPicture(project, field, file, alt, url, page);
+        const shown = `repo:${file.repo}`;
+        const found = fetchedDocs
+          ? resolveRepoPicture(fetchedDocs, file.repo)
+          : /** @type {const} */ ({ ok: false, message: 'the project has no docs source to read the picture from' });
+        if (!found.ok) {
+          report.addError({ site: site.id, file: yamlFile, message: `${field}: image '${shown}': ${found.message}` });
+          return null;
+        }
+        return makeProjectPicture(project, field, found.file, alt, url, page, 'card', shown);
+      };
+      const picture = await makePicture('card', project.cardRepo === null ? project.card : { repo: project.cardRepo }, project.cardAlt);
       /** @type {Record<string, ProjectMedium | null>} */
       const media = {};
       /** @type {ManifestProjectFile[]} */
@@ -1877,7 +1949,8 @@ async function buildSite(config, site, options, outRoot, version, report) {
         if (value === null || value === undefined) continue;
         if (spec.type === 'image') {
           const alt = project.fields[`${field}Alt`];
-          const made = await makePicture(field, join(project.dir, ...String(value).split('/')), typeof alt === 'string' ? alt : '');
+          const reference = typeof value === 'object' && value !== null && 'repo' in value ? { repo: String(value.repo) } : null;
+          const made = await makePicture(field, reference ?? join(project.dir, ...String(value).split('/')), typeof alt === 'string' ? alt : '');
           media[field] = made === null ? null : { type: 'image', ...made };
         } else if (spec.type === 'trailer') {
           const trailer = /** @type {{ type: 'file', file: string, mime: string } | { type: 'embed', provider: string, url: string }} */ (value);
@@ -1904,20 +1977,39 @@ async function buildSite(config, site, options, outRoot, version, report) {
         pressKit,
         source: { slug: project.slug, kind: 'folder', file: project.pageFile, dir: project.dir, draft: false },
         readmes,
+        pageLabel,
+        landing: landingText && project.landing ? { ...landingText.data, file: project.landing.file } : null,
       });
-      const fetchedDocs = docsFetched.get(project.slug);
+      /** @type {LandingPage | null} */
+      const landingPage = landingText ? { page: landingText.page, rendered, html: null } : null;
       if (fetchedDocs) {
-        const prepared = await prepareDocs(project, url, fetchedDocs, projectResolver, referencePrepared.get(project.slug), rendered.readmes, readmes);
+        const prepared = await prepareDocs(
+          project,
+          url,
+          fetchedDocs,
+          projectResolver,
+          referencePrepared.get(project.slug),
+          rendered.readmes,
+          readmes,
+          landingPage,
+        );
         if (prepared) docsPrepared.set(project.slug, prepared);
+      }
+      // The text of the landing file comes out of the guide pipeline with its links resolved there.
+      if (landingPage?.html != null) {
+        const entry = /** @type {PreparedProject} */ (preparedProjects.at(-1));
+        entry.rendered = { ...rendered, html: landingPage.html };
       }
     }
   }
   for (const entry of preparedProjects) {
     // The press kit section has the anchor "press-kit", which links may point at.
+    // The links of a landing file were resolved from its own folder in the repository (the guide pipeline); the link check only needs its anchors.
+    const checked = entry.landing ? { ...entry.rendered, links: [] } : entry.rendered;
     sourcePosts.push({
       post: entry.source,
       url: entry.url,
-      rendered: entry.pressKit ? { ...entry.rendered, ids: [...entry.rendered.ids, 'press-kit'] } : entry.rendered,
+      rendered: entry.pressKit ? { ...checked, ids: [...checked.ids, 'press-kit'] } : checked,
     });
     for (const description of [entry.pressKit?.shortDescription, entry.pressKit?.longDescription]) {
       // The descriptions are shown inside the press kit section, so `#press-kit` is a valid anchor for them too.
@@ -2068,7 +2160,7 @@ async function buildSite(config, site, options, outRoot, version, report) {
   /** A project has a feed when the site has a blog, which holds the posts the feed lists. */
   const hasProjectFeeds = site.blogs.length > 0;
   const latestProjectPosts = site.projects?.latestPosts ?? 0;
-  const projectViews = preparedProjects.map(({ project, url, picture, media, pressKit }) => {
+  const projectViews = preparedProjects.map(({ project, url, picture, media, pressKit, landing }) => {
     const feed = hasProjectFeeds ? { url: feedUrlFor(url), title: t('feeds.project', { title: project.name }) } : null;
     return {
       pressKit: pressKitViewOf(project, pressKit),
@@ -2085,6 +2177,7 @@ async function buildSite(config, site, options, outRoot, version, report) {
       license: project.license,
       tag: project.tag,
       fields: project.fields,
+      landing,
       // The link is written only when the documentation pages are built, so that it never leads to a page that does not exist.
       docsUrl: docsPrepared.get(project.slug)?.indexUrl ?? null,
       storeLinks: storeLinksOf(project),
@@ -2877,7 +2970,7 @@ async function buildSite(config, site, options, outRoot, version, report) {
   if (projectsIndexUrl) {
     for (const entry of preparedProjects) {
       const { project, url, rendered, page, picture, files } = entry;
-      const shown = posix(relative(config.dir, project.pageFile));
+      const shown = entry.pageLabel;
       for (const directive of rendered.maps) {
         warnings.push(`${shown}:${directive.line ?? 1}: the ::map directive is only for posts and is left out`);
       }
@@ -3001,10 +3094,10 @@ async function buildSite(config, site, options, outRoot, version, report) {
         tag: project.tag,
         posts: (publishedAbout.get(project.slug) ?? []).map((post) => post.url),
         feed: view.feed ? view.feed.url : null,
-        card: posix(relative(config.dir, project.card)),
+        card: project.cardRepo === null ? posix(relative(config.dir, project.card)) : `repo:${project.cardRepo}`,
         files,
         docs: docsFetched.has(project.slug)
-          ? { ...manifestDocs(/** @type {import('./docs/sources.js').FetchedDocs} */ (docsFetched.get(project.slug)), config.dir), pages: docsManifestPages, reference: referenceManifest }
+          ? { ...manifestDocs(/** @type {import('./docs/sources.js').FetchedDocs} */ (docsFetched.get(project.slug)), config.dir, project.landing?.file ?? null), pages: docsManifestPages, reference: referenceManifest }
           : null,
         downloads: entry.pressKit?.downloads ?? [],
       });
@@ -3215,6 +3308,7 @@ async function buildSite(config, site, options, outRoot, version, report) {
     builtAt: (options.clock ?? (() => new Date()))(),
     engineVersion: version,
     docs: docsFetched,
+    landings: landingFiles,
     posts: everyPost,
     now,
   });

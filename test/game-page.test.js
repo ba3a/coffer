@@ -231,7 +231,7 @@ test('store names other than itch and steam are not shown', async () => {
 test('a game page has no repository link, and a game cannot declare one', async () => {
   await inSite(game(`${MINIMAL}repo: https://github.example/me/tumble\n`), async (root) => {
     assert.deepEqual(await buildErrors(root), [
-      `${join(root, 'content', 'projects', 'tumble', 'project.yaml')}: repo: unknown key for a game (expected one of: name, pitch, kind, status, card, cardAlt, featured, order, tag, license, stores, platforms, price, pressKit, accent, displayFont, displayFontFile, logo, keyArt, keyArtAlt, trailer, trailerPoster, features)`,
+      `${join(root, 'content', 'projects', 'tumble', 'project.yaml')}: repo: unknown key for a game (expected one of: name, pitch, kind, status, card, cardAlt, featured, order, tag, license, landing, brand, stores, platforms, price, pressKit, accent, displayFont, displayFontFile, logo, keyArt, keyArtAlt, trailer, trailerPoster, features)`,
     ]);
   });
   await inSite(game(`${MINIMAL}stores:\n  itch: ${ITCH}\nlicense: MIT\n`), async (root) => {

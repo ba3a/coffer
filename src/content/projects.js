@@ -3,7 +3,15 @@ import { extname, isAbsolute, join, relative, resolve } from 'node:path';
 import { LineCounter, parseDocument } from 'yaml';
 
 import { IMAGE_EXTENSIONS } from '../images/defaults.js';
-import { COMMON_PROJECT_KEYS, getProjectKind, listProjectKinds, readKindFields } from './project-kinds.js';
+import { cleanRelativePath } from '../docs/sources.js';
+import {
+  checkRepoPicture,
+  COMMON_PROJECT_KEYS,
+  getProjectKind,
+  isRepoPicture,
+  listProjectKinds,
+  readKindFields,
+} from './project-kinds.js';
 import { normalizeTag, PROJECT_SLUG_RE } from './posts.js';
 
 /** Name of the file in a project's folder that declares the project. */
@@ -24,12 +32,15 @@ export const PROJECT_STATUSES = Object.freeze(['idea', 'in-development', 'releas
  * @property {string} slug The folder name; the last segment of the project's URL.
  * @property {string} dir Absolute path of the project's folder.
  * @property {string} file Absolute path of `project.yaml`.
- * @property {string} pageFile Absolute path of `index.md`.
+ * @property {string} pageFile Absolute path of `index.md`. Does not exist when the page comes from {@link Project#landing}.
  * @property {string} name
  * @property {string} pitch One line that says what the project is.
  * @property {string} kind A registered kind such as `tool` or `game`.
  * @property {string} status One of {@link PROJECT_STATUSES}.
- * @property {string} card Absolute path of the card picture.
+ * @property {string} card Absolute path of the card picture; empty when the card is a deferred `repo:` reference ({@link Project#cardRepo}).
+ * @property {string | null} cardRepo Path of the card picture inside the project's `docs.source` (written `repo:path` in `project.yaml`), resolved after the source is fetched; null when the card is a file of the project folder.
+ * @property {{ file: string } | null} landing The landing page in the docs source: `file` is its path inside the source, with `/`. Its text is the body of the project page instead of `index.md`; `body` is empty until the source is fetched. Null when the page is the local `index.md`.
+ * @property {{ dir: string } | null} brand The folder in the docs source that holds the project's brand files: `dir` is its path inside the source, with `/`. Null when there is none.
  * @property {string} cardAlt Alternative text of the card picture; empty when the picture is decoration beside the project's name.
  * @property {boolean} featured Whether the project is in the home page's showcase.
  * @property {number | null} order Place in the showcase and on the projects page; lower comes first. Null sorts after every number.
@@ -114,6 +125,44 @@ export function projectUrl(prefix, slug) {
 }
 
 /**
+ * Checks a `project.yaml` key whose value is a mapping with one key that names
+ * a path inside the project's docs source (`landing: { file }`, `brand: { dir }`).
+ * The path is not looked for: the source is fetched later.
+ *
+ * @param {string} key The key of `project.yaml`.
+ * @param {unknown} value
+ * @param {string} inner The only key the mapping can have.
+ * @param {boolean} hasDocsSource
+ * @param {(field: string, message: string) => void} fail
+ * @returns {string | undefined} The clean path, or undefined after reporting a problem.
+ */
+function sourcePath(key, value, inner, hasDocsSource, fail) {
+  if (!isMapping(value)) {
+    fail(key, `must be a mapping with the key ${inner} (a path inside docs.source)`);
+    return undefined;
+  }
+  const unknown = Object.keys(value).filter((name) => name !== inner);
+  if (unknown.length > 0) {
+    fail(key, `unknown key ${unknown.map((name) => `"${name}"`).join(', ')} (expected ${inner})`);
+    return undefined;
+  }
+  if (!hasDocsSource) {
+    fail(key, 'needs docs.source: the path is read from the docs source of the project');
+    return undefined;
+  }
+  if (value[inner] === undefined || value[inner] === null) {
+    fail(`${key}.${inner}`, 'is required');
+    return undefined;
+  }
+  const cleaned = cleanRelativePath(value[inner]);
+  if ('problem' in cleaned) {
+    fail(`${key}.${inner}`, cleaned.problem);
+    return undefined;
+  }
+  return cleaned.value;
+}
+
+/**
  * Parses the text of a `project.yaml` and checks it, the card picture and the
  * kind's own fields.
  *
@@ -187,10 +236,23 @@ export function parseProjectSource({ slug, dir, file, text }, errors) {
     status = undefined;
   }
 
+  // The pictures and files "in the repository" are read from the docs source, so they need one.
+  const hasDocsSource =
+    kind?.fields.docs?.type === 'docs' && isMapping(data.docs) && data.docs.source !== undefined && data.docs.source !== null;
+
   /** @type {string | undefined} */
   let card;
+  /** @type {string | null} */
+  let cardRepo = null;
   const rawCard = text1('card');
-  if (rawCard !== undefined) {
+  if (rawCard !== undefined && isRepoPicture(rawCard)) {
+    const checked = checkRepoPicture(rawCard, hasDocsSource);
+    if ('problem' in checked) fail('card', checked.problem);
+    else {
+      cardRepo = checked.value.repo;
+      card = '';
+    }
+  } else if (rawCard !== undefined) {
     const target = resolve(dir, rawCard);
     const inside = relative(dir, target);
     if (inside === '' || inside.startsWith('..') || isAbsolute(inside)) {
@@ -241,6 +303,23 @@ export function parseProjectSource({ slug, dir, file, text }, errors) {
     else license = data.license.trim();
   }
 
+  /** @type {Project['landing']} */
+  let landing = null;
+  if (data.landing !== undefined && data.landing !== null) {
+    const file = sourcePath('landing', data.landing, 'file', hasDocsSource, fail);
+    if (file !== undefined) {
+      if (extname(file).toLowerCase() !== '.md') fail('landing.file', `"${file}" must be a Markdown file (.md)`);
+      else landing = { file };
+    }
+  }
+
+  /** @type {Project['brand']} */
+  let brand = null;
+  if (data.brand !== undefined && data.brand !== null) {
+    const dirInSource = sourcePath('brand', data.brand, 'dir', hasDocsSource, fail);
+    if (dirInSource !== undefined) brand = { dir: dirInSource };
+  }
+
   /** @type {Record<string, unknown>} */
   let fields = {};
   if (kind !== undefined) {
@@ -257,7 +336,7 @@ export function parseProjectSource({ slug, dir, file, text }, errors) {
       // The text of a block scalar starts on the line after its `|` or `>`.
       return node.type === 'BLOCK_LITERAL' || node.type === 'BLOCK_FOLDED' ? line + 1 : line;
     };
-    fields = readKindFields(kind, data, { dir, lineOf }, fail);
+    fields = readKindFields(kind, data, { dir, lineOf, hasDocsSource }, fail);
     const allowed = [...COMMON_PROJECT_KEYS, ...Object.keys(kind.fields)];
     for (const key of Object.keys(data)) {
       if (allowed.includes(key)) continue;
@@ -280,6 +359,9 @@ export function parseProjectSource({ slug, dir, file, text }, errors) {
     kind: /** @type {import('./project-kinds.js').ProjectKind} */ (kind).name,
     status: /** @type {string} */ (status),
     card: /** @type {string} */ (card),
+    cardRepo,
+    landing,
+    brand,
     cardAlt,
     featured,
     order,
@@ -319,30 +401,42 @@ export function loadProjects(dir) {
         `${folder}: slug: "${slug}" (the folder name) must be lower-case letters, digits, "-" and "_", starting with a letter or a digit`,
       );
     }
-    if (!existsSync(file) || !statSync(file).isFile()) {
+    const hasFile = existsSync(file) && statSync(file).isFile();
+    const hasPage = existsSync(pageFile) && statSync(pageFile).isFile();
+    if (!hasFile) {
       errors.push(`${file}: missing; every project folder needs a ${PROJECT_FILE_NAME}`);
+      if (!hasPage) {
+        errors.push(`${pageFile}: missing; every project folder needs an ${PROJECT_PAGE_FILE_NAME} with the text of the page`);
+      }
+      continue;
     }
-    if (!existsSync(pageFile) || !statSync(pageFile).isFile()) {
-      errors.push(`${pageFile}: missing; every project folder needs an ${PROJECT_PAGE_FILE_NAME} with the text of the page`);
-    }
-    if (errors.length > before) continue;
 
     let text;
-    let body;
+    let body = '';
     try {
       text = readFileSync(file, 'utf8');
-      body = readFileSync(pageFile, 'utf8');
+      if (hasPage) body = readFileSync(pageFile, 'utf8');
     } catch (error) {
       const reason = error instanceof Error ? error.message : String(error);
       errors.push(`${folder}: cannot be read: ${reason}`);
       continue;
     }
-    if (/^﻿?---[ \t]*\r?\n/.test(body)) {
+    const project = parseProjectSource({ slug, dir: folder, file, text }, errors);
+    if (project === undefined) continue;
+    if (project.landing !== null) {
+      // The page has one source: the landing file of the docs source, or a local index.md.
+      if (hasPage) {
+        errors.push(
+          `${pageFile}: two sources for one page: ${PROJECT_FILE_NAME} has landing (${project.landing.file} in docs.source) and the folder has an ${PROJECT_PAGE_FILE_NAME}; remove one of them`,
+        );
+      }
+    } else if (!hasPage) {
+      errors.push(`${pageFile}: missing; every project folder needs an ${PROJECT_PAGE_FILE_NAME} with the text of the page`);
+    } else if (/^﻿?---[ \t]*\r?\n/.test(body)) {
       errors.push(`${pageFile}: front matter: not used; the fields of a project are in ${PROJECT_FILE_NAME}`);
     }
-    const project = parseProjectSource({ slug, dir: folder, file, text }, errors);
-    if (project !== undefined && errors.length === before) {
-      projects.push({ ...project, pageFile, body, bodyLine: 1 });
+    if (errors.length === before) {
+      projects.push({ ...project, pageFile, body: '', bodyLine: 1, ...(project.landing === null ? { body } : {}) });
     }
   }
   if (errors.length > 0) throw new ProjectError(errors);

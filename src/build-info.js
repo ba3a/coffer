@@ -34,6 +34,7 @@ export const MAX_REDIRECTS = 3;
  * @property {string} url The address of the repository, without credentials.
  * @property {string} ref The branch or tag.
  * @property {string} sha The commit the build used.
+ * @property {{ file: string, sha: string }} [landing] The landing file of the project (`landing.file` in `project.yaml`: a path inside the repository, with `/`) and the commit it was read at, which is `sha`. Absent for a project without a landing file.
  */
 
 /**
@@ -101,16 +102,19 @@ export function nextScheduledAt(posts, now) {
  * @param {Date} input.builtAt The moment of the build, from the clock.
  * @param {string} input.engineVersion
  * @param {ReadonlyMap<string, import('./docs/sources.js').FetchedDocs>} input.docs The documentation sources the build used, by project slug; folders are left out.
+ * @param {ReadonlyMap<string, string>} [input.landings] The landing file of each project that has one, by project slug.
  * @param {readonly { draft: boolean, date: Date }[]} input.posts Every post of the site.
  * @param {Date} input.now The build's "now".
  * @returns {BuildInfo}
  */
-export function createBuildInfo({ builtAt, engineVersion, docs, posts, now }) {
+export function createBuildInfo({ builtAt, engineVersion, docs, landings = new Map(), posts, now }) {
   /** @type {[string, BuildInfoSource][]} */
   const sources = [];
   for (const [slug, fetched] of docs) {
     if (fetched.source.type !== 'git') continue;
-    sources.push([slug, { url: fetched.source.git, ref: fetched.source.ref, sha: fetched.source.sha }]);
+    const { git: url, ref, sha } = fetched.source;
+    const landing = landings.get(slug);
+    sources.push([slug, landing === undefined ? { url, ref, sha } : { url, ref, sha, landing: { file: landing, sha } }]);
   }
   sources.sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0));
   return {
@@ -168,7 +172,19 @@ export function checkBuildInfo(value) {
     if (typeof url !== 'string' || url === '' || url.length > 600) return { problem: `"sources.${slug}.url" is missing or is not an address` };
     if (typeof ref !== 'string' || ref === '' || ref.length > 200) return { problem: `"sources.${slug}.ref" is missing or is not a branch or tag name` };
     if (typeof sha !== 'string' || !COMMIT_ID.test(sha)) return { problem: `"sources.${slug}.sha" is missing or is not a commit id` };
-    sources.set(slug, { url, ref, sha });
+    if (entry.landing === undefined) {
+      sources.set(slug, { url, ref, sha });
+      continue;
+    }
+    const landing = entry.landing;
+    if (!isMapping(landing)) return { problem: `"sources.${slug}.landing" is not an object` };
+    if (typeof landing.file !== 'string' || landing.file === '' || landing.file.length > 600) {
+      return { problem: `"sources.${slug}.landing.file" is missing or is not a path` };
+    }
+    if (typeof landing.sha !== 'string' || !COMMIT_ID.test(landing.sha)) {
+      return { problem: `"sources.${slug}.landing.sha" is missing or is not a commit id` };
+    }
+    sources.set(slug, { url, ref, sha, landing: { file: landing.file, sha: landing.sha } });
   }
   const next = value.nextScheduledAt;
   if (next !== null && !isMoment(next)) return { problem: '"nextScheduledAt" is missing or is neither null nor an ISO 8601 date and time' };
@@ -339,7 +355,7 @@ export async function fetchBuildInfo(address, options = {}) {
  * One reason a new build is needed.
  *
  * @typedef {object} Reason
- * @property {'deployed-unavailable' | 'source-added' | 'source-removed' | 'source-url-changed' | 'source-ref-changed' | 'source-sha-changed' | 'scheduled-time-passed'} code
+ * @property {'deployed-unavailable' | 'source-added' | 'source-removed' | 'source-url-changed' | 'source-ref-changed' | 'source-sha-changed' | 'source-landing-changed' | 'scheduled-time-passed'} code
  * @property {string} message
  * @property {string} [source] The project slug, for the reasons that are about a source.
  */
@@ -370,6 +386,12 @@ export function compareBuildInfo(deployed, current, now) {
         reasons.push({ code: 'source-ref-changed', source: slug, message: `${slug}: the ref changed from ${was.ref} to ${is.ref}` });
       } else if (was.sha !== is.sha) {
         reasons.push({ code: 'source-sha-changed', source: slug, message: `${slug}: ${is.ref} moved from ${was.sha} to ${is.sha}` });
+      } else if ((was.landing?.file ?? null) !== (is.landing?.file ?? null)) {
+        reasons.push({
+          code: 'source-landing-changed',
+          source: slug,
+          message: `${slug}: the landing file changed from ${was.landing?.file ?? '(none)'} to ${is.landing?.file ?? '(none)'}`,
+        });
       }
     }
   }

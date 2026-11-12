@@ -42,6 +42,7 @@ For a site `workshop` with a blog whose `prefix` is `journal`:
   sitemap.xml                         the published canonical pages
   build-info.json                     when and from what the site was built (see Scheduled rebuilds below)
   robots.txt                          allows crawling and names the sitemap
+  favicon.ico, apple-touch-icon.png   the root icons, when the site sets `favicon` and `appleTouchIcon`
   assets/                             the static files of the theme
   .coffer-manifest.json               the build manifest
 ```
@@ -94,6 +95,7 @@ Each site's output contains `.coffer-manifest.json`, which records what the buil
 | `sitemap`          | The site-relative URLs listed in `sitemap.xml`, sorted. See [SEO and link previews](seo.md). |
 | `buildInfo`        | The content of `build-info.json`: `builtAt`, `engineVersion`, `sources` and `nextScheduledAt`. See [Scheduled rebuilds](scheduling.md). |
 | `projects`         | Every project: `slug`, `url`, `file`, `kind`, `status`, the posts about it, its feed, its card, its `files` and press-kit `downloads`, and `docs`, where a tool's documentation comes from (the source with the commit that was built, the GitHub repository, the guides and `pages`, the pages built from them (`url`, `file`, `source`, `title`); null without a `docs` block). See [Projects](projects.md) and [Where a project's documentation comes from](docs-sources.md#in-the-manifest). |
+| `files`            | The files copied to the root of the site from the `favicon` and `appleTouchIcon` settings: `setting`, `source` (the theme asset), `url` and `file`; empty without those settings. See [SEO and link previews](seo.md#root-icons). |
 | `images`           | Every image a page uses: the `source` file, the `post` (page) that uses it, `use` (`body` or `cover`), the hash and upright size of the original, the metadata `policy` it was published under, the published `gps` position and `camera` fields, and the `outputs` made from it. See [Images](images.md). |
 
 The manifest is for checks and not for visitors. It is excluded from deployment by its name, `.coffer-manifest.json` (exported as `MANIFEST_FILE_NAME`; `DEPLOY_EXCLUDES` lists every name a deployment must skip). Leave it out when uploading the output to a host.

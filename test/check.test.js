@@ -268,6 +268,75 @@ test('an invalid feed fails the check and names the feed file', async () => {
   );
 });
 
+/** The icon address of the example feeds, and where the build wrote the file. */
+const ICON_URL = /<icon>([^<]*)<\/icon>/;
+
+test('a feed icon that points to a PNG of the output passes the check', async () => {
+  await withBuild(
+    () => {},
+    async (out) => {
+      const feed = readFileSync(join(out, 'workshop', 'journal', 'feed.xml'), 'utf8');
+      assert.match(feed, ICON_URL, 'the example feed has an <icon>');
+      const result = await checkOutput(loadConfig({ configPath: exampleConfig }), { out });
+      assert.deepEqual(result.failures, []);
+    },
+  );
+});
+
+test('a relative feed icon fails the check and names the feed file', async () => {
+  await withBuild(
+    (site) => rewrite(site, 'journal/feed.xml', (xml) => xml.replace(ICON_URL, '<icon>assets/icon.png</icon>')),
+    async (out) => {
+      const result = await runCheck(['--out', out]);
+      assert.equal(result.code, 1);
+      assert.match(result.err, /workshop\/journal\/feed\.xml: invalid feed: line \d+: feed <icon> is not an absolute http\(s\) URL: "assets\/icon\.png"/);
+    },
+  );
+});
+
+test('a feed icon that is missing from the output fails the check and names the feed file', async () => {
+  await withBuild(
+    (site) => rewrite(site, 'journal/feed.xml', (xml) => xml.replace(ICON_URL, (_, url) => `<icon>${url.replace(/[^/]*$/, 'ghost.png')}</icon>`)),
+    async (out) => {
+      const result = await checkOutput(loadConfig({ configPath: exampleConfig }), { out });
+      assert.equal(result.failures.length, 1, JSON.stringify(result.failures));
+      assert.equal(result.failures[0].file, 'journal/feed.xml');
+      assert.match(result.failures[0].message, /<icon> "https:\/\/[^"]*ghost\.png" is not in the output/);
+    },
+  );
+});
+
+test('a feed icon that is not an image fails the check and names the feed file', async () => {
+  await withBuild(
+    (site) => {
+      writeFileSync(join(site, 'assets', 'notes.txt'), 'not a picture');
+      rewrite(site, 'journal/feed.xml', (xml) => xml.replace(ICON_URL, (_, url) => `<icon>${url.replace(/\/[^/]*$/, '/notes.txt')}</icon>`));
+    },
+    async (out) => {
+      const result = await runCheck(['--out', out]);
+      assert.equal(result.code, 1);
+      assert.match(result.err, /workshop\/journal\/feed\.xml: <icon> "https:\/\/[^"]*notes\.txt" is not an image/);
+    },
+  );
+});
+
+test('a feed logo is held to the same rules as the icon', async () => {
+  await withBuild(
+    (site) => {
+      writeFileSync(join(site, 'assets', 'logo.svg'), '<?xml version="1.0"?>\n<svg xmlns="http://www.w3.org/2000/svg"/>');
+      rewrite(site, 'journal/feed.xml', (xml) => {
+        const icon = xml.match(ICON_URL)?.[0] ?? '';
+        const svg = icon.replace(/<icon>(.*)\/[^/]*<\/icon>/, '<logo>$1/logo.svg</logo>');
+        return xml.replace(icon, `${icon}${svg}`);
+      });
+    },
+    async (out) => {
+      const result = await checkOutput(loadConfig({ configPath: exampleConfig }), { out });
+      assert.deepEqual(result.failures, []);
+    },
+  );
+});
+
 test('a feed that is not well-formed, and a missing feed file, fail the check', async () => {
   await withBuild(
     (site) => {

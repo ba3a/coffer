@@ -8,6 +8,7 @@ import exifr from 'exifr';
 
 import { buildSites } from '../src/build.js';
 import { run } from '../src/cli.js';
+import { ProjectError, loadProjects } from '../src/content/projects.js';
 import { loadConfig } from '../src/config.js';
 import { registerProjectKind, unregisterProjectKind } from '../src/content/project-kinds.js';
 import { ReportError } from '../src/report.js';
@@ -782,4 +783,187 @@ test('a game has its own page, with the license in its details box (see game-pag
     assert.match(html, /<dt>License<\/dt>\s*<dd>MIT<\/dd>/);
     assert.doesNotMatch(html, /project-license/);
   });
+});
+
+// ---------------------------------------------------------------------------
+// landing, brand and repo: pictures (the docs source holds the project's page)
+
+const WITH_SOURCE = { docs: { source: { path: '.' } } };
+const LANDING = {
+  ...WITH_SOURCE,
+  landing: { file: 'site/landing.md' },
+  brand: { dir: 'site/brand' },
+  card: 'repo:site/card.png',
+};
+
+/**
+ * Loads the projects of a temporary folder.
+ *
+ * @param {Record<string, string | Buffer>} files Paths below the projects folder.
+ * @returns {{ projects: import('../src/content/projects.js').Project[], errors: string[], dir: string }}
+ */
+function load(files) {
+  const dir = mkdtempSync(join(tmpdir(), 'coffer-landing-'));
+  try {
+    for (const [name, content] of Object.entries(files)) {
+      const target = join(dir, ...name.split('/'));
+      mkdirSync(dirname(target), { recursive: true });
+      writeFileSync(target, content);
+    }
+    try {
+      return { projects: loadProjects(dir), errors: [], dir };
+    } catch (error) {
+      assert.ok(error instanceof ProjectError, `expected a ProjectError, got ${error}`);
+      return { projects: [], errors: error.errors, dir };
+    }
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+}
+
+/**
+ * @param {Record<string, unknown>} extra
+ * @param {Record<string, string | Buffer>} [more]
+ * @returns {{ errors: string[], file: string, projects: import('../src/content/projects.js').Project[], dir: string }}
+ */
+function loadWith(extra, more = {}) {
+  const result = load({
+    'lathe/project.yaml': toolYaml(extra),
+    'lathe/card.png': TINY_PNG,
+    ...more,
+  });
+  return { ...result, file: join(result.dir, 'lathe', 'project.yaml') };
+}
+
+test('landing, brand and a repo: card are accepted with docs.source, and need no local index.md', () => {
+  const { projects, errors } = loadWith(LANDING);
+  assert.deepEqual(errors, []);
+  assert.equal(projects.length, 1);
+  const [lathe] = projects;
+  assert.deepEqual(lathe?.landing, { file: 'site/landing.md' });
+  assert.deepEqual(lathe?.brand, { dir: 'site/brand' });
+  assert.equal(lathe?.cardRepo, 'site/card.png');
+  assert.equal(lathe?.card, '');
+  assert.equal(lathe?.body, '');
+});
+
+test('each of landing, brand and a repo: card is accepted alone, and paths are cleaned', () => {
+  for (const extra of [
+    { ...WITH_SOURCE, landing: { file: 'landing.md' } },
+    { ...WITH_SOURCE, brand: { dir: 'brand' } },
+    { ...WITH_SOURCE, card: 'repo:card.webp' },
+  ]) {
+    const { projects, errors } = loadWith(extra, 'landing' in extra ? {} : { 'lathe/index.md': 'Text.\n' });
+    assert.deepEqual(errors, []);
+    assert.equal(projects.length, 1);
+  }
+  const { projects } = loadWith(
+    {
+      ...WITH_SOURCE,
+      landing: { file: './site//landing.md' },
+      brand: { dir: 'site/brand/' },
+      card: 'repo:./site/card.PNG',
+    },
+  );
+  assert.equal(projects[0]?.landing?.file, 'site/landing.md');
+  assert.equal(projects[0]?.brand?.dir, 'site/brand');
+  assert.equal(projects[0]?.cardRepo, 'site/card.PNG');
+});
+
+test('a project without landing keeps its index.md, its local card and null landing, brand and cardRepo', () => {
+  const { projects, errors } = loadWith({}, { 'lathe/index.md': 'Text.\n' });
+  assert.deepEqual(errors, []);
+  assert.equal(projects[0]?.landing, null);
+  assert.equal(projects[0]?.brand, null);
+  assert.equal(projects[0]?.cardRepo, null);
+  assert.equal(projects[0]?.body, 'Text.\n');
+});
+
+test('a project without landing and without index.md still fails', () => {
+  const { errors, dir } = loadWith(WITH_SOURCE);
+  assert.deepEqual(errors, [
+    `${join(dir, 'lathe', 'index.md')}: missing; every project folder needs an index.md with the text of the page`,
+  ]);
+});
+
+test('landing together with a local index.md fails and says there are two sources for one page', () => {
+  const { errors, dir } = loadWith({ ...WITH_SOURCE, landing: { file: 'site/landing.md' } }, { 'lathe/index.md': 'Text.\n' });
+  assert.equal(errors.length, 1);
+  assert.ok(errors[0]?.startsWith(`${join(dir, 'lathe', 'index.md')}: two sources for one page`), errors[0]);
+  assert.match(errors[0] ?? '', /landing/);
+});
+
+test('landing, brand and repo: pictures without docs.source fail and name the key', () => {
+  const { errors, file } = loadWith({ landing: { file: 'a.md' }, brand: { dir: 'b' }, card: 'repo:c.png' });
+  assert.deepEqual(errors, [
+    `${file}: card: "repo:c.png" is a picture in the docs source: it needs docs.source in project.yaml`,
+    `${file}: landing: needs docs.source: the path is read from the docs source of the project`,
+    `${file}: brand: needs docs.source: the path is read from the docs source of the project`,
+  ]);
+});
+
+test('docs without a source is not a docs.source', () => {
+  const { errors, file } = loadWith({ docs: { guides: [{ dir: '.' }] }, landing: { file: 'a.md' } });
+  assert.ok(
+    errors.includes(`${file}: landing: needs docs.source: the path is read from the docs source of the project`),
+    errors.join('\n'),
+  );
+});
+
+test('invalid paths fail with the key named', () => {
+  /** @type {[Record<string, unknown>, string | RegExp][]} */
+  const cases = [
+    [{ landing: { file: '../outside.md' } }, 'landing.file: must stay inside the repository (no "..")'],
+    [{ landing: { file: '/etc/landing.md' } }, 'landing.file: must be relative to the repository, not absolute'],
+    [{ landing: { file: 'C:/landing.md' } }, 'landing.file: must be relative to the repository, not absolute'],
+    [{ landing: { file: 'site\\landing.md' } }, 'landing.file: must use "/" as the separator'],
+    [{ landing: { file: '' } }, 'landing.file: must be a non-empty path'],
+    [{ landing: { file: '.' } }, 'landing.file: must name a file'],
+    [{ landing: {} }, 'landing.file: is required'],
+    [{ landing: { file: 'site/landing.txt' } }, 'landing.file: "site/landing.txt" must be a Markdown file (.md)'],
+    [{ landing: { file: 'a.md', page: 'b.md' } }, 'landing: unknown key "page" (expected file)'],
+    [{ landing: 'site/landing.md' }, 'landing: must be a mapping with the key file (a path inside docs.source)'],
+    [{ brand: { dir: 'a/../../b' } }, 'brand.dir: must stay inside the repository (no "..")'],
+    [{ brand: { dir: '/brand' } }, 'brand.dir: must be relative to the repository, not absolute'],
+    [{ brand: {} }, 'brand.dir: is required'],
+    [{ brand: { dir: '.' } }, 'brand.dir: must name a file'],
+    [{ brand: ['site/brand'] }, 'brand: must be a mapping with the key dir (a path inside docs.source)'],
+    [{ card: 'repo:../card.png' }, 'card: the path in "repo:../card.png" must stay inside the repository (no "..")'],
+    [{ card: 'repo:/card.png' }, 'card: the path in "repo:/card.png" must be relative to the repository, not absolute'],
+    [{ card: 'repo:' }, 'card: the path in "repo:" must be a non-empty path'],
+    [{ card: 'repo:site/card.txt' }, /^card: "repo:site\/card\.txt" must be a picture: one of /],
+  ];
+  for (const [extra, expected] of cases) {
+    const { errors, file } = loadWith({ ...WITH_SOURCE, ...extra }, { 'lathe/index.md': 'x\n' });
+    const shown = errors.map((error) => error.replace(`${file}: `, ''));
+    const found = typeof expected === 'string' ? shown.includes(expected) : shown.some((line) => expected.test(line));
+    assert.ok(found, `${JSON.stringify(extra)}: ${shown.join(' | ')}`);
+  }
+});
+
+test('the other picture keys accept repo: too, as a deferred reference, and a game has no docs.source for it', () => {
+  registerProjectKind({
+    name: 'site-tool',
+    template: 'project-tool.njk',
+    fields: { docs: { type: 'docs' }, art: { type: 'image' } },
+  });
+  try {
+    const yaml = (/** @type {string} */ art) =>
+      `name: A\npitch: B.\nkind: site-tool\nstatus: idea\ncard: card.png\nart: ${art}\ndocs:\n  source:\n    path: .\n`;
+    const ok = load({ 'a/project.yaml': yaml('"repo:site/art.png"'), 'a/index.md': 'x\n', 'a/card.png': TINY_PNG });
+    assert.deepEqual(ok.errors, []);
+    assert.deepEqual(ok.projects[0]?.fields.art, { repo: 'site/art.png' });
+    const bad = load({ 'a/project.yaml': yaml('"repo:../art.png"'), 'a/index.md': 'x\n', 'a/card.png': TINY_PNG });
+    assert.equal(bad.errors.length, 1);
+    assert.match(bad.errors[0] ?? '', /project\.yaml: art: the path in "repo:\.\.\/art\.png" must stay inside the repository/);
+  } finally {
+    unregisterProjectKind('site-tool');
+  }
+  const game = load({
+    'g/project.yaml': 'name: G\npitch: P.\nkind: game\nstatus: idea\ncard: card.png\nlogo: "repo:site/logo.png"\n',
+    'g/index.md': 'x\n',
+    'g/card.png': TINY_PNG,
+  });
+  assert.equal(game.errors.length, 1);
+  assert.match(game.errors[0] ?? '', /project\.yaml: logo: "repo:site\/logo\.png" is a picture in the docs source: it needs docs\.source/);
 });

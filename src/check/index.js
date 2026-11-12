@@ -132,8 +132,6 @@ function checkFeedLinks(xml, context) {
       check(element.attributes.href, '<link href>');
     } else if (element.local === 'content' && element.attributes.src !== undefined) {
       check(element.attributes.src, '<content src>');
-    } else if ((element.local === 'logo' || element.local === 'icon') && element.text.trim() !== '') {
-      check(element.text.trim(), `<${element.local}>`);
     } else if (
       (element.local === 'content' || element.local === 'summary') &&
       element.attributes.type === 'html'
@@ -144,6 +142,61 @@ function checkFeedLinks(xml, context) {
     }
   });
   return [...problems];
+}
+
+/** @param {Buffer} bytes @returns {boolean} Whether `bytes` start like a PNG, ICO, JPEG or SVG file. */
+function looksLikeImage(bytes) {
+  const startsWith = (/** @type {number[]} */ signature) => signature.every((byte, index) => bytes[index] === byte);
+  if (startsWith([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]) || startsWith([0x00, 0x00, 0x01, 0x00]) || startsWith([0xff, 0xd8, 0xff])) {
+    return true;
+  }
+  return /^\s*(?:<\?xml[^>]*\?>\s*)?(?:<!--[\s\S]*?-->\s*)*(?:<!DOCTYPE[^>]*>\s*)?<svg[\s>]/i.test(bytes.subarray(0, 2048).toString('utf8'));
+}
+
+/**
+ * Checks the `<icon>` and `<logo>` of a feed: when the address is on the site,
+ * it must be a file of the output (below the path of `baseUrl`) that is a PNG,
+ * ICO, JPEG or SVG image. A picture on another host is not fetched.
+ *
+ * @param {string} xml
+ * @param {{ baseUrl: string, resolver: OutputResolver }} context
+ * @returns {string[]}
+ */
+function checkFeedPictures(xml, context) {
+  let root;
+  try {
+    root = parseXml(xml);
+  } catch (error) {
+    if (error instanceof XmlError) return [];
+    throw error;
+  }
+  /** @type {string[]} */
+  const problems = [];
+  const base = new URL(context.baseUrl);
+  const prefix = base.pathname.replace(/\/+$/, '');
+  for (const element of root.children) {
+    if (element.local !== 'icon' && element.local !== 'logo') continue;
+    const value = element.text.trim();
+    const where = `<${element.local}> "${value}"`;
+    // The feed validator reports a value that is not an absolute http(s) URL.
+    if (!/^https?:\/\/[^\s/]/i.test(value) || /\s/.test(value)) continue;
+    let url;
+    try {
+      url = new URL(value);
+    } catch {
+      continue;
+    }
+    if (url.origin === base.origin) {
+      const path = prefix !== '' && (url.pathname === prefix || url.pathname.startsWith(`${prefix}/`)) ? url.pathname.slice(prefix.length) || '/' : url.pathname;
+      const found = context.resolver.resolve(path);
+      if (found === null) {
+        problems.push(`${where} is not in the output (nothing is served at ${path})`);
+      } else if ('file' in found && !looksLikeImage(readFileSync(found.file))) {
+        problems.push(`${where} is not an image (PNG, ICO, JPEG or SVG)`);
+      }
+    }
+  }
+  return problems;
 }
 
 /**
@@ -310,6 +363,7 @@ export async function checkSite(outDir, siteId, options = {}) {
     const xml = readFileSync(path, 'utf8');
     for (const message of validateFeed(xml, { selfUrl: feed.selfUrl }).errors) fail(feed.file, `invalid feed: ${message}`);
     for (const message of checkFeedLinks(xml, { baseUrl, pageUrl: feed.url, resolver })) fail(feed.file, message);
+    for (const message of checkFeedPictures(xml, { baseUrl, resolver })) fail(feed.file, message);
   }
 
   // The icons the build copies to the root of the site (the `favicon` and `appleTouchIcon` settings).

@@ -127,6 +127,8 @@ Each project of the manifest has `docs`: null without a `docs` block, otherwise
 }
 ```
 
+A project with a `landing` file (see [The landing file as the page](projects.md#the-landing-file-as-the-page)) also has `"landing": { "file": "site/landing.md", "sha": "4f1c..." }`: the path of the file in the source and the commit it was read at (the `sha` of `source`; null for a path source outside a git repository). `landing` is null for a project without one. For a git source the same pair is written to `build-info.json` (see [Scheduled rebuilds](scheduling.md)), so `coffer rebuild-needed` notices a push to the project repository even when the project has no guides.
+
 Beside these, `pages` lists the documentation pages built from the guides (see [Project documentation](project-docs.md)): `{ "url", "file", "source", "title" }`, where `source` is the path of the guide file in the source and null for the docs index the build writes when no file is one. `pages` is empty when the project has no guide.
 
 A path source is `{ "type": "path", "path": "sample-tool", "sha": "9a2b..." | null, "dirty": false | null }`, where `path` is relative to the configuration file when the folder is inside its directory, and as written in `project.yaml` otherwise.

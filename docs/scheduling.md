@@ -16,7 +16,11 @@ Each site's build writes `{out}/{siteId}/build-info.json`, at the root of the si
     "lathe": {
       "url": "https://github.com/octo-org/lathe.git",
       "ref": "main",
-      "sha": "0123456789abcdef0123456789abcdef01234567"
+      "sha": "0123456789abcdef0123456789abcdef01234567",
+      "landing": {
+        "file": "site/landing.md",
+        "sha": "0123456789abcdef0123456789abcdef01234567"
+      }
     }
   },
   "nextScheduledAt": "2026-06-04T20:00:00.000Z"
@@ -27,7 +31,7 @@ Each site's build writes `{out}/{siteId}/build-info.json`, at the root of the si
 | ----------------- | ---------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | `builtAt`         | string, ISO 8601 (UTC) | When the build was made, by the system clock. It is not the "now" of `--now` or `COFFER_NOW`, which only decides which posts are published. Informational: `rebuild-needed` does not use it.                                                                         |
 | `engineVersion`   | string                 | The version of coffer that built the site (the `version` in its `package.json`). Informational.                                                                                                                                                                       |
-| `sources`         | object                 | The git [documentation sources](docs-sources.md) of the site's projects, by project slug (the project's folder name), sorted by slug. Each value has `url` (the address of the repository, with no credentials, query or fragment), `ref` (the branch or tag) and `sha` (the commit the build used: for an annotated tag, the commit the tag points at). A project whose documentation is a folder (`path`) is not listed, because a folder has no remote to compare. `{}` when the site has no git source. |
+| `sources`         | object                 | The git [documentation sources](docs-sources.md) of the site's projects, by project slug (the project's folder name), sorted by slug. Each value has `url` (the address of the repository, with no credentials, query or fragment), `ref` (the branch or tag) and `sha` (the commit the build used: for an annotated tag, the commit the tag points at). A project with a [landing file](projects.md#the-landing-file-as-the-page) also has `landing`: `file` is the path of the landing file in the repository (`landing.file` of `project.yaml`) and `sha` the commit it was read at, which is the `sha` of the source because the page is read from the same checkout; the key is absent for a project without a landing file. A project whose documentation is a folder (`path`) is not listed, because a folder has no remote to compare. `{}` when the site has no git source. |
 | `nextScheduledAt` | string or `null`      | The date of the earliest post of the site that is not a draft and is dated after the build's "now"; `null` when there is none. It is computed with the rule the build itself uses to publish posts (a post is published when it is not a draft and its date is not after "now"), over the posts of every blog of the site. A date without a time is read in the site's `timezone`, as in the pages. |
 
 Readers must ignore fields they do not know. The file is pretty-printed JSON followed by a newline; the keys are always in the order above.
@@ -74,11 +78,12 @@ The answer is `yes` when any of these holds, and `no` otherwise:
 | `source-sha-changed`    | A git source is configured and deployed, with the same repository and ref, but the branch or tag is at another commit now.                                         |
 | `source-ref-changed`    | The ref of a source in the configuration is not the ref the deployed build used.                                                                                  |
 | `source-url-changed`    | The repository of a source in the configuration is not the one the deployed build used.                                                                           |
+| `source-landing-changed` | The landing file of a project in the configuration is not the one the deployed build recorded (it was added, removed or is another path), and the commit has not moved. |
 | `source-added`          | A project has a git source in the configuration that the deployed build did not list.                                                                             |
 | `source-removed`        | The deployed build listed a source that is no longer in the configuration.                                                                                        |
 | `scheduled-time-passed` | `nextScheduledAt` of the deployed file is not after the current time: a post that was waiting for its date is due.                                                |
 
-Sources are compared one project slug at a time, so one change is enough. The current time is the system clock.
+Sources are compared one project slug at a time, so one change is enough. A project counts as soon as it has a git `docs.source`: a project that has only a `landing` file in its repository (no `guides`, no `reference`) is compared like any other, so a push that edits its landing page makes the answer `yes` with no change in the site repository. The landing file is read from the same checkout as the guides, so the commit of the source is the commit of the page. The current time is the system clock.
 
 Plain output is `yes` or `no` on the first line, then one line `- code: message` per reason:
 

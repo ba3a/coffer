@@ -831,6 +831,7 @@ export class DocsSourceError extends Error {
  * @property {{ type: 'git', git: string, ref: string, sha: string } | { type: 'path', path: string, sha: string | null, dirty: boolean | null }} source A git source: the address (without credentials), the branch or tag, and the commit the cache holds. A path source: the folder as written in `project.yaml`, the commit of the repository it is in (null outside one) and whether the files differ from it (null when there is no commit).
  * @property {string | null} github
  * @property {DocsGuide[]} guides
+ * @property {{ file: string, sha: string | null } | null} landing The landing file of the project (`landing: { file }` in `project.yaml`): its path in the source and the commit it was read at (the commit of `source`; null for a folder outside a git repository). Null when the project has no landing file.
  */
 
 /**
@@ -1380,16 +1381,17 @@ function displayRef(ref) {
  *
  * @param {FetchedDocs} fetched
  * @param {string} configDir Absolute path of the folder with the configuration file; a path source is listed relative to it when it is inside.
+ * @param {string | null} [landingFile] The `landing.file` of the project, if it has one.
  * @returns {ManifestDocs}
  */
-export function manifestDocs(fetched, configDir) {
+export function manifestDocs(fetched, configDir, landingFile = null) {
   /** @type {ManifestDocs['source']} */
   let source = fetched.source;
   if (source.type === 'path') {
     const inside = relative(configDir, fetched.root);
     source = { ...source, path: isInside(inside) && inside !== '' ? inside.split(sep).join('/') : source.path };
   }
-  return { source, github: fetched.github, guides: fetched.guides };
+  return { source, github: fetched.github, guides: fetched.guides, landing: landingFile === null ? null : { file: landingFile, sha: source.sha } };
 }
 
 /**

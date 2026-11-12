@@ -22,7 +22,7 @@ content/projects/kerfcalc/
   card.png         the card picture, and any other pictures the text uses
 ```
 
-Folders whose names start with `.` or `_` are ignored, and so are files directly in `projects.dir`. A folder without `project.yaml` or without `index.md` fails the build and the message names the missing file.
+Folders whose names start with `.` or `_` are ignored, and so are files directly in `projects.dir`. A folder without `project.yaml` or without `index.md` fails the build and the message names the missing file. A project whose page comes from its repository has no `index.md` (see [A page and pictures from the project's repository](#a-page-and-pictures-from-the-projects-repository)).
 
 A project page must not share its address with another page. If `urls.projects` is `made`, a blog with the prefix `made/journal` and a project folder `journal` both want `/made/journal/`: the build fails and the message names the `project.yaml`. Rename the folder or change the prefix. `urls.projects` itself cannot be a name the build writes (`assets`, `img`, `cards` and the root files), which the configuration check reports.
 
@@ -50,18 +50,58 @@ The fields every project has:
 | `pitch`    | yes      | -       | One line that says what the project is. Shown on the card and under the heading, and used as the page's description in link previews.            |
 | `kind`     | yes      | -       | A registered kind, see below. `tool` and `game` ship with coffer.                                                                                |
 | `status`   | yes      | -       | One of `idea`, `in-development`, `released`, `maintained`, `archived`. Shown on the card in the language of the site (`projects.status.*`).     |
-| `card`     | yes      | -       | The card picture: a JPEG, PNG, WebP or HEIC file inside the project folder.                                                                      |
+| `card`     | yes      | -       | The card picture: a JPEG, PNG, WebP or HEIC file inside the project folder, or `repo:` and a path inside the project's `docs.source`, such as `repo:site/card.png`. |
 | `cardAlt`  | no       | empty   | Alternative text of the card picture. Leave it out when the picture only decorates the card; the project's name is the link text.                |
 | `featured` | no       | `false` | Whether the project is on the home page.                                                                                                         |
 | `order`    | no       | none    | A whole number: where the project stands in the showcase and on the projects page. Lower comes first.                                            |
 | `tag`      | no       | none    | The devlog tag that marks posts about the project, such as `projects/kerfcalc`. Written like any [tag](tags.md); it is normalized to lower case. |
 | `license`  | no       | none    | The license of the project, shown at the end of its page.                                                                                        |
+| `landing`  | no       | none    | `{ file: <path> }`: the Markdown file in the project's `docs.source` that is the text of the page, instead of `index.md`. See below.            |
+| `brand`    | no       | none    | `{ dir: <path> }`: a folder in the project's `docs.source` that holds the project's brand files. See below.                                      |
 
 The slug is not a field; a `slug:` key fails the build. Any key that neither the common fields nor the project's kind knows fails the build too, so a typo does not go unnoticed.
 
 ### `index.md`
 
 The text of the project's page, in ordinary [Markdown](markdown.md) without front matter (a file that starts with `---` fails the build: the fields are in `project.yaml`). Images beside the file, carousels, code blocks and the image viewer work as in a post, and links are checked as in a post (see [Links, images and the build report](links.md)). Images are published under the site's [metadata policy](location-policy.md), exactly as in a post. A project page has no tracks and no located photos of its own, so a `::map` there is left out and the build warns. A tool with a `docs` source can show a section of its README with `::readme{section="..."}` (see [README sections on the project page](project-docs.md#readme-sections-on-the-project-page)).
+
+### A page and pictures from the project's repository
+
+A project whose repository is its `docs.source` (see [Where a project's documentation comes from](docs-sources.md)) can keep the text of its page, its card and its brand files there, so that a change in the repository changes the site without a commit in the site's own repository. Three keys read from the source:
+
+```yaml
+docs:
+  source: { git: https://github.example/tove-marlowe/kerfcalc }
+landing:
+  file: site/landing.md
+brand:
+  dir: site/brand
+card: repo:site/card.png
+```
+
+- `landing: { file }` names a Markdown file in the source. It is the text of the project's page; the folder then has no `index.md`. A folder that has both fails the build and the message says there are two sources for one page.
+- `brand: { dir }` names a folder of the source with the project's brand files.
+- `card`, and every other picture key of a kind that has a `docs` source (a kind added with `registerProjectKind`; a game has no `docs`, so its `logo` and `keyArt` stay files of the project folder), accept `repo:` and a path in the source instead of a file of the project folder.
+
+All three need `docs.source`; without it the build fails and the message names the key. Every path is relative to the root of the source, written with `/`, and must stay inside it (no `..`, no leading `/`, no drive letter). `landing.file` ends in `.md`; a `repo:` picture has the extension of a picture. The paths are checked when the project is read; the files are looked for after the source is fetched, so a path that does not exist fails later, naming the key. When the source is not fetched yet, the project carries them as `landing` (`{ file }`), `brand` (`{ dir }`) and `cardRepo` (the path of a `repo:` card, with `card` empty). In templates `project.landing` is the front matter of the landing file with `file` added (see below).
+
+### The landing file as the page
+
+After the source is fetched, the build reads the `landing` file from the same checkout and renders it as the body of the project page; templates get it as `page.content`, as for an `index.md`, so themes need no change. The file goes through the same pipeline as the guides of the project (see [Where a project's documentation comes from](docs-sources.md)):
+
+- Relative links and images are resolved from the folder of the landing file in the repository (`/path` from its root). An image is published through the [image pipeline](images.md); a link to a guide becomes the address of its page on the site; a link to another file of the repository becomes its GitHub address (this needs `github` in the `docs` block); a `ref:` link leads to a symbol of the project's reference.
+- A `::readme` directive works as on any project page.
+- Raw HTML is kept as written, so the page can carry `div` elements that a theme styles. As in a guide, an address with a scheme other than `http`, `https` or `mailto` is replaced by `#` and reported. Unlike a guide page, the file keeps its first level-1 heading in the text, as an `index.md` does.
+- Front matter (YAML between `---` lines at the top of the file) is not part of the text. Templates see it as `project.landing`: its keys, plus `file`, the path of the landing file in the source. A file without front matter gives `{ file }`. A project without `landing` has `project.landing` set to null, so `{% if project.landing %}` tells the two apart. `file` is reserved: a front matter key of that name fails the build.
+- A source that cannot be fetched, a landing file that does not exist (with exactly the capitalisation written in `project.yaml`), a broken front matter, a broken link and a missing image fail the build. There is no fallback to an older or an empty page. Messages start with `{repo}:{path}:{line}:{column}`, with line and column counted in the file, front matter included: `kerfcalc:site/landing.md:12:5 broken link 'docs/missing.md' ...`. `{repo}` is the GitHub repository name, else the name of the source folder.
+
+### The brand folder and the pictures of the source
+
+After the source is fetched, the build copies **every file** of `brand.dir`, with its sub-folders, to `/assets/{slug}/{path in the folder}` in the output, byte for byte: nothing is re-encoded or rewritten, an SVG included (the build does not look inside it, so keep scripts out of a brand SVG). These are the addresses a theme uses: `site/brand/logo.svg`, `logo-dark.svg`, `favicon.ico`, `favicon.svg` and `apple-touch-icon.png` are `/assets/{slug}/logo.svg` and so on. A folder holds at most 500 files; a symbolic link must lead to a file inside the repository.
+
+If the address of a brand file is also a file of the theme's `assets` folder (capitalisation ignored), or the address of another brand file, the build fails and the message names both: `content/projects/lathe/project.yaml: brand.dir: "/assets/lathe/logo.svg" is published twice: by the brand file lathe:site/brand/logo.svg of the project "lathe" and by the theme asset "assets/lathe/logo.svg"`. A `brand.dir` that is missing from the source, is not a folder or leaves the repository fails the build too.
+
+A picture written `repo:path` (`card`, and every key of the project's kind that takes a picture) is looked for in the same checkout, with the capitalisation written, and then goes through the same [image pipeline](images.md) as a picture of the project folder, so the card is resized and is the `og:image` of the project page as usual. A file that does not exist, is not a file or leaves the repository fails the build with the key and the path: `card: image 'repo:site/card.png': the file does not exist in the docs source lathe`. In the manifest the `card` of such a project is `repo:` and the path.
 
 ## Order and the showcase
 
