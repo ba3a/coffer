@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" fill="none" stroke="#ECE9E3" stroke-width="2" stroke-linejoin="round" stroke-linecap="round">
+  <title>coffer</title>
+  <path d="M5 14V11C5 7.5 7.5 5.5 11 5.5H21C24.5 5.5 27 7.5 27 11V14Z"/>
+  <rect x="5" y="14" width="22" height="13" rx="1.5"/>
+  <path d="M10 6V27M22 6V27"/>
+  <rect x="13" y="11.5" width="6" height="7.5" rx="1" fill="#D9A84E" stroke="#D9A84E"/>
+  <circle cx="16" cy="14.3" r="1.1" fill="#121110" stroke="none"/>
+  <rect x="15.45" y="14.5" width="1.1" height="2.6" fill="#121110" stroke="none"/>
+</svg>

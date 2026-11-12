@@ -36,7 +36,17 @@ const FORBIDDEN_RE = new RegExp(FORBIDDEN.join('|'), 'i');
 
 const CREDITS_MARKER = '<!-- credits -->';
 const IGNORED_DIRS = new Set(['node_modules', '.git', 'dist', '.cache', '.coffer']);
-const EXEMPT_FILES = new Set(['LICENSE', 'NOTICE', SELF]);
+// CLAUDE.md and everything under site/ are exempt: the website landing page and
+// its agent instructions name the author's site.
+const EXEMPT_FILES = new Set(['LICENSE', 'NOTICE', 'CLAUDE.md', SELF]);
+const EXEMPT_DIRS = ['site/'];
+
+/**
+ * @param {string} file Forward-slash path relative to the root.
+ * @returns {boolean}
+ */
+const isExempt = (file) =>
+  EXEMPT_FILES.has(file) || EXEMPT_DIRS.some((dir) => file.startsWith(dir));
 
 /**
  * Files under `root` that are tracked or untracked-but-not-ignored, as
@@ -81,8 +91,8 @@ function listFiles(root, useGit) {
 
 /**
  * Scans the files under `root` and returns one message per offending line.
- * Skips node_modules, LICENSE and NOTICE at the root, this test, binary files
- * and any region delimited by two credits markers.
+ * Skips node_modules, LICENSE, NOTICE and CLAUDE.md at the root, site/, this
+ * test, binary files and any region delimited by two credits markers.
  *
  * @param {string} root
  * @param {{ useGit?: boolean }} [options]
@@ -92,7 +102,7 @@ function findViolations(root, { useGit = true } = {}) {
   /** @type {string[]} */
   const violations = [];
   for (const file of listFiles(root, useGit)) {
-    if (EXEMPT_FILES.has(file)) continue;
+    if (isExempt(file)) continue;
     if (file.split('/').includes('node_modules')) continue;
     const buffer = readFileSync(join(root, file));
     if (buffer.includes(0)) continue;
@@ -187,4 +197,29 @@ test('LICENSE and NOTICE are only exempt at the root', () => {
   withTree({ 'docs/NOTICE': 'ba3a\n' }, (root) => {
     assert.deepEqual(findViolations(root, { useGit: false }), ['docs/NOTICE:1: ba3a']);
   });
+});
+
+test('CLAUDE.md and site/ are the only exemptions besides the license files and this test', () => {
+  assert.deepEqual([...EXEMPT_FILES].sort(), ['CLAUDE.md', 'LICENSE', 'NOTICE', SELF].sort());
+  assert.deepEqual(EXEMPT_DIRS, ['site/']);
+});
+
+test('CLAUDE.md and site/ are not scanned, but look-alike paths are', () => {
+  withTree(
+    {
+      'CLAUDE.md': 'ba3a.dev\n',
+      'site/landing.md': 'Vasily Petrov, ba3a.dev\n',
+      'site/brand/note.txt': 'specloop\n',
+      'docs/CLAUDE.md': 'ba3a\n',
+      'website/page.md': 'ba3a\n',
+      'src/site/page.js': 'ba3a\n',
+    },
+    (root) => {
+      assert.deepEqual(findViolations(root, { useGit: false }).sort(), [
+        'docs/CLAUDE.md:1: ba3a',
+        'src/site/page.js:1: ba3a',
+        'website/page.md:1: ba3a',
+      ]);
+    },
+  );
 });

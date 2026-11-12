@@ -35,6 +35,8 @@ Tests are written with `node:test` and `node:assert/strict`. A few guidelines:
 - Tests must not need the network, an account or a secret. Replace git, HTTP and the clock with the parameters the code offers for it.
 - Tests leave nothing behind. Use a temporary directory and remove it.
 
+`test/landing.test.js` checks that `site/landing.md` exists and uses only known, unrepeated section markers, and that `site/brand` and `site/card.png` exist.
+
 The test suite takes several minutes, because it builds sites and processes images.
 
 ### Continuous integration

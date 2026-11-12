@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">
+  <title>coffer</title>
+  <style>
+    .b{fill:#1C1B19}.l{fill:#9A6B1F}
+    @media (prefers-color-scheme:dark){.b{fill:#ECE9E3}.l{fill:#D9A84E}}
+  </style>
+  <path class="b" d="M3 14V11C3 6.5 6 4 10.5 4H21.5C26 4 29 6.5 29 11V14Z"/>
+  <rect class="b" x="3" y="15.5" width="26" height="12.5" rx="1.5"/>
+  <rect class="l" x="12.5" y="10" width="7" height="9" rx="1"/>
+</svg>

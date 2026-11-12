@@ -278,3 +278,29 @@ test('the files outside the package are where the project expects them', () => {
     assert.ok(existsSync(join(root, file)), `${relative(root, join(root, file))} is missing`);
   }
 });
+
+test('CLAUDE.md points to the tests and the contribution rules, and carries the landing page section', () => {
+  const text = read('CLAUDE.md');
+  assert.match(text, /^# Guidance for developing coffer$/m);
+  assert.match(text, /npm test/);
+  assert.match(text, /CONTRIBUTING\.md/);
+  const section = text.slice(text.indexOf('## Website landing page (ba3a.dev)'));
+  assert.ok(section.startsWith('## Website landing page (ba3a.dev)'), 'the landing section is present');
+  assert.match(section, /`site\/landing\.md` is this project's landing page on ba3a\.dev\./);
+  assert.match(section, /<div class="section-marker" id="name"><\/div>/);
+  assert.match(
+    section,
+    /hero, problem, audience, how-it-works, timeline, spec-example, features, compare, dogfood,\n {2}quick-start, faq, final-cta/,
+  );
+  assert.match(section, /Leave `site\/brand\/` and `site\/card\.png` alone unless asked\./);
+});
+
+test('the pull request template asks whether the landing page is still true', () => {
+  assert.match(read('.github/pull_request_template.md'), /^- \[ \] Landing page \(`site\/landing\.md`\) still true\?$/m);
+});
+
+test('the package does not ship the website', () => {
+  /** @type {string[]} */
+  const files = JSON.parse(read('package.json')).files;
+  assert.ok(files.every((entry) => !/^(\.\/)?site(\/|$)/.test(entry)), 'site/ is not in "files"');
+});
