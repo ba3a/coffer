@@ -90,7 +90,7 @@ rsync -av public/ host:/var/www/
 - **🧰 Tool authors.** Your docs stay in your repository. The site pulls them at build time and renders them in your theme.
 - **🔒 Privacy-minded photographers.** Location and camera data are stripped unless you say otherwise, and every build lists the posts that publish an exact position.
 
-**Not for you** if you want a CMS with a web editor, thousands of ready-made themes or a large community. coffer is a one-person project at version 0.1.0.
+**Not for you** if you want a CMS with a web editor, thousands of ready-made themes or a large community. coffer is a one-person project at version 0.1.2.
 
 <div class="section-marker" id="how-it-works"></div>
 
@@ -162,6 +162,7 @@ We left at six. The ridge was clear by nine.
 - **📦 Originals out of git.** A lock file in git, the content in an S3-compatible store such as Cloudflare R2, and hooks that keep them in step.
 - **📚 Project documentation.** Guides pulled from the project's own repository, plus a reference generated from its source.
 - **🔎 Search and feeds.** Search is built at build time and runs in the visitor's browser. Atom feeds exist per blog, tag, series and project.
+- **📰 Full-post index pages.** A blog can show whole posts on its index, tag pages and series pages, split into pages of a size you choose. Search still finds one hit per post.
 - **🕒 Scheduled posts.** A post dated next Tuesday appears on Tuesday, without a rebuild every hour.
 
 <div class="section-marker" id="compare"></div>
@@ -183,7 +184,7 @@ Hugo is a fast static generator with a large ecosystem and thousands of themes. 
 
 ### What you give up
 
-- It is version 0.1.0 with one maintainer. Before 1.0 a minor version may need a change in your site, and the changelog says so.
+- It is version 0.1.2 with one maintainer. Before 1.0 a minor version may need a change in your site, and the changelog says so.
 - It needs Node.js 24 or newer.
 - There is one default theme and the one you write. There is no theme gallery.
 - It is developed and tested on Windows and Linux.
@@ -194,7 +195,7 @@ Hugo is a fast static generator with a large ecosystem and thousands of themes. 
 
 ## coffer builds the site you're reading
 
-ba3a.dev and my.ba3a.dev are two sites from one repository, built with coffer 0.1.0 and published to Cloudflare Pages by a push to `main`.
+ba3a.dev and my.ba3a.dev are two sites from one repository, built with coffer and published to Cloudflare Pages by a push to `main`.
 
 - **2** · sites built from one repository
 - **3** · repositories whose documentation is pulled at build time: coffer, roto and specloop
@@ -228,7 +229,7 @@ The `build-info.json` this site serves, as it was on 7 November 2026. Every buil
 }
 ```
 
-> **The docs of coffer itself are built this way.** The guides under [/made/coffer/docs/](../docs/README.md) come from the `docs/` folder of the coffer repository. Push a change there and this site picks it up within the hour.
+> **The docs of coffer itself are built this way.** The guides under [/made/coffer/docs/](../docs/README.md) come from the `docs/` folder of the coffer repository. Push a change there and this site picks it up within the hour. So does this page: it is the `site/landing.md` file of that repository, set as the project's `landing`.
 
 <div class="section-marker" id="quick-start"></div>
 
@@ -252,7 +253,7 @@ npx coffer serve example/dist/workshop
 npx coffer dev --config example/coffer.yaml
 
 # in your own project
-npm install git+https://github.com/ba3a/coffer.git#v0.1.0
+npm install git+https://github.com/ba3a/coffer.git#v0.1.2
 ```
 
 <div class="section-marker" id="faq"></div>
@@ -279,7 +280,7 @@ Yes. Each site has its own language and its own theme strings. my.ba3a.dev is in
 
 ### How stable is it?
 
-It is 0.1.0 and follows semantic versioning. Before 1.0 a minor version may need a change in your site, and the changelog lists it. Pin a tag, and upgrade when you choose.
+It is 0.1.2 and follows semantic versioning. Before 1.0 a minor version may need a change in your site, and the changelog lists it. Pin a tag, and upgrade when you choose.
 
 ### Which systems does it run on?
 
