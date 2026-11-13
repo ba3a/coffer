@@ -20,10 +20,12 @@ accent:
     accent: "#9a6b1f"
     accent-text: "#7c5516"
     accent-soft: "#f4e8cc"
+    term-accent: "#e0b25c"
   dark:
     accent: "#d9a84e"
     accent-text: "#d9a84e"
     accent-soft: "#2b2214"
+    term-accent: "#e0b25c"
 ---
 
 <div class="section-marker" id="hero"></div>
