@@ -63,11 +63,12 @@ test('the front matter carries the layout settings and the accent palette', () =
   });
   assert.equal(data.layout.dogfood, 'plain');
   assert.equal(data.layout.when, 'span class="lp-when"');
+  assert.equal(data.layout.hero, 'terminal');
   assert.equal(data.layout.brand, 0);
   assert.deepEqual(Object.keys(data.layout.strings), ['terminal_title', 'hero_terminal', 'problem_terminal', 'dogfood_terminal']);
   for (const value of Object.values(data.layout.strings)) assert.equal(typeof value, 'string');
-  assert.deepEqual(data.accent.light, { accent: '#9a6b1f', 'accent-text': '#7c5516', 'accent-soft': '#f4e8cc' });
-  assert.deepEqual(data.accent.dark, { accent: '#d9a84e', 'accent-text': '#d9a84e', 'accent-soft': '#2b2214' });
+  assert.deepEqual(data.accent.light, { accent: '#9a6b1f', 'accent-text': '#7c5516', 'accent-soft': '#f4e8cc', 'term-accent': '#e0b25c' });
+  assert.deepEqual(data.accent.dark, { accent: '#d9a84e', 'accent-text': '#d9a84e', 'accent-soft': '#2b2214', 'term-accent': '#e0b25c' });
 });
 
 test('every relative link and image target of the landing text exists', () => {
