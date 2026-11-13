@@ -1,5 +1,6 @@
 ---
 layout:
+  hero: terminal
   visual:
     hero: pre
     problem: pre
