@@ -135,6 +135,7 @@ export {
 export { FontError, readFontMetrics } from './font-metrics.js';
 export { formatTimecode, isoDuration, parseTimecode } from './video/timecode.js';
 export { DEFAULT_VIDEO_RULES, PROVIDER_NAMES, matchVideoUrl, resolveVideoRules } from './video/rules.js';
+export { embedUrl, metadataUrl, thumbnailUrl, watchUrl } from './video/urls.js';
 export { renderRobots, renderSitemap } from './sitemap.js';
 export {
   PROJECT_SCHEME,
