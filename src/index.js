@@ -133,6 +133,7 @@ export {
   roundCoordinate,
 } from './images/metadata.js';
 export { FontError, readFontMetrics } from './font-metrics.js';
+export { formatTimecode, isoDuration, parseTimecode } from './video/timecode.js';
 export { renderRobots, renderSitemap } from './sitemap.js';
 export {
   PROJECT_SCHEME,
