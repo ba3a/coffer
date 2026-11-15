@@ -14,6 +14,8 @@ import { DEFAULT_ELEVATION_THRESHOLD_METERS, DEFAULT_TOLERANCE_METERS } from './
 import { CAMERA_POLICIES, LOCATION_POLICIES } from './images/policy.js';
 import { normalizeMediaConfig } from './media/config.js';
 import { DEFAULT_ATTRIBUTION, DEFAULT_MAX_ZOOM, DEFAULT_TILE_URL, isTileUrl } from './geo/map.js';
+import { PROVIDER_NAMES } from './video/rules.js';
+import { patternGroupNames, templateProblem } from './video/urls.js';
 
 /**
  * The file name coffer looks for when no `--config` path is given.
@@ -159,7 +161,13 @@ export const CONFIG_FILE_NAME = 'coffer.yaml';
  * @property {MapConfig} map The tiles of the maps of posts.
  * @property {AnalyticsConfig} analytics The optional analytics snippet; `{ provider: 'none' }` when the site has none.
  * @property {ProjectsConfig | null} projects Projects location, or null when the site has no projects.
+ * @property {SiteVideoConfig} video How the videos of the site load and which addresses are recognised as videos.
  */
+
+/** @typedef {import('./video/rules.js').SiteVideoConfig} SiteVideoConfig */
+/** @typedef {import('./video/rules.js').VideoRule} VideoRule */
+/** @typedef {import('./video/rules.js').GenericProvider} GenericProvider */
+/** @typedef {import('./video/rules.js').Provider} Provider */
 
 /**
  * The normalized configuration returned by {@link loadConfig} and
@@ -253,6 +261,7 @@ const SITE_KEYS = [
   'map',
   'analytics',
   'projects',
+  'video',
 ];
 /** The values of `analytics.provider`. */
 export const ANALYTICS_PROVIDERS = Object.freeze(['none', 'cloudflare', 'custom']);
@@ -1067,6 +1076,205 @@ function normalizeAnalytics(raw, path, problems) {
   return none;
 }
 
+const VIDEO_KEYS = ['load', 'fetchPreviews', 'builtinRules', 'peertubeHosts', 'rules'];
+const VIDEO_LOADS = ['click', 'iframe'];
+/** @type {readonly Provider[]} */
+const VIDEO_PROVIDERS = [.../** @type {Provider[]} */ (Object.keys(PROVIDER_NAMES)), 'generic'];
+/** The keys a rule may have only when its provider is `generic`, in the order they are checked. */
+const GENERIC_VIDEO_KEYS = /** @type {const} */ ([
+  'name',
+  'embed',
+  'watch',
+  'startParam',
+  'endParam',
+  'autoplayParam',
+  'thumbnail',
+  'oembed',
+]);
+const VIDEO_RULE_KEYS = ['pattern', 'flags', 'provider', ...GENERIC_VIDEO_KEYS];
+const VIDEO_TEMPLATE_KEYS = /** @type {const} */ (['embed', 'watch', 'thumbnail', 'oembed']);
+const VIDEO_PARAM_KEYS = /** @type {const} */ (['startParam', 'endParam', 'autoplayParam']);
+const VIDEO_HOST_RE = /^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]*[a-z0-9])?)+$/;
+const QUERY_PARAM_RE = /^[A-Za-z0-9_.-]+$/;
+
+/**
+ * Reads a yes/no switch that is on unless the configuration turns it off.
+ *
+ * @param {Record<string, unknown>} mapping
+ * @param {string} key
+ * @param {string} path Path of `mapping`.
+ * @param {Problems} problems
+ * @returns {boolean}
+ */
+function readSwitchOn(mapping, key, path, problems) {
+  const value = mapping[key];
+  if (value === undefined || value === null) return true;
+  if (typeof value !== 'boolean') {
+    problems.add(`${path}.${key}`, 'must be true or false');
+    return true;
+  }
+  return value;
+}
+
+/**
+ * Reads the `video` key of a site. Every key is optional.
+ *
+ * @param {Record<string, unknown> | undefined} raw
+ * @param {string} path
+ * @param {Problems} problems
+ * @returns {SiteVideoConfig}
+ */
+function normalizeVideo(raw, path, problems) {
+  /** @type {SiteVideoConfig} */
+  const video = { load: 'click', fetchPreviews: true, builtinRules: true, peertubeHosts: [], rules: [] };
+  if (raw === undefined) return video;
+  rejectUnknownKeys(raw, VIDEO_KEYS, path, problems);
+  const load = raw.load;
+  if (load !== undefined && load !== null) {
+    if (load === 'click' || load === 'iframe') video.load = load;
+    else problems.add(`${path}.load`, `must be one of: ${VIDEO_LOADS.join(', ')}`);
+  }
+  video.fetchPreviews = readSwitchOn(raw, 'fetchPreviews', path, problems);
+  video.builtinRules = readSwitchOn(raw, 'builtinRules', path, problems);
+  readList(raw, 'peertubeHosts', path, problems).forEach((host, index) => {
+    if (typeof host === 'string' && VIDEO_HOST_RE.test(host)) video.peertubeHosts.push(host);
+    else problems.add(`${path}.peertubeHosts[${index}]`, 'must be a host name such as video.example.org');
+  });
+  readList(raw, 'rules', path, problems).forEach((entry, index) => {
+    const rule = normalizeVideoRule(entry, `${path}.rules[${index}]`, problems);
+    if (rule !== undefined) video.rules.push(rule);
+  });
+  return video;
+}
+
+/**
+ * Reads one of the site's own video rules. Returns `undefined` after
+ * reporting a problem.
+ *
+ * @param {unknown} raw
+ * @param {string} path Path of the rule, such as `sites[0].video.rules[1]`.
+ * @param {Problems} problems
+ * @returns {VideoRule | undefined}
+ */
+function normalizeVideoRule(raw, path, problems) {
+  if (!isMapping(raw)) {
+    problems.add(path, 'must be a mapping');
+    return undefined;
+  }
+  const before = problems.list.length;
+  rejectUnknownKeys(raw, VIDEO_RULE_KEYS, path, problems);
+  const given = (/** @type {string} */ key) => raw[key] !== undefined && raw[key] !== null;
+
+  /** @type {'' | 'i' | undefined} */
+  let flags = '';
+  if (given('flags')) flags = raw.flags === '' || raw.flags === 'i' ? raw.flags : undefined;
+  /** @type {Provider | undefined} */
+  let provider;
+  if (given('provider')) provider = VIDEO_PROVIDERS.find((name) => name === raw.provider);
+
+  const pattern = given('pattern') ? raw.pattern : undefined;
+  /** @type {string[] | undefined} */
+  let groupNames;
+  if (pattern === undefined) {
+    problems.add(`${path}.pattern`, 'is required');
+  } else if (typeof pattern !== 'string' || pattern === '') {
+    problems.add(`${path}.pattern`, 'must be a non-empty string');
+  } else if (!compiles(pattern, flags ?? '')) {
+    problems.add(`${path}.pattern`, 'is not a valid regular expression');
+  } else {
+    groupNames = patternGroupNames(pattern);
+    if (!groupNames.includes('id')) {
+      problems.add(`${path}.pattern`, 'must have a named group "id"');
+    } else if (provider === 'peertube' && !groupNames.includes('host')) {
+      problems.add(`${path}.pattern`, 'must have a named group "host" for provider peertube');
+    } else if (provider === 'vkvideo' && !groupNames.includes('oid')) {
+      problems.add(`${path}.pattern`, 'must have a named group "oid" for provider vkvideo');
+    }
+  }
+  if (flags === undefined) problems.add(`${path}.flags`, 'must be "" or "i"');
+  if (!given('provider')) {
+    problems.add(`${path}.provider`, 'is required');
+  } else if (provider === undefined) {
+    problems.add(`${path}.provider`, `must be one of: ${VIDEO_PROVIDERS.join(', ')}`);
+  }
+
+  /** @type {GenericProvider | null} */
+  let generic = null;
+  if (provider === 'generic') {
+    generic = normalizeGenericProvider(raw, path, groupNames, problems);
+  } else if (provider !== undefined) {
+    for (const key of GENERIC_VIDEO_KEYS) {
+      if (given(key)) problems.add(`${path}.${key}`, 'is only allowed for provider generic');
+    }
+  }
+
+  if (problems.list.length > before || typeof pattern !== 'string' || flags === undefined || provider === undefined) {
+    return undefined;
+  }
+  return { pattern, flags, provider, generic };
+}
+
+/**
+ * Reads the keys of a rule whose provider is `generic`.
+ *
+ * @param {Record<string, unknown>} raw The rule.
+ * @param {string} path Path of the rule.
+ * @param {string[] | undefined} groupNames The named groups of the rule's pattern; undefined when the pattern is missing or invalid, which leaves the placeholders of the templates unchecked.
+ * @param {Problems} problems
+ * @returns {GenericProvider | null} Null after reporting a problem.
+ */
+function normalizeGenericProvider(raw, path, groupNames, problems) {
+  const before = problems.list.length;
+  /** @type {Record<string, string | null>} */
+  const values = {};
+  for (const key of GENERIC_VIDEO_KEYS) {
+    const required = key === 'name' || key === 'embed' || key === 'watch';
+    const value = readString(raw, key, path, problems, { required, fallback: undefined });
+    values[key] = value ?? null;
+    if (value === undefined) continue;
+    if (groupNames !== undefined && VIDEO_TEMPLATE_KEYS.some((name) => name === key)) {
+      const problem = templateProblem(value, groupNames, /** @type {import('./video/urls.js').TemplateKey} */ (key));
+      if (problem !== null) problems.add(`${path}.${key}`, problem);
+    }
+    if (VIDEO_PARAM_KEYS.some((name) => name === key) && !QUERY_PARAM_RE.test(value)) {
+      problems.add(`${path}.${key}`, 'must be a query parameter name');
+    }
+  }
+  if (values.thumbnail !== null && values.oembed !== null) {
+    problems.add(`${path}.thumbnail`, 'cannot be used together with oembed');
+  }
+  if (problems.list.length > before) return null;
+  return {
+    name: /** @type {string} */ (values.name),
+    embed: /** @type {string} */ (values.embed),
+    watch: /** @type {string} */ (values.watch),
+    startParam: values.startParam,
+    endParam: values.endParam,
+    autoplayParam: values.autoplayParam,
+    thumbnail: values.thumbnail,
+    oembed: values.oembed,
+  };
+}
+
+/**
+ * Whether a rule pattern compiles on its own with the `u` flag plus the
+ * rule's flags. Compiling it bare, not wrapped in `^(?:...)$` as
+ * `matchVideoUrl` does, rejects unbalanced parentheses such as `a)|(b` that
+ * the wrapper would close.
+ *
+ * @param {string} pattern
+ * @param {'' | 'i'} flags
+ * @returns {boolean}
+ */
+function compiles(pattern, flags) {
+  try {
+    new RegExp(pattern, `u${flags}`);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 /**
  * @param {unknown} raw
  * @param {number} index
@@ -1197,6 +1405,8 @@ function normalizeSite(raw, index, baseDir, problems) {
     problems,
   );
 
+  const video = normalizeVideo(readMapping(raw, 'video', path, problems), `${path}.video`, problems);
+
   /** @type {ProjectsConfig | null} */
   let projects = null;
   const projectsRaw = readMapping(raw, 'projects', path, problems);
@@ -1286,6 +1496,7 @@ function normalizeSite(raw, index, baseDir, problems) {
     map,
     analytics,
     projects,
+    video,
   };
 }
 

@@ -229,6 +229,7 @@ test('defaults are applied to a minimal site', () => {
     },
     analytics: { provider: 'none' },
     projects: null,
+    video: { load: 'click', fetchPreviews: true, builtinRules: true, peertubeHosts: [], rules: [] },
   });
 });
 
