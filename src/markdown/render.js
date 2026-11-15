@@ -11,6 +11,7 @@ import { bundledLanguages, createHighlighter } from 'shiki';
 import { CarouselSyntaxError, remarkCarousels } from './directives/carousel.js';
 import { MapSyntaxError, remarkMaps } from './directives/map.js';
 import { ReadmeSyntaxError, remarkReadmes } from './directives/readme.js';
+import { DEFAULT_VIDEO_OPTIONS, VideoSyntaxError, remarkVideos } from './directives/video.js';
 
 /** Number of h2/h3 headings from which a post gets a table of contents. */
 export const DEFAULT_TOC_MIN_HEADINGS = 4;
@@ -35,6 +36,7 @@ export const DEFAULT_CODE_THEMES = Object.freeze({
  * @property {Partial<CarouselLabels>} [carousel] The words the carousels need, in the language of the site (English when left out).
  * @property {boolean} [readme] Whether the text may hold `::readme` directives (default false: one is then an error). Only the page of a project with a docs source can show a section of the project's README.
  * @property {number} [headingShift] Whole number added to the level of every heading the Markdown makes, the result kept between h1 and h6 (default 0). A post shown inside a list page uses 1, so its h2 becomes h3 below the h2 that carries its title. Headings written as raw HTML are left as they are.
+ * @property {Partial<import('./directives/video.js').VideoOptions>} [video] The rules that recognise remote videos, how they load, and where the local videos of the text are published (default: `DEFAULT_VIDEO_RULES`, `click`, and no local video exists).
  * @property {string} [idPrefix] Text put in front of every `id` of the output, so that several texts on one page have none in common (default: none; it must not contain whitespace). It applies to the ids of headings, of footnotes and of elements and anchors written as raw HTML, to the `aria-describedby`, `aria-labelledby` and `aria-controls` that point at them, and to every link of the text whose target is `#id` of such an id (links to other pages and to ids the text does not have stay as written). `toc`, `ids` and `links` in the result keep the values without the prefix, since they describe the text, not the page.
  */
 
@@ -155,8 +157,10 @@ export const DEFAULT_CAROUSEL_LABELS = Object.freeze({
  * @property {string[]} viewerSources The address of each image of `viewerImages` as written in the text, in the same order.
  * @property {import('./directives/map.js').MapDirective[]} maps The `::map` directives of the text, in document order. Each one is an empty `<div data-coffer-map="n"></div>` in `html`, n being its `index`, for the caller to fill in.
  * @property {import('./directives/readme.js').ReadmeDirective[]} readmes The `::readme` directives of the text, in document order. Each one is an empty `<div data-coffer-readme="n"></div>` in `html`, n being its `index`, for the caller to fill in.
+ * @property {import('../video/types.js').VideoDirective[]} videos The videos of the text, in document order. Each one is an empty `<div data-coffer-video="n"></div>` in `html`, n being its `index`, for the caller to fill in.
+ * @property {import('../video/types.js').VideoWarning[]} videoWarnings Features the providers of the videos lack that the text asks for; the text renders without them.
  * @property {FoundLink[]} links Every Markdown link and image written in the text (links the renderer makes up, such as footnote back references, are left out).
- * @property {string[]} ids Every `id` a link can point at: heading ids, ids of other elements and ids and names set by raw HTML, without duplicates.
+ * @property {string[]} ids Every `id` a link can point at: heading ids, ids of other elements and of videos and ids and names set by raw HTML, without duplicates.
  */
 
 /**
@@ -337,7 +341,38 @@ function readmes({ file, lineOffset, enabled, onFound }) {
 }
 
 /**
- * Remark plugin: apart from the ones that are defined (see `carousels`, `maps` and `readmes`),
+ * Remark plugin: the `::video` leaf directive, with its mistakes reported as
+ * errors that name the file and the line.
+ *
+ * @param {{ file?: string, lineOffset: number, video: import('./directives/video.js').VideoOptions, idPrefix: string, onFound: (videos: import('../video/types.js').VideoDirective[], warnings: import('../video/types.js').VideoWarning[]) => void }} options
+ * @returns {(tree: import('mdast').Root) => void}
+ */
+function videos({ file, lineOffset, video, idPrefix, onFound }) {
+  const transform = remarkVideos({
+    video,
+    idPrefix,
+    onFound: (found, warnings) =>
+      onFound(
+        found.map((entry) => ({ ...entry, line: entry.line + lineOffset })),
+        warnings.map((entry) => ({ ...entry, line: entry.line + lineOffset })),
+      ),
+  });
+  return (tree) => {
+    try {
+      transform(tree);
+    } catch (error) {
+      if (!(error instanceof VideoSyntaxError)) throw error;
+      throw new MarkdownError(error.message, {
+        file,
+        line: error.line === undefined ? undefined : error.line + lineOffset,
+        column: error.column,
+      });
+    }
+  };
+}
+
+/**
+ * Remark plugin: apart from the ones that are defined (see `carousels`, `maps`, `readmes` and `videos`),
  * directives are reserved syntax, so each one is an error that names the file
  * and the line.
  *
@@ -881,7 +916,7 @@ function highlightCode({ themes }) {
  * @param {string} source Markdown text without front matter.
  * @param {RenderOptions} [options]
  * @returns {Promise<RenderResult>}
- * @throws {MarkdownError} for an unknown directive, or a carousel that is written wrongly.
+ * @throws {MarkdownError} for an unknown directive, or a carousel, map, README section or video that is written wrongly.
  * @throws {TypeError} for an invalid option.
  */
 export async function renderMarkdown(source, options = {}) {
@@ -910,6 +945,11 @@ export async function renderMarkdown(source, options = {}) {
   let mapDirectives = [];
   /** @type {import('./directives/readme.js').ReadmeDirective[]} */
   let readmeDirectives = [];
+  /** @type {import('../video/types.js').VideoDirective[]} */
+  let videoDirectives = [];
+  /** @type {import('../video/types.js').VideoWarning[]} */
+  let videoWarnings = [];
+  const videoOptions = { ...DEFAULT_VIDEO_OPTIONS, ...options.video };
 
   const processor = unified()
     .use(remarkParse)
@@ -932,6 +972,16 @@ export async function renderMarkdown(source, options = {}) {
         readmeDirectives = found;
       },
     })
+    .use(videos, {
+      file: options.file,
+      lineOffset,
+      video: videoOptions,
+      idPrefix,
+      onFound: (found, warnings) => {
+        videoDirectives = found;
+        videoWarnings = warnings;
+      },
+    })
     .use(rejectDirectives, { file: options.file, lineOffset })
     .use(remarkRehype, { allowDangerousHtml: true })
     .use(dropComments)
@@ -939,6 +989,8 @@ export async function renderMarkdown(source, options = {}) {
     .use(collect, {
       lineOffset,
       onResult: (found) => {
+        // A video's figure has its id only once the build fills the placeholder in.
+        for (const video of videoDirectives) found.ids.add(`video-${video.id ?? String(video.index + 1)}`);
         collected = found;
       },
     })
@@ -974,6 +1026,8 @@ export async function renderMarkdown(source, options = {}) {
     viewerSources,
     maps: mapDirectives,
     readmes: readmeDirectives,
+    videos: videoDirectives,
+    videoWarnings,
     links: collected.links,
     ids: [...collected.ids],
   };
