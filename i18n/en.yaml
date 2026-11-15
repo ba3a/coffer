@@ -179,6 +179,12 @@ map:
     one: "{count} photo"
     other: "{count} photos"
   drawing: "Map of the route and the photos (a drawing without a background map)"
+video:
+  play: "Play: {title}"
+  watch_on: "Watch on {provider}"
+  untitled: Video
+  chapters: Chapters
+  download: Download the video
 theme:
   button: "Theme: {mode}"
   system: System

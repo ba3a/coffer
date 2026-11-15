@@ -186,6 +186,12 @@ map:
     many: "{count} фото"
     other: "{count} фото"
   drawing: "Схема маршрута и фотографий (рисунок без подложки карты)"
+video:
+  play: "Смотреть: {title}"
+  watch_on: "Смотреть на {provider}"
+  untitled: Видео
+  chapters: Главы
+  download: Скачать видео
 theme:
   button: "Тема: {mode}"
   system: Системная
