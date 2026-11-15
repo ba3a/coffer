@@ -500,3 +500,228 @@ test('an auto-embedded address is checked like ::video{src="URL"}', async () => 
     'post.md:3:1: end must be later than start',
   );
 });
+
+test('chapters: the :::video container of the main vector of 15.6', async () => {
+  const source = `:::video[Fitting the drawer]{src="${YT}?t=12" id="drawer"}\n- 0:12 Marking out\n- 1:05 Sawing the *tails*\n:::\n`;
+  const result = await renderMarkdown(source, { file: 'post.md' });
+  assert.equal(result.html, '<div data-coffer-video="0"></div>');
+  assert.deepEqual(result.videos, [
+    {
+      index: 0,
+      source: 'directive',
+      id: 'drawer',
+      htmlId: 'video-drawer',
+      src: `${YT}?t=12`,
+      provider: 'youtube',
+      providerName: 'YouTube',
+      match: matchVideoUrl(`${YT}?t=12`, DEFAULT_VIDEO_RULES),
+      file: null,
+      title: 'Fitting the drawer',
+      start: 12,
+      end: null,
+      poster: null,
+      load: 'click',
+      embedUrl: 'https://www.youtube-nocookie.com/embed/aBcD3fGh1_-?start=12',
+      playUrl: 'https://www.youtube-nocookie.com/embed/aBcD3fGh1_-?start=12&autoplay=1',
+      watchUrl: 'https://www.youtube.com/watch?v=aBcD3fGh1_-&t=12s',
+      chapters: [
+        { seconds: 12, html: 'Marking out', text: 'Marking out' },
+        { seconds: 65, html: 'Sawing the <em>tails</em>', text: 'Sawing the tails' },
+      ],
+      line: 1,
+      column: 1,
+    },
+  ]);
+  assert.deepEqual(result.videoWarnings, []);
+  assert.ok(result.ids.includes('video-drawer'));
+});
+
+test('chapters: the VK Video vector of 15.6 keeps the chapters and warns that they have no links', async () => {
+  const result = await renderMarkdown(':::video{src="https://vkvideo.ru/video-12345_456239017"}\n- 0:00 Intro\n- 1:00 Cut\n:::\n', {
+    file: 'post.md',
+  });
+  assert.deepEqual(warningsOf(result), ['1:1: VK Video videos cannot seek to a time; the chapters are shown without links']);
+  assert.deepEqual(result.videos[0].chapters, [
+    { seconds: 0, html: 'Intro', text: 'Intro' },
+    { seconds: 60, html: 'Cut', text: 'Cut' },
+  ]);
+});
+
+test('chapters: a container without a body is a video without chapters', async () => {
+  for (const source of [`:::video{src="${YT}"}\n:::\n`, `:::video[Title]{src="${YT}"}\n:::\n`, `:::video{src="${YT}"}\n`]) {
+    const result = await renderMarkdown(source);
+    assert.equal(result.html, '<div data-coffer-video="0"></div>', source);
+    assert.equal(result.videos.length, 1, source);
+    assert.deepEqual(result.videos[0].chapters, [], source);
+  }
+  const titled = await renderMarkdown(`:::video[  Planing *end* grain ]{src="${YT}"}\n:::\n`);
+  assert.equal(titled.videos[0].title, 'Planing end grain');
+  // A VK Video without chapters has nothing to warn about.
+  const vk = await renderMarkdown(':::video{src="https://vkvideo.ru/video-12345_456239017"}\n:::\n');
+  assert.deepEqual(vk.videoWarnings, []);
+});
+
+test('chapters: the forms of a timecode, ordered lists and inline Markdown in a title', async () => {
+  const source =
+    `:::video{src="${YT}"}\n` +
+    '1. 75 Plain seconds\n' +
+    '2. 1:30\tAfter a tab\n' +
+    '3. 1:02:03 With `code`, **strong** and [a link](https://example.org/notes)\n' +
+    ':::\n';
+  const result = await renderMarkdown(source);
+  assert.deepEqual(result.videos[0].chapters, [
+    { seconds: 75, html: 'Plain seconds', text: 'Plain seconds' },
+    { seconds: 90, html: 'After a tab', text: 'After a tab' },
+    {
+      seconds: 3723,
+      html: 'With <code>code</code>, <strong>strong</strong> and <a href="https://example.org/notes">a link</a>',
+      text: 'With code, strong and a link',
+    },
+  ]);
+  // Links in chapter titles are not links of the text.
+  assert.deepEqual(result.links, []);
+});
+
+test('chapters: HTML comments in a title are left out, as in the rest of the text', async () => {
+  const result = await renderMarkdown(`:::video{src="${YT}"}\n- 0:12 Intro <!-- c --> <b>x</b>\n:::\n`);
+  assert.deepEqual(result.videos[0].chapters, [{ seconds: 12, html: 'Intro  <b>x</b>', text: 'Intro  x' }]);
+  // A title that is only a comment is empty.
+  assert.equal(
+    await errorOf(`:::video{src="${YT}"}\n- 0:12 <!-- c -->\n:::`),
+    'post.md:2:1: a chapter must start with a timecode, a space and a title',
+  );
+});
+
+test('chapters: a reference link in a title uses the definitions of the text', async () => {
+  const result = await renderMarkdown(`:::video{src="${YT}"}\n- 0:12 See [the notes][n]\n:::\n\n[n]: https://example.org/notes\n`);
+  assert.deepEqual(result.videos[0].chapters, [
+    { seconds: 12, html: 'See <a href="https://example.org/notes">the notes</a>', text: 'See the notes' },
+  ]);
+  assert.deepEqual(result.links, []);
+});
+
+test('chapters: words count the chapter titles but not the title of the video', async () => {
+  const result = await renderMarkdown(`One two.\n\n:::video[Three four]{src="${YT}"}\n- 0:12 Five *six*\n- 1:00 Seven\n:::\n`);
+  assert.equal(result.words, 5);
+});
+
+test('chapters: V13, the body must be one list', async () => {
+  const cases = [
+    [`:::video{src="${YT}"}\nSome text.\n:::`, 'post.md:1:1: the body of a video must be one list of chapters'],
+    [`:::video{src="${YT}"}\n- 0:12 Marking out\n\nSome text.\n:::`, 'post.md:1:1: the body of a video must be one list of chapters'],
+    [`:::video{src="${YT}"}\n- 0:12 Marking out\n\n1. 1:05 Sawing\n:::`, 'post.md:1:1: the body of a video must be one list of chapters'],
+    [`Text\n\n:::video[Title]{src="${YT}"}\n> - 0:12 Marking out\n:::`, 'post.md:3:1: the body of a video must be one list of chapters'],
+  ];
+  for (const [source, message] of cases) assert.equal(await errorOf(source), message, source);
+});
+
+test('chapters: V14, each item is a timecode, a space and a title, at the position of the item', async () => {
+  const V14 = 'a chapter must start with a timecode, a space and a title';
+  const cases = [
+    ['- Marking out', 2],
+    ['- 0:12', 2],
+    ['- 0:12Marking out', 2],
+    ['- 1m5s Marking out', 2],
+    ['- 1:60 Marking out', 2],
+    ['- 1:2 Marking out', 2],
+    ['- *0:12* Marking out', 2],
+    ['- 0:12 Marking out\n\n  More text', 2],
+    ['- 0:12 Marking out\n  - 0:20 Nested', 2],
+    ['- [ ] 0:12 Marking out', 2],
+    ['- 0:00 Intro\n-', 3],
+    ['- 0:00 Intro\n- 0:12 ![](a.jpg)', 3],
+    // A title holds text, emphasis, code and links: an image or a footnote
+    // reference would be written without the processing the text gives them.
+    ['- 0:00 Intro\n- 0:12 Look ![](a.jpg) here', 3],
+    ['- 0:00 Intro\n- 0:12 Look [![](a.jpg)](https://example.org) here', 3],
+  ];
+  for (const [body, line] of cases) {
+    const source = `:::video{src="${YT}"}\n${body}\n:::`;
+    assert.equal(await errorOf(source), `post.md:${line}:1: ${V14}`, source);
+  }
+  assert.equal(await errorOf(`:::video{src="${YT}"}\n  * 0:00 Intro\n  * Cut\n:::`), `post.md:3:3: ${V14}`);
+  assert.equal(await errorOf(`:::video{src="${YT}"}\n- 0:00 Intro\n- Cut\n:::`, { startLine: 4 }), `post.md:6:1: ${V14}`);
+  assert.equal(await errorOf(`:::video{src="${YT}"}\n- 0:12 Look ![a][pic] here\n:::\n\n[pic]: a.jpg\n`), `post.md:2:1: ${V14}`);
+  assert.equal(
+    await errorOf(`Body[^a].\n\n:::video{src="${YT}"}\n- 0:12 Intro[^b]\n:::\n\n[^a]: A.\n[^b]: B.\n`),
+    `post.md:4:1: ${V14}`,
+  );
+});
+
+test('chapters: V15, times strictly increase', async () => {
+  const V15 = 'chapters must be in increasing order of time';
+  assert.equal(await errorOf(`:::video{src="${YT}"}\n- 0:12 A\n- 0:12 B\n:::`), `post.md:3:1: ${V15}`);
+  assert.equal(await errorOf(`:::video{src="${YT}"}\n- 0:12 A\n- 1:00 B\n- 0:30 C\n:::`), `post.md:4:1: ${V15}`);
+});
+
+test('chapters: V16, each time lies within the part of the video that plays', async () => {
+  const cases = [
+    // Before the start of the address.
+    [`:::video{src="${YT}?t=12"}\n- 0:05 A\n:::`, 'post.md:2:1: 0:05 is not within the part of the video that plays'],
+    // Before the start of the attribute.
+    [`:::video{src="${YT}" start="1:00:00"}\n- 30 B\n:::`, 'post.md:2:1: 0:30 is not within the part of the video that plays'],
+    // At the end, which is not part of what plays.
+    [`:::video{src="${YT}" end="1:00"}\n- 0:00 A\n- 1:00 B\n:::`, 'post.md:3:1: 1:00 is not within the part of the video that plays'],
+    // After the end of the address.
+    [`:::video{src="https://www.youtube.com/embed/aBcD3fGh1_-?end=95"}\n- 2:00:00 A\n:::`, 'post.md:2:1: 2:00:00 is not within the part of the video that plays'],
+  ];
+  for (const [source, message] of cases) assert.equal(await errorOf(source), message, source);
+});
+
+test('chapters: V16 uses the start and end that remain after W1 and W2', async () => {
+  // VK Video drops start="30", so a chapter at 0:00 is within the video.
+  let result = await renderMarkdown(':::video{src="https://vkvideo.ru/video-12345_456239017" start="30"}\n- 0:00 Intro\n:::\n');
+  assert.deepEqual(warningsOf(result), [
+    '1:1: VK Video videos cannot start at a given time; start="30" is ignored',
+    '1:1: VK Video videos cannot seek to a time; the chapters are shown without links',
+  ]);
+  assert.deepEqual(result.videos[0].chapters, [{ seconds: 0, html: 'Intro', text: 'Intro' }]);
+  // Vimeo drops end="30", so a chapter after it is within the video.
+  result = await renderMarkdown(':::video{src="https://vimeo.com/76979871" end="30"}\n- 0:00 Intro\n- 1:00 Later\n:::\n');
+  assert.deepEqual(warningsOf(result), ['1:1: Vimeo videos cannot stop at a given time; end="30" is ignored']);
+  assert.deepEqual(
+    result.videos[0].chapters.map((chapter) => chapter.seconds),
+    [0, 60],
+  );
+});
+
+test('chapters: the checks run in the order of the specification', async () => {
+  const cases = [
+    // V2 for a container, before the chapters.
+    [`:::video{src="${YT}" size="big"}\nText\n:::`, 'post.md:1:1: a video has no attribute "size" (the attributes are src, start, end, poster, load and id)'],
+    // V12 before V13.
+    [`:::video{src="${YT}" start="20" end="10"}\nText\n:::`, 'post.md:1:1: end must be later than start'],
+    // V14, V15 and V16 item by item.
+    [`:::video{src="${YT}?t=12"}\n- 0:05 A\n- B\n:::`, 'post.md:2:1: 0:05 is not within the part of the video that plays'],
+    [`:::video{src="${YT}" end="10"}\n- 0:05 A\n- 0:01 B\n- 0:20 C\n:::`, 'post.md:3:1: chapters must be in increasing order of time'],
+    [`:::video{src="${YT}" end="10"}\n- 0:20 A\n- 0:01 B\n:::`, 'post.md:2:1: 0:20 is not within the part of the video that plays'],
+    // A chapter error discards the warnings found before it.
+    [':::video{src="https://vkvideo.ru/video-12345_456239017" start="5"}\n- Intro\n:::', 'post.md:2:1: a chapter must start with a timecode, a space and a title'],
+  ];
+  for (const [source, message] of cases) assert.equal(await errorOf(source, LOCAL), message, source);
+});
+
+test('chapters: a local video keeps its chapters without a warning', async () => {
+  const result = await renderMarkdown(':::video[Glue-up]{src="clip.mp4" start="5"}\n- 0:05 Clamps\n- 0:40 Squeeze-out\n:::\n', LOCAL);
+  assert.deepEqual(result.videoWarnings, []);
+  assert.deepEqual(result.videos[0].chapters, [
+    { seconds: 5, html: 'Clamps', text: 'Clamps' },
+    { seconds: 40, html: 'Squeeze-out', text: 'Squeeze-out' },
+  ]);
+});
+
+test('chapters: an unknown directive in a chapter title is still an error', async () => {
+  assert.match(await errorOf(`:::video{src="${YT}"}\n- 0:12 See :note[this]\n:::`), /^post\.md:2:12: unknown directive "note"/);
+});
+
+test('chapters: containers and leaf directives are numbered together', async () => {
+  const result = await renderMarkdown(`::video{src="${YT}"}\n\n:::video{src="${YT}" id="b"}\n- 0:01 A\n:::\n\n${YT}\n`);
+  assert.deepEqual(
+    result.videos.map((video) => [video.index, video.htmlId, video.chapters.length]),
+    [
+      [0, 'video-1', 0],
+      [1, 'video-b', 1],
+      [2, 'video-3', 0],
+    ],
+  );
+});

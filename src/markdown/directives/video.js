@@ -1,14 +1,24 @@
+import { toHtml } from 'hast-util-to-html';
+import { toString } from 'hast-util-to-string';
+import { toHast } from 'mdast-util-to-hast';
 import { SKIP, visit } from 'unist-util-visit';
+import { dropComments } from '../comments.js';
 import { DEFAULT_VIDEO_RULES, matchVideoUrl } from '../../video/rules.js';
-import { parseTimecode } from '../../video/timecode.js';
+import { formatTimecode, parseTimecode } from '../../video/timecode.js';
 import { embedUrl, watchUrl } from '../../video/urls.js';
 
 /**
- * The `::video` leaf directive, and a video address alone in a paragraph.
+ * The `::video` leaf directive, the `:::video` container with its chapters,
+ * and a video address alone in a paragraph.
  *
  * ```
  * ::video[Fitting the drawer]{src="https://youtu.be/aBcD3fGh1_-" start="1:23" end="4:00"}
  * ::video{src="glue-up.mp4" poster="glue.jpg"}
+ *
+ * :::video[Fitting the drawer]{src="https://youtu.be/aBcD3fGh1_-?t=12"}
+ * - 0:12 Marking out
+ * - 1:05 Sawing the *tails*
+ * :::
  *
  * https://youtu.be/aBcD3fGh1_-
  * ```
@@ -110,12 +120,123 @@ function notATimecode(name, value) {
   return `${name}="${value}" is not a timecode (write 83, 1:23, 1:02:03 or 1m23s)`;
 }
 
+/** The timecode at the start of a chapter, in the colon or plain-seconds form, and the blanks after it. */
+const CHAPTER_TIME = /^(\d+(?::\d+){0,2})[ \t]+/;
+
 /**
- * Remark plugin: replaces each `::video` directive, and each paragraph of the
- * root that is only an address a rule knows, with a placeholder and lists the
- * videos, in document order, with the features their providers lack as
- * warnings. Any other address stays a link. Lines are those of the text as
- * parsed.
+ * Joins adjacent text nodes. The parser reads the `:12` of `0:12` as a text
+ * directive, which `restoreColons` turns back into a text node of its own, so a
+ * timecode can be spread over several text nodes.
+ *
+ * @param {import('mdast').PhrasingContent[]} nodes
+ * @returns {import('mdast').PhrasingContent[]}
+ */
+function joinTexts(nodes) {
+  /** @type {import('mdast').PhrasingContent[]} */
+  const joined = [];
+  for (const node of nodes) {
+    const last = joined.at(-1);
+    if (node.type === 'text' && last?.type === 'text') {
+      joined[joined.length - 1] = { type: 'text', value: last.value + node.value };
+    } else {
+      joined.push(node);
+    }
+  }
+  return joined;
+}
+
+/**
+ * @param {import('unist').Node} node
+ * @returns {{ line: number, column: number }}
+ */
+function positionOf(node) {
+  return { line: node.position?.start.line ?? 1, column: node.position?.start.column ?? 1 };
+}
+
+/** Phrasing content a chapter title cannot hold: the text would give it processing the title does not get. */
+const NOT_IN_TITLE = new Set(['image', 'imageReference', 'footnoteReference']);
+
+/**
+ * Converts the title of a chapter to HAST the way the rest of the text is
+ * converted: reference links use the definitions of the text, and HTML
+ * comments are left out.
+ *
+ * @param {import('mdast').PhrasingContent[]} title
+ * @param {import('mdast').Definition[]} definitions All the definitions of the text.
+ * @returns {import('hast').ElementContent[]}
+ */
+function titleToHast(title, definitions) {
+  const root = /** @type {import('hast').Root} */ (
+    toHast({ type: 'root', children: [{ type: 'paragraph', children: title }, ...definitions] }, { allowDangerousHtml: true })
+  );
+  dropComments()(root);
+  const paragraph = root.children.find((node) => node.type === 'element');
+  return paragraph?.type === 'element' ? paragraph.children : [];
+}
+
+/**
+ * Reads the chapters in the body of a `:::video` container, in the order of
+ * the checks of the specification: the body is one list (V13), then each item
+ * is a timecode and a title (V14), later than the one before (V15) and within
+ * the part of the video that plays (V16). A title holds text, emphasis, code,
+ * links and raw HTML; an image or a footnote reference in it is V14.
+ *
+ * @param {import('mdast').RootContent[]} body The children of the container after its label.
+ * @param {{ start: number | null, end: number | null, line: number, column: number }} video The effective times and the position of the video.
+ * @param {() => import('mdast').Definition[]} definitions The definitions of the text.
+ * @returns {import('../../video/types.js').VideoChapter[]}
+ * @throws {VideoSyntaxError}
+ */
+function readChapters(body, { start, end, line, column }, definitions) {
+  if (body.length === 0) return [];
+  const [list] = body;
+  if (body.length !== 1 || list.type !== 'list') {
+    throw new VideoSyntaxError('the body of a video must be one list of chapters', { line, column });
+  }
+  /** @type {import('../../video/types.js').VideoChapter[]} */
+  const chapters = [];
+  for (const item of list.children) {
+    const where = positionOf(item);
+    const notAChapter = () => new VideoSyntaxError('a chapter must start with a timecode, a space and a title', where);
+    const [paragraph] = item.children;
+    const inline = paragraph?.type === 'paragraph' ? joinTexts(paragraph.children) : [];
+    const [first] = inline;
+    const time = first?.type === 'text' ? CHAPTER_TIME.exec(first.value) : null;
+    const seconds = time ? parseTimecode(time[1]) : null;
+    // A task list item ("- [ ] 0:12 ...") does not start with its timecode either.
+    if (item.children.length !== 1 || typeof item.checked === 'boolean' || first?.type !== 'text' || !time || seconds === null) {
+      throw notAChapter();
+    }
+    /** @type {import('mdast').PhrasingContent[]} */
+    const rest = [
+      ...(first.value.length > time[0].length ? [{ ...first, value: first.value.slice(time[0].length) }] : []),
+      ...inline.slice(1),
+    ];
+    let unsupported = false;
+    visit({ type: 'paragraph', children: rest }, (node) => {
+      if (NOT_IN_TITLE.has(node.type)) unsupported = true;
+    });
+    if (unsupported) throw notAChapter();
+    const title = titleToHast(rest, definitions());
+    const text = toString({ type: 'element', tagName: 'p', properties: {}, children: title });
+    if (text.trim() === '') throw notAChapter();
+    if (chapters.length > 0 && seconds <= chapters[chapters.length - 1].seconds) {
+      throw new VideoSyntaxError('chapters must be in increasing order of time', where);
+    }
+    if (seconds < (start ?? 0) || (end !== null && seconds >= end)) {
+      throw new VideoSyntaxError(`${formatTimecode(seconds)} is not within the part of the video that plays`, where);
+    }
+    chapters.push({ seconds, html: toHtml(title, { allowDangerousHtml: true }), text });
+  }
+  return chapters;
+}
+
+/**
+ * Remark plugin: replaces each `::video` and `:::video` directive, and each
+ * paragraph of the root that is only an address a rule knows, with a
+ * placeholder and lists the videos with their chapters, in document order,
+ * with the features their providers lack as warnings. Any other address stays
+ * a link. Lines are those of the text as parsed.
  *
  * @param {{ source: string, video: VideoOptions, idPrefix: string, onFound: (videos: import('../../video/types.js').VideoDirective[], warnings: import('../../video/types.js').VideoWarning[]) => void }} options
  * @returns {(tree: import('mdast').Root) => void}
@@ -129,6 +250,18 @@ export function remarkVideos({ source, video: settings, idPrefix, onFound }) {
     const warnings = [];
     /** @type {Set<string>} */
     const usedIds = new Set();
+    /** @type {import('mdast').Definition[] | null} */
+    let definitions = null;
+    const definitionsOfText = () => {
+      if (definitions === null) {
+        const all = /** @type {import('mdast').Definition[]} */ ([]);
+        visit(tree, 'definition', (node) => {
+          all.push(node);
+        });
+        definitions = all;
+      }
+      return definitions;
+    };
 
     /**
      * Checks a video and adds it to the list, in the order of the checks of
@@ -138,11 +271,12 @@ export function remarkVideos({ source, video: settings, idPrefix, onFound }) {
      * @param {'directive' | 'link'} input.source
      * @param {Record<string, string | null | undefined>} input.attributes
      * @param {string | null} input.title
+     * @param {import('mdast').RootContent[]} input.body The body of a container, after its label; empty for anything else.
      * @param {number} input.line
      * @param {number} input.column
      * @returns {number} The index of the video.
      */
-    const add = ({ source: kind, attributes, title, line, column }) => {
+    const add = ({ source: kind, attributes, title, body, line, column }) => {
       const where = { line, column };
       /** @param {string} message */
       const fail = (message) => new VideoSyntaxError(message, where);
@@ -233,6 +367,16 @@ export function remarkVideos({ source, video: settings, idPrefix, onFound }) {
       if (end !== null && end <= (start ?? 0)) throw fail('end must be later than start');
       if (start === 0) start = null;
 
+      // V13 to V16, then W3: chapters the provider cannot seek to are kept, without links.
+      const chapters = readChapters(body, { start, end, line, column }, definitionsOfText);
+      if (match !== null && chapters.length > 0 && !match.capabilities.seek) {
+        warnings.push({
+          message: `${match.providerName} videos cannot seek to a time; the chapters are shown without links`,
+          line,
+          column,
+        });
+      }
+
       const videoIndex = found.length;
       found.push({
         index: videoIndex,
@@ -252,7 +396,7 @@ export function remarkVideos({ source, video: settings, idPrefix, onFound }) {
         embedUrl: match === null ? null : embedUrl(match, { start, end, autoplay: false }),
         playUrl: match === null ? null : embedUrl(match, { start, end, autoplay: true }),
         watchUrl: match === null ? null : watchUrl(match, start),
-        chapters: [],
+        chapters,
         line,
         column,
       });
@@ -265,26 +409,45 @@ export function remarkVideos({ source, video: settings, idPrefix, onFound }) {
       const column = node.position?.start.column ?? 1;
       /** @type {number} */
       let videoIndex;
+      /** @type {import('mdast').RootContent[]} */
+      let body = [];
       if (node.type === 'leafDirective' && node.name === VIDEO_DIRECTIVE) {
         const label = plainText(/** @type {import('mdast').Nodes} */ (node)).trim();
         videoIndex = add({
           source: 'directive',
           attributes: /** @type {Record<string, string | null | undefined>} */ (node.attributes ?? {}),
           title: label === '' ? null : label,
+          body,
+          line,
+          column,
+        });
+      } else if (node.type === 'containerDirective' && node.name === VIDEO_DIRECTIVE) {
+        const [first, ...rest] = node.children;
+        const hasLabel = first?.type === 'paragraph' && Boolean(/** @type {any} */ (first.data)?.directiveLabel);
+        const label = hasLabel ? plainText(first).trim() : '';
+        body = hasLabel ? rest : node.children;
+        videoIndex = add({
+          source: 'directive',
+          attributes: /** @type {Record<string, string | null | undefined>} */ (node.attributes ?? {}),
+          title: label === '' ? null : label,
+          body,
           line,
           column,
         });
       } else if (node.type === 'paragraph' && parent === tree) {
         const src = loneAddress(node, source);
         if (src === null || matchVideoUrl(src, settings.rules) === null) return SKIP;
-        videoIndex = add({ source: 'link', attributes: { src }, title: null, line, column });
+        videoIndex = add({ source: 'link', attributes: { src }, title: null, body, line, column });
       } else {
         return undefined;
       }
       parent.children[index] = /** @type {any} */ ({
         type: 'coffer-video',
-        data: { hName: 'div', hProperties: { dataCofferVideo: String(videoIndex) } },
-        children: [],
+        // The chapters stay in the Markdown tree, so that later plugins still
+        // see what they hold (an unknown directive is an error), but the
+        // placeholder is written empty: hChildren replaces its content.
+        data: { hName: 'div', hProperties: { dataCofferVideo: String(videoIndex) }, hChildren: [] },
+        children: body,
         position: node.position,
       });
       return [SKIP, index + 1];
