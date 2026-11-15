@@ -1,6 +1,17 @@
 import { createHash } from 'node:crypto';
-import { copyFileSync, cpSync, existsSync, mkdirSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from 'node:fs';
-import { dirname, extname, isAbsolute, join, relative, resolve, sep } from 'node:path';
+import {
+  copyFileSync,
+  cpSync,
+  existsSync,
+  mkdirSync,
+  readFileSync,
+  readdirSync,
+  realpathSync,
+  rmSync,
+  statSync,
+  writeFileSync,
+} from 'node:fs';
+import { basename, dirname, extname, isAbsolute, join, relative, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { BUILD_INFO_FILE_NAME, createBuildInfo, renderBuildInfo } from './build-info.js';
@@ -51,6 +62,7 @@ import { IMAGES_CACHE_DIR, ImageError, createImagePipeline, imageFileUrl, pickVa
 import { PolicyError, createPolicyResolver, findImageOverride } from './images/policy.js';
 import { inspectSvg } from './images/svg.js';
 import { buildMeta } from './meta.js';
+import { VIDEO_PLACEHOLDER_ATTRIBUTE } from './markdown/directives/video.js';
 import { MarkdownError, renderMarkdown } from './markdown/render.js';
 import {
   REDIRECTS_FILE_NAME,
@@ -66,6 +78,7 @@ import { BLOG_FILTER, SEARCH_DIR_NAME, SEARCH_URL_NAME, buildSearchIndex, search
 import { SHARE_FILE_NAME, SHARE_SCRIPT, hashtagsFor, renderShareText, shareUrlFor } from './share.js';
 import { ROBOTS_FILE_NAME, SITEMAP_FILE_NAME, renderRobots, renderSitemap } from './sitemap.js';
 import { readVersion } from './version.js';
+import { resolveVideoRules } from './video/rules.js';
 import { VIEWER_SCRIPTS, VIEWER_STYLES, viewerJson } from './viewer.js';
 
 /** Directory holding the static assets of the default theme. */
@@ -443,6 +456,38 @@ const NOT_FOUND_FILE = '404.html';
  */
 function fileForUrl(url) {
   return `${url.slice(1)}index.html`;
+}
+
+/**
+ * The name under which a local video is published in the folder of its post:
+ * the stem lower-cased, each run of characters other than a-z and 0-9 turned
+ * into one "-", leading and trailing "-" removed, plus the lower-cased
+ * extension. A stem with none of those characters (a name in another script)
+ * becomes `video`.
+ *
+ * @param {string} file Path of the original.
+ * @returns {string}
+ */
+function localVideoName(file) {
+  const extension = extname(file);
+  const stem = basename(file, extension)
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '');
+  return `${stem === '' ? 'video' : stem}${extension.toLowerCase()}`;
+}
+
+const VIDEO_PLACEHOLDER_RE = new RegExp(`<div ${VIDEO_PLACEHOLDER_ATTRIBUTE}="\\d+"></div>`, 'g');
+
+/**
+ * The HTML of a text without the placeholders of its videos, for feeds and
+ * excerpts.
+ *
+ * @param {string} html
+ * @returns {string}
+ */
+function withoutVideoPlaceholders(html) {
+  return html.replace(VIDEO_PLACEHOLDER_RE, '');
 }
 
 /**
@@ -1111,6 +1156,51 @@ async function buildSite(config, site, options, outRoot, version, report) {
     return cardFor(post.title);
   };
 
+  /** The rules that recognise the remote videos of the site, in the order they are tried. */
+  const videoRules = resolveVideoRules(site.video);
+
+  /**
+   * The video option of the renders of a post. A local video is found like a
+   * Markdown image of the post and copied unchanged into the folder of the
+   * post the first time a render asks for it. Two originals that would be
+   * published under the same name fail the build.
+   *
+   * @param {Post} post
+   * @param {string} url Site-relative URL of the post.
+   * @returns {import('./markdown/directives/video.js').VideoOptions}
+   */
+  const postVideoOptions = (post, url) => {
+    /**
+     * The originals published so far, by published name: the path as found and
+     * the real path, which tells whether two addresses name the same file.
+     * @type {Map<string, { file: string, real: string }>}
+     */
+    const published = new Map();
+    return {
+      rules: videoRules,
+      load: site.video.load,
+      locateFile: (src) => {
+        const file = localImageFile(post.file, src);
+        if (file === null) return null;
+        const real = realpathSync.native(file);
+        const name = localVideoName(file);
+        const earlier = published.get(name);
+        if (earlier === undefined) {
+          published.set(name, { file, real });
+          const target = join(outDir, ...url.split('/').filter(Boolean), name);
+          mkdirSync(dirname(target), { recursive: true });
+          copyFileSync(file, target);
+        } else if (earlier.real !== real) {
+          const show = (/** @type {string} */ path) => `"${posix(relative(config.dir, path))}"`;
+          throw new BuildError(
+            `${posix(relative(config.dir, post.file))}: the local videos ${show(earlier.file)} and ${show(file)} would both be published as ${url}${name}; rename one of them`,
+          );
+        }
+        return `${url}${name}`;
+      },
+    };
+  };
+
   /** @type {ManifestPage[]} */
   const pages = [];
   /** @type {ManifestPost[]} */
@@ -1176,15 +1266,28 @@ async function buildSite(config, site, options, outRoot, version, report) {
       postTracks.set(post, tracks);
       page.tracks = tracks.length;
       const imageOptions = imageOptionsFor(post.file, postUrl(blog, post.slug), page);
+      // Both renders of a full post share it, so each local video is copied once.
+      const video = postVideoOptions(post, postUrl(blog, post.slug));
+      /** Reports the features the providers of the post's videos lack; once, from the page render. */
+      const reportVideoWarnings = (/** @type {RenderedPost} */ result) => {
+        const shown = posix(relative(config.dir, post.file));
+        for (const warning of result.videoWarnings) {
+          warnings.push(`${shown}:${warning.line}:${warning.column}: ${warning.message}`);
+        }
+        return result;
+      };
       if ((post.index ?? blog.index.type) !== 'full') {
         rendered.set(
           post,
-          await renderMarkdown(post.body, {
-            file: post.file,
-            startLine: post.bodyLine,
-            images: imageOptions,
-            carousel: carouselLabels,
-          }),
+          reportVideoWarnings(
+            await renderMarkdown(post.body, {
+              file: post.file,
+              startLine: post.bodyLine,
+              images: imageOptions,
+              carousel: carouselLabels,
+              video,
+            }),
+          ),
         );
         continue;
       }
@@ -1197,19 +1300,22 @@ async function buildSite(config, site, options, outRoot, version, report) {
       const imageKey = (request) => `${request.line}:${request.column}:${request.src}`;
       rendered.set(
         post,
-        await renderMarkdown(post.body, {
-          file: post.file,
-          startLine: post.bodyLine,
-          images: {
-            ...imageOptions,
-            resolve: (request) => {
-              const resolving = imageOptions.resolve(request);
-              resolvedImages.set(imageKey(request), resolving);
-              return resolving;
+        reportVideoWarnings(
+          await renderMarkdown(post.body, {
+            file: post.file,
+            startLine: post.bodyLine,
+            images: {
+              ...imageOptions,
+              resolve: (request) => {
+                const resolving = imageOptions.resolve(request);
+                resolvedImages.set(imageKey(request), resolving);
+                return resolving;
+              },
             },
-          },
-          carousel: carouselLabels,
-        }),
+            carousel: carouselLabels,
+            video,
+          }),
+        ),
       );
       listRendered.set(
         post,
@@ -1221,6 +1327,7 @@ async function buildSite(config, site, options, outRoot, version, report) {
             resolve: (request) => resolvedImages.get(imageKey(request)) ?? imageOptions.resolve(request),
           },
           carousel: carouselLabels,
+          video,
           headingShift: 1,
           idPrefix: `${post.slug}-`,
         }),
@@ -2398,6 +2505,8 @@ async function buildSite(config, site, options, outRoot, version, report) {
       const forLists = listRendered.get(post);
       // The maps are the same as on the post page; their problems were reported there.
       if (forLists) listBodies.set(url, { post, url, rendered: forLists, hasMap: mapped.maps.length > 0 });
+      // The text of the post for feeds and excerpts: without maps and, for now, without videos.
+      const feedHtml = withoutVideoPlaceholders(mapped.feedHtml);
 
       const aboutProjects = aboutPost.get(post) ?? [];
       if (!unpublished) {
@@ -2407,7 +2516,7 @@ async function buildSite(config, site, options, outRoot, version, report) {
           title: post.title,
           date: post.date,
           summary: post.summary,
-          html: mapped.feedHtml,
+          html: feedHtml,
           tags: post.tags.map((path) => ({ path, name: nameOf(path) })),
           tagsIndexUrl,
         });
@@ -2452,7 +2561,7 @@ async function buildSite(config, site, options, outRoot, version, report) {
             baseUrl: site.baseUrl,
             url,
             title: post.title,
-            summary: post.summary || excerptOf(mapped.feedHtml),
+            summary: post.summary || excerptOf(feedHtml),
             hashtags: blog.shareHashtags ? hashtagsFor(post.tags.map(nameOf)) : [],
           }),
           url: shareUrlFor(url),
@@ -2475,7 +2584,7 @@ async function buildSite(config, site, options, outRoot, version, report) {
         ]),
         meta: metaFor({
           title: post.title,
-          description: post.summary || excerptOf(mapped.feedHtml),
+          description: post.summary || excerptOf(feedHtml),
           url,
           image: previewImage,
           type: 'article',
