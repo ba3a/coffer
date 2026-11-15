@@ -341,14 +341,16 @@ function readmes({ file, lineOffset, enabled, onFound }) {
 }
 
 /**
- * Remark plugin: the `::video` leaf directive, with its mistakes reported as
- * errors that name the file and the line.
+ * Remark plugin: the `::video` leaf directive and video addresses alone in a
+ * paragraph, with their mistakes reported as errors that name the file and the
+ * line.
  *
- * @param {{ file?: string, lineOffset: number, video: import('./directives/video.js').VideoOptions, idPrefix: string, onFound: (videos: import('../video/types.js').VideoDirective[], warnings: import('../video/types.js').VideoWarning[]) => void }} options
+ * @param {{ source: string, file?: string, lineOffset: number, video: import('./directives/video.js').VideoOptions, idPrefix: string, onFound: (videos: import('../video/types.js').VideoDirective[], warnings: import('../video/types.js').VideoWarning[]) => void }} options
  * @returns {(tree: import('mdast').Root) => void}
  */
-function videos({ file, lineOffset, video, idPrefix, onFound }) {
+function videos({ source, file, lineOffset, video, idPrefix, onFound }) {
   const transform = remarkVideos({
+    source,
     video,
     idPrefix,
     onFound: (found, warnings) =>
@@ -973,6 +975,7 @@ export async function renderMarkdown(source, options = {}) {
       },
     })
     .use(videos, {
+      source,
       file: options.file,
       lineOffset,
       video: videoOptions,

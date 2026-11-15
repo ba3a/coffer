@@ -359,3 +359,144 @@ test('an error discards the warnings found before it', async () => {
     'post.md:3:1: a local video must be an .mp4 or .webm file: "clip.avi"',
   );
 });
+
+test('auto-embed: of the three paragraphs of 3.3 only the lone address becomes a video', async () => {
+  const source = `I copied the joint from ${YT} last week.\n\n${YT}\n\n[${YT}](${YT})\n`;
+  const result = await renderMarkdown(source, { file: 'post.md', startLine: 3 });
+  assert.deepEqual(result.videos, [
+    {
+      index: 0,
+      source: 'link',
+      id: null,
+      htmlId: 'video-1',
+      src: YT,
+      provider: 'youtube',
+      providerName: 'YouTube',
+      match: matchVideoUrl(YT, DEFAULT_VIDEO_RULES),
+      file: null,
+      title: null,
+      start: null,
+      end: null,
+      poster: null,
+      load: 'click',
+      embedUrl: 'https://www.youtube-nocookie.com/embed/aBcD3fGh1_-',
+      playUrl: 'https://www.youtube-nocookie.com/embed/aBcD3fGh1_-?autoplay=1',
+      watchUrl: 'https://www.youtube.com/watch?v=aBcD3fGh1_-',
+      chapters: [],
+      line: 5,
+      column: 1,
+    },
+  ]);
+  assert.equal(
+    result.html,
+    `<p>I copied the joint from <a href="${YT}">${YT}</a> last week.</p>\n` +
+      '<div data-coffer-video="0"></div>\n' +
+      `<p><a href="${YT}">${YT}</a></p>`,
+  );
+  // The address of the video is not a link of the text; the other two are.
+  assert.deepEqual(
+    result.links.map((link) => [link.url, link.line]),
+    [
+      [YT, 3],
+      [YT, 7],
+    ],
+  );
+  assert.ok(result.ids.includes('video-1'));
+});
+
+test('auto-embed: an address in angle brackets becomes a video with src without the brackets', async () => {
+  const result = await renderMarkdown(`  <${YT}>  \n`);
+  assert.equal(result.html, '<div data-coffer-video="0"></div>');
+  assert.equal(result.videos.length, 1);
+  assert.equal(result.videos[0].src, YT);
+  assert.equal(result.videos[0].source, 'link');
+  assert.deepEqual(result.links, []);
+});
+
+test('auto-embed: a lone address inside a list item, a block quote or a footnote stays a link', async () => {
+  for (const source of [`- ${YT}\n`, `> ${YT}\n`, `Text[^1].\n\n[^1]: ${YT}\n`, `1. Step\n\n   ${YT}\n`]) {
+    const result = await renderMarkdown(source);
+    assert.deepEqual(result.videos, [], source);
+    assert.ok(result.links.some((link) => link.url === YT), source);
+  }
+});
+
+test('auto-embed: a lone address that matches no rule stays a link without an error', async () => {
+  const result = await renderMarkdown('https://example.org/x\n\n<https://example.org/y>\n', { file: 'post.md' });
+  assert.deepEqual(result.videos, []);
+  assert.deepEqual(result.videoWarnings, []);
+  assert.deepEqual(
+    result.links.map((link) => link.url),
+    ['https://example.org/x', 'https://example.org/y'],
+  );
+});
+
+test('auto-embed: only a paragraph that is exactly one address becomes a video', async () => {
+  for (const source of [
+    `${YT} ${YT}\n`,
+    `${YT}\n${YT}\n`,
+    `*${YT}*\n`,
+    `See ${YT}\n`,
+    `<${YT}> again\n`,
+    `www.youtube.com/watch?v=aBcD3fGh1_-\n`,
+  ]) {
+    const result = await renderMarkdown(source);
+    assert.deepEqual(result.videos, [], source);
+  }
+});
+
+test('auto-embed: the lone VK Video address of vector 15.7 D', async () => {
+  const result = await renderMarkdown('https://vkvideo.ru/video-12345_456239017\n');
+  assert.equal(result.videos.length, 1);
+  const [video] = result.videos;
+  assert.equal(video.index, 0);
+  assert.equal(video.htmlId, 'video-1');
+  assert.equal(video.source, 'link');
+  assert.equal(video.provider, 'vkvideo');
+  assert.equal(video.providerName, 'VK Video');
+  assert.equal(video.title, null);
+  assert.equal(video.load, 'click');
+  assert.equal(video.playUrl, 'https://vkvideo.ru/video_ext.php?oid=-12345&id=456239017&autoplay=1');
+  assert.equal(video.watchUrl, 'https://vkvideo.ru/video-12345_456239017');
+  assert.deepEqual(result.videoWarnings, []);
+});
+
+test('auto-embed: times come from the URL, and the video takes the load of the option', async () => {
+  const result = await renderMarkdown(`${YT}?t=1m5s\n`, {
+    video: { rules: DEFAULT_VIDEO_RULES, load: 'iframe', locateFile: () => null },
+  });
+  assert.equal(result.videos[0].start, 65);
+  assert.equal(result.videos[0].load, 'iframe');
+  assert.equal(result.videos[0].embedUrl, 'https://www.youtube-nocookie.com/embed/aBcD3fGh1_-?start=65');
+});
+
+test('auto-embed: the rules of the option decide which lone addresses are videos', async () => {
+  const none = await renderMarkdown('https://vimeo.com/76979871\n', { video: { rules: [], load: 'click', locateFile: () => null } });
+  assert.deepEqual(none.videos, []);
+  assert.deepEqual(none.links.map((link) => link.url), ['https://vimeo.com/76979871']);
+  const known = await renderMarkdown('https://vimeo.com/76979871\n');
+  assert.equal(known.videos[0].provider, 'vimeo');
+});
+
+test('auto-embedded videos and directives are numbered together in document order', async () => {
+  const source = `::video{src="${YT}" id="first"}\n\nhttps://vimeo.com/76979871\n\n::video{src="${YT}"}\n\n${YT}\n`;
+  const result = await renderMarkdown(source, { idPrefix: 'p-' });
+  assert.deepEqual(
+    result.videos.map((video) => [video.index, video.source, video.htmlId, video.line]),
+    [
+      [0, 'directive', 'p-video-first', 1],
+      [1, 'link', 'p-video-2', 3],
+      [2, 'directive', 'p-video-3', 5],
+      [3, 'link', 'p-video-4', 7],
+    ],
+  );
+  for (const index of [0, 1, 2, 3]) assert.ok(result.html.includes(`<div data-coffer-video="${index}"></div>`));
+  for (const id of ['video-first', 'video-2', 'video-3', 'video-4']) assert.ok(result.ids.includes(id), id);
+});
+
+test('an auto-embedded address is checked like ::video{src="URL"}', async () => {
+  assert.equal(
+    await errorOf('Text\n\nhttps://www.youtube.com/embed/aBcD3fGh1_-?start=90&end=30\n'),
+    'post.md:3:1: end must be later than start',
+  );
+});

@@ -4,14 +4,16 @@ import { parseTimecode } from '../../video/timecode.js';
 import { embedUrl, watchUrl } from '../../video/urls.js';
 
 /**
- * The `::video` leaf directive.
+ * The `::video` leaf directive, and a video address alone in a paragraph.
  *
  * ```
  * ::video[Fitting the drawer]{src="https://youtu.be/aBcD3fGh1_-" start="1:23" end="4:00"}
  * ::video{src="glue-up.mp4" poster="glue.jpg"}
+ *
+ * https://youtu.be/aBcD3fGh1_-
  * ```
  *
- * It marks the place of a video in the text. The plugin turns it into an empty
+ * Each marks the place of a video in the text. The plugin turns it into an empty
  * `<div data-coffer-video="n">`, where n counts the videos of the text from 0,
  * and lists what each one shows; the build then replaces the `<div>` with the
  * video, once its preview is known.
@@ -79,6 +81,26 @@ function plainText(node) {
   return '';
 }
 
+/** One http(s) address, without whitespace or angle brackets. */
+const ADDRESS = /^https?:\/\/[^\s<>]+$/;
+
+/**
+ * The address a paragraph consists of: its source text, trimmed, is exactly
+ * one http(s) address, or one in angle brackets.
+ *
+ * @param {import('mdast').Paragraph} node
+ * @param {string} source The Markdown text the tree was parsed from.
+ * @returns {string | null} The address without angle brackets, or null when the paragraph is something else.
+ */
+function loneAddress(node, source) {
+  const from = node.position?.start.offset;
+  const to = node.position?.end.offset;
+  if (from === undefined || to === undefined) return null;
+  let text = source.slice(from, to).trim();
+  if (text.startsWith('<') && text.endsWith('>')) text = text.slice(1, -1);
+  return ADDRESS.test(text) ? text : null;
+}
+
 /**
  * @param {string} name
  * @param {string} value
@@ -89,15 +111,17 @@ function notATimecode(name, value) {
 }
 
 /**
- * Remark plugin: replaces each `::video` directive with a placeholder and
- * lists the videos, in document order, with the features their providers lack
- * as warnings. Lines are those of the text as parsed.
+ * Remark plugin: replaces each `::video` directive, and each paragraph of the
+ * root that is only an address a rule knows, with a placeholder and lists the
+ * videos, in document order, with the features their providers lack as
+ * warnings. Any other address stays a link. Lines are those of the text as
+ * parsed.
  *
- * @param {{ video: VideoOptions, idPrefix: string, onFound: (videos: import('../../video/types.js').VideoDirective[], warnings: import('../../video/types.js').VideoWarning[]) => void }} options
+ * @param {{ source: string, video: VideoOptions, idPrefix: string, onFound: (videos: import('../../video/types.js').VideoDirective[], warnings: import('../../video/types.js').VideoWarning[]) => void }} options
  * @returns {(tree: import('mdast').Root) => void}
  * @throws {VideoSyntaxError} for the first video that is written wrongly, in the order of the checks of the specification.
  */
-export function remarkVideos({ video: settings, idPrefix, onFound }) {
+export function remarkVideos({ source, video: settings, idPrefix, onFound }) {
   return (tree) => {
     /** @type {import('../../video/types.js').VideoDirective[]} */
     const found = [];
@@ -106,16 +130,24 @@ export function remarkVideos({ video: settings, idPrefix, onFound }) {
     /** @type {Set<string>} */
     const usedIds = new Set();
 
-    visit(tree, 'leafDirective', (node, index, parent) => {
-      if (node.name !== VIDEO_DIRECTIVE || !parent || index === undefined) return undefined;
-      const line = node.position?.start.line ?? 1;
-      const column = node.position?.start.column ?? 1;
+    /**
+     * Checks a video and adds it to the list, in the order of the checks of
+     * the specification.
+     *
+     * @param {object} input
+     * @param {'directive' | 'link'} input.source
+     * @param {Record<string, string | null | undefined>} input.attributes
+     * @param {string | null} input.title
+     * @param {number} input.line
+     * @param {number} input.column
+     * @returns {number} The index of the video.
+     */
+    const add = ({ source: kind, attributes, title, line, column }) => {
       const where = { line, column };
       /** @param {string} message */
       const fail = (message) => new VideoSyntaxError(message, where);
 
       // V2
-      const attributes = /** @type {Record<string, string | null | undefined>} */ (node.attributes ?? {});
       for (const name of Object.keys(attributes)) {
         if (!ATTRIBUTES.has(name)) {
           throw fail(`a video has no attribute "${name}" (the attributes are src, start, end, poster, load and id)`);
@@ -201,11 +233,10 @@ export function remarkVideos({ video: settings, idPrefix, onFound }) {
       if (end !== null && end <= (start ?? 0)) throw fail('end must be later than start');
       if (start === 0) start = null;
 
-      const label = plainText(/** @type {import('mdast').Nodes} */ (node)).trim();
       const videoIndex = found.length;
       found.push({
         index: videoIndex,
-        source: 'directive',
+        source: kind,
         id,
         htmlId: `${idPrefix}video-${id ?? String(videoIndex + 1)}`,
         src,
@@ -213,7 +244,7 @@ export function remarkVideos({ video: settings, idPrefix, onFound }) {
         providerName: match === null ? '' : match.providerName,
         match,
         file,
-        title: label === '' ? null : label,
+        title,
         start,
         end,
         poster: attribute('poster'),
@@ -225,6 +256,31 @@ export function remarkVideos({ video: settings, idPrefix, onFound }) {
         line,
         column,
       });
+      return videoIndex;
+    };
+
+    visit(tree, (node, index, parent) => {
+      if (!parent || index === undefined) return undefined;
+      const line = node.position?.start.line ?? 1;
+      const column = node.position?.start.column ?? 1;
+      /** @type {number} */
+      let videoIndex;
+      if (node.type === 'leafDirective' && node.name === VIDEO_DIRECTIVE) {
+        const label = plainText(/** @type {import('mdast').Nodes} */ (node)).trim();
+        videoIndex = add({
+          source: 'directive',
+          attributes: /** @type {Record<string, string | null | undefined>} */ (node.attributes ?? {}),
+          title: label === '' ? null : label,
+          line,
+          column,
+        });
+      } else if (node.type === 'paragraph' && parent === tree) {
+        const src = loneAddress(node, source);
+        if (src === null || matchVideoUrl(src, settings.rules) === null) return SKIP;
+        videoIndex = add({ source: 'link', attributes: { src }, title: null, line, column });
+      } else {
+        return undefined;
+      }
       parent.children[index] = /** @type {any} */ ({
         type: 'coffer-video',
         data: { hName: 'div', hProperties: { dataCofferVideo: String(videoIndex) } },
