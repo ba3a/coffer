@@ -4,33 +4,54 @@ import { toHast } from 'mdast-util-to-hast';
 import { SKIP, visit } from 'unist-util-visit';
 import { dropComments } from '../comments.js';
 import { DEFAULT_VIDEO_RULES, matchVideoUrl } from '../../video/rules.js';
-import { formatTimecode, parseTimecode } from '../../video/timecode.js';
+import { formatTimecode, isoDuration, parseTimecode } from '../../video/timecode.js';
 import { embedUrl, watchUrl } from '../../video/urls.js';
 
 /**
  * The `::video` leaf directive, the `:::video` container with its chapters,
- * and a video address alone in a paragraph.
+ * a video address alone in a paragraph, and the `:t` seek link.
  *
  * ```
  * ::video[Fitting the drawer]{src="https://youtu.be/aBcD3fGh1_-" start="1:23" end="4:00"}
  * ::video{src="glue-up.mp4" poster="glue.jpg"}
  *
- * :::video[Fitting the drawer]{src="https://youtu.be/aBcD3fGh1_-?t=12"}
+ * :::video[Fitting the drawer]{src="https://youtu.be/aBcD3fGh1_-?t=12" id="drawer"}
  * - 0:12 Marking out
  * - 1:05 Sawing the *tails*
  * :::
  *
  * https://youtu.be/aBcD3fGh1_-
+ *
+ * The glue-up starts at :t[2:40]. See :t[the dry fit]{at="1:05" video="drawer"} first.
  * ```
  *
- * Each marks the place of a video in the text. The plugin turns it into an empty
+ * Each video marks its place in the text. The plugin turns it into an empty
  * `<div data-coffer-video="n">`, where n counts the videos of the text from 0,
  * and lists what each one shows; the build then replaces the `<div>` with the
- * video, once its preview is known.
+ * video, once its preview is known. A seek link needs nothing the build learns
+ * later, so the plugin writes it out.
  */
 
 /** Name of the directive. */
 export const VIDEO_DIRECTIVE = 'video';
+
+/** Name of the seek link directive. */
+export const SEEK_DIRECTIVE = 't';
+
+/** The attributes a seek link may have. */
+const SEEK_ATTRIBUTES = new Set(['at', 'video']);
+
+/**
+ * A text directive, as `remark-directive` adds it to the Markdown tree.
+ *
+ * @typedef {Extract<import('mdast').PhrasingContent, { type: 'textDirective' }>} TextDirective
+ */
+
+/** The node types of directives. */
+const DIRECTIVE_TYPES = new Set(['textDirective', 'leafDirective', 'containerDirective']);
+
+/** Phrasing content that is written as a link, which a seek link must neither be in nor hold. */
+const LINK_TYPES = new Set(['link', 'linkReference', 'footnoteReference']);
 
 /** The attribute of the placeholder element that holds the number of the video. */
 export const VIDEO_PLACEHOLDER_ATTRIBUTE = 'data-coffer-video';
@@ -153,8 +174,18 @@ function positionOf(node) {
   return { line: node.position?.start.line ?? 1, column: node.position?.start.column ?? 1 };
 }
 
-/** Phrasing content a chapter title cannot hold: the text would give it processing the title does not get. */
-const NOT_IN_TITLE = new Set(['image', 'imageReference', 'footnoteReference']);
+/**
+ * Phrasing content a chapter title cannot hold: the text would give it
+ * processing the title does not get. The title is rendered before the seek
+ * links, so it cannot hold one either.
+ *
+ * @param {import('unist').Node} node
+ * @returns {boolean}
+ */
+function notInTitle(node) {
+  if (node.type === 'textDirective') return /** @type {TextDirective} */ (node).name === SEEK_DIRECTIVE;
+  return node.type === 'image' || node.type === 'imageReference' || node.type === 'footnoteReference';
+}
 
 /**
  * Converts the title of a chapter to HAST the way the rest of the text is
@@ -179,7 +210,7 @@ function titleToHast(title, definitions) {
  * the checks of the specification: the body is one list (V13), then each item
  * is a timecode and a title (V14), later than the one before (V15) and within
  * the part of the video that plays (V16). A title holds text, emphasis, code,
- * links and raw HTML; an image or a footnote reference in it is V14.
+ * links and raw HTML; an image, a footnote reference or a seek link in it is V14.
  *
  * @param {import('mdast').RootContent[]} body The children of the container after its label.
  * @param {{ start: number | null, end: number | null, line: number, column: number }} video The effective times and the position of the video.
@@ -214,7 +245,7 @@ function readChapters(body, { start, end, line, column }, definitions) {
     ];
     let unsupported = false;
     visit({ type: 'paragraph', children: rest }, (node) => {
-      if (NOT_IN_TITLE.has(node.type)) unsupported = true;
+      if (notInTitle(node)) unsupported = true;
     });
     if (unsupported) throw notAChapter();
     const title = titleToHast(rest, definitions());
@@ -232,11 +263,178 @@ function readChapters(body, { start, end, line, column }, definitions) {
 }
 
 /**
+ * A `:t` seek link and where it stands in the text.
+ *
+ * @typedef {object} SeekSite
+ * @property {TextDirective} node
+ * @property {import('mdast').Parent} parent
+ * @property {import('../../video/types.js').VideoDirective | null} before The nearest video before it.
+ * @property {boolean} inLink Whether a link of the text holds it.
+ * @property {SeekSite | null} outer The seek link that holds it in its text, if any.
+ * @property {boolean} linked Whether it is written as a link; set once it is written.
+ */
+
+/**
+ * Lists the seek links of a text in document order, each with the nearest
+ * video before it. A seek link inside a directive that is not defined is left
+ * alone, for that directive is the error.
+ *
+ * @param {import('mdast').Root} tree
+ * @param {Map<object, import('../../video/types.js').VideoDirective>} placeholders The video of each placeholder.
+ * @returns {SeekSite[]}
+ */
+function findSeekLinks(tree, placeholders) {
+  /** @type {SeekSite[]} */
+  const sites = [];
+  /** @type {import('../../video/types.js').VideoDirective | null} */
+  let before = null;
+  /**
+   * @param {import('mdast').Parent} parent
+   * @param {boolean} inLink
+   * @param {SeekSite | null} outer
+   */
+  const walk = (parent, inLink, outer) => {
+    for (const node of parent.children) {
+      const video = placeholders.get(node);
+      if (video !== undefined) {
+        before = video;
+      } else if (node.type === 'textDirective' && node.name === SEEK_DIRECTIVE) {
+        /** @type {SeekSite} */
+        const site = { node, parent, before, inLink, outer, linked: false };
+        sites.push(site);
+        walk(node, inLink, site);
+      } else if (!DIRECTIVE_TYPES.has(node.type) && 'children' in node) {
+        walk(node, inLink || node.type === 'link' || node.type === 'linkReference', outer);
+      }
+    }
+  };
+  walk(tree, false, null);
+  return sites;
+}
+
+/**
+ * Whether the text of a seek link holds something that is written as a link.
+ *
+ * @param {TextDirective} node
+ * @returns {boolean}
+ */
+function holdsLink(node) {
+  let found = false;
+  visit(node, (inner) => {
+    if (inner !== node && LINK_TYPES.has(inner.type)) found = true;
+  });
+  return found;
+}
+
+/**
+ * Checks each seek link, in document order, and writes it as a link to its
+ * time in its video, or as its content alone when the provider of the video
+ * cannot seek (W4).
+ *
+ * The written link has no position, so the text's list of links leaves it out.
+ *
+ * @param {SeekSite[]} sites
+ * @param {import('../../video/types.js').VideoDirective[]} videos All the videos of the text.
+ * @param {import('../../video/types.js').VideoWarning[]} warnings Where W4 goes.
+ * @throws {VideoSyntaxError}
+ */
+function writeSeekLinks(sites, videos, warnings) {
+  for (const site of sites) {
+    const { node } = site;
+    const where = positionOf(node);
+    /** @param {string} message */
+    const fail = (message) => new VideoSyntaxError(message, where);
+    const attributes = /** @type {Record<string, string | null | undefined>} */ (node.attributes ?? {});
+
+    // S2
+    for (const name of Object.keys(attributes)) {
+      if (!SEEK_ATTRIBUTES.has(name)) throw fail(`a seek link has no attribute "${name}" (the attributes are at and video)`);
+    }
+    const at = attributes.at ?? null;
+    const target = attributes.video ?? null;
+
+    // S1 or S3, then V11. Without at, the text is plain: it becomes the text of <time>.
+    const plain = node.children.every((child) => child.type === 'text');
+    const label = plain ? node.children.map((child) => /** @type {import('mdast').Text} */ (child).value).join('') : null;
+    /** @type {number | null} */
+    let seconds;
+    if (at === null) {
+      seconds = label === null ? null : parseTimecode(label);
+      if (label === null || seconds === null) throw fail('a seek link needs a timecode in square brackets, or at="..."');
+    } else {
+      if (plainText(node).trim() === '') throw fail('a seek link needs a text in square brackets');
+      seconds = parseTimecode(at);
+      if (seconds === null) throw fail(notATimecode('at', at));
+    }
+
+    // S4 or S5
+    const video = target === null ? site.before : (videos.find((entry) => entry.id === target) ?? null);
+    if (video === null) {
+      throw fail(target === null ? 'a seek link needs a video before it, or video="..."' : `there is no video with the id "${target}"`);
+    }
+
+    // V16
+    if (seconds < (video.start ?? 0) || (video.end !== null && seconds >= video.end)) {
+      throw fail(`${formatTimecode(seconds)} is not within the part of the video that plays`);
+    }
+
+    /** @type {import('mdast').PhrasingContent[]} */
+    const content =
+      at === null
+        ? [
+            /** @type {any} */ ({
+              type: 'coffer-seek-time',
+              data: { hName: 'time', hProperties: { dateTime: isoDuration(seconds) } },
+              children: [{ type: 'text', value: label ?? '' }],
+            }),
+          ]
+        : node.children;
+    const index = site.parent.children.indexOf(node);
+
+    // W4: the content alone.
+    if (video.match !== null && !video.match.capabilities.seek) {
+      warnings.push({
+        message: `${video.providerName} videos cannot seek to a time; the seek link is shown as text`,
+        ...where,
+      });
+      site.parent.children.splice(index, 1, ...content);
+      // A seek link in its text now stands where it stood.
+      for (const later of sites) {
+        if (later.parent === node) later.parent = site.parent;
+      }
+      continue;
+    }
+
+    // A link inside a link is not HTML.
+    if (site.inLink || site.outer?.linked) throw fail('a seek link cannot be inside a link');
+    if (holdsLink(node)) throw fail('the text of a seek link cannot hold a link');
+
+    const { match, file } = video;
+    site.parent.children[index] = /** @type {any} */ ({
+      type: 'coffer-seek',
+      data: {
+        hName: 'a',
+        hProperties: {
+          className: ['video-seek'],
+          href: match === null ? `${file?.url}#t=${seconds}` : watchUrl(match, seconds),
+          dataVideoSeek: String(seconds),
+          dataVideoTarget: video.htmlId,
+          ...(match === null ? {} : { dataVideoPlay: embedUrl(match, { start: seconds, end: video.end, autoplay: true }) }),
+        },
+      },
+      children: content,
+    });
+    site.linked = true;
+  }
+}
+
+/**
  * Remark plugin: replaces each `::video` and `:::video` directive, and each
  * paragraph of the root that is only an address a rule knows, with a
  * placeholder and lists the videos with their chapters, in document order,
  * with the features their providers lack as warnings. Any other address stays
- * a link. Lines are those of the text as parsed.
+ * a link. Once every video is known, writes each `:t` seek link; its warnings
+ * come after those of the videos. Lines are those of the text as parsed.
  *
  * @param {{ source: string, video: VideoOptions, idPrefix: string, onFound: (videos: import('../../video/types.js').VideoDirective[], warnings: import('../../video/types.js').VideoWarning[]) => void }} options
  * @returns {(tree: import('mdast').Root) => void}
@@ -250,6 +448,8 @@ export function remarkVideos({ source, video: settings, idPrefix, onFound }) {
     const warnings = [];
     /** @type {Set<string>} */
     const usedIds = new Set();
+    /** @type {Map<object, import('../../video/types.js').VideoDirective>} */
+    const placeholders = new Map();
     /** @type {import('mdast').Definition[] | null} */
     let definitions = null;
     const definitionsOfText = () => {
@@ -441,7 +641,7 @@ export function remarkVideos({ source, video: settings, idPrefix, onFound }) {
       } else {
         return undefined;
       }
-      parent.children[index] = /** @type {any} */ ({
+      const placeholder = {
         type: 'coffer-video',
         // The chapters stay in the Markdown tree, so that later plugins still
         // see what they hold (an unknown directive is an error), but the
@@ -449,9 +649,12 @@ export function remarkVideos({ source, video: settings, idPrefix, onFound }) {
         data: { hName: 'div', hProperties: { dataCofferVideo: String(videoIndex) }, hChildren: [] },
         children: body,
         position: node.position,
-      });
+      };
+      placeholders.set(placeholder, found[videoIndex]);
+      parent.children[index] = /** @type {any} */ (placeholder);
       return [SKIP, index + 1];
     });
+    writeSeekLinks(findSeekLinks(tree, placeholders), found, warnings);
     onFound(found, warnings);
   };
 }

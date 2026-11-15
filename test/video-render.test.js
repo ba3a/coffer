@@ -725,3 +725,234 @@ test('chapters: containers and leaf directives are numbered together', async () 
     ],
   );
 });
+
+/**
+ * The `<a>` elements of `html` with their attributes, values decoded, and
+ * their content as written.
+ *
+ * @param {string} html
+ * @returns {{ attributes: Record<string, string>, content: string }[]}
+ */
+function anchorsOf(html) {
+  const decode = (/** @type {string} */ value) =>
+    value.replace(/&#x22;|&quot;/g, '"').replace(/&#x3C;|&lt;/g, '<').replace(/&#x26;|&amp;/g, '&');
+  return [...html.matchAll(/<a\s([^>]*)>(.*?)<\/a>/gs)].map(([, attributes, content]) => ({
+    attributes: Object.fromEntries([...attributes.matchAll(/([a-z-]+)="([^"]*)"/g)].map(([, name, value]) => [name, decode(value)])),
+    content,
+  }));
+}
+
+/**
+ * @param {string} html
+ * @returns {{ attributes: Record<string, string>, content: string }[]}
+ */
+function seekLinksOf(html) {
+  return anchorsOf(html).filter((anchor) => anchor.attributes.class === 'video-seek');
+}
+
+const MAIN_VECTOR = `:::video[Fitting the drawer]{src="${YT}?t=12" id="drawer"}\n- 0:12 Marking out\n- 1:05 Sawing the *tails*\n:::\n\nThe glue-up starts at :t[2:40].\n`;
+
+test('seek links: the seek link of the main vector of 15.6', async () => {
+  const result = await renderMarkdown(MAIN_VECTOR, { file: 'post.md' });
+  assert.deepEqual(seekLinksOf(result.html), [
+    {
+      attributes: {
+        class: 'video-seek',
+        href: 'https://www.youtube.com/watch?v=aBcD3fGh1_-&t=160s',
+        'data-video-seek': '160',
+        'data-video-target': 'video-drawer',
+        'data-video-play': 'https://www.youtube-nocookie.com/embed/aBcD3fGh1_-?start=160&autoplay=1',
+      },
+      content: '<time datetime="PT2M40S">2:40</time>',
+    },
+  ]);
+  assert.equal(anchorsOf(result.html).length, 1);
+  assert.match(result.html, /<p>The glue-up starts at <a [^>]*><time datetime="PT2M40S">2:40<\/time><\/a>\.<\/p>/);
+  assert.deepEqual(result.videoWarnings, []);
+});
+
+test('seek links: the error vectors of 15.6', async () => {
+  const cases = [
+    ['See :t[1:00].', 'post.md:1:5: a seek link needs a video before it, or video="..."'],
+    [`${YT}\n\n:t[1:00]{video="other"}`, 'post.md:3:1: there is no video with the id "other"'],
+    [`${YT}\n\n:t[soon]`, 'post.md:3:1: a seek link needs a timecode in square brackets, or at="..."'],
+    [`::video{src="${YT}?t=30"}\n\n:t[0:10]`, 'post.md:3:1: 0:10 is not within the part of the video that plays'],
+    ['::video{src="https://vimeo.com/76979871" start="90" end="30"}\n\n:t[1:00]', 'post.md:3:1: 1:00 is not within the part of the video that plays'],
+  ];
+  for (const [source, message] of cases) assert.equal(await errorOf(source), message, source);
+});
+
+test('seek links: S2 and S3', async () => {
+  assert.equal(
+    await errorOf(`${YT}\n\nSee :t[1:00]{at="1:00" from="x"}.`),
+    'post.md:3:5: a seek link has no attribute "from" (the attributes are at and video)',
+  );
+  assert.equal(await errorOf(`${YT}\n\n:t[1:00]{#here}`), 'post.md:3:1: a seek link has no attribute "id" (the attributes are at and video)');
+  for (const source of [`${YT}\n\nSee :t[]{at="1:00"}.`, `${YT}\n\nSee :t{at="1:00"}.`, `${YT}\n\nSee :t[  ]{at="1:00"}.`]) {
+    assert.equal(await errorOf(source), 'post.md:3:5: a seek link needs a text in square brackets', source);
+  }
+  // Without at, the text in square brackets is plain text.
+  assert.equal(await errorOf(`${YT}
+
+See :t[*1:00*].`), 'post.md:3:5: a seek link needs a timecode in square brackets, or at="..."');
+  // Without at, empty brackets are not a timecode.
+  assert.equal(await errorOf(`${YT}\n\nSee :t[].`), 'post.md:3:5: a seek link needs a timecode in square brackets, or at="..."');
+});
+
+test('seek links: V11 for at, and V16 at the end of what plays', async () => {
+  assert.equal(
+    await errorOf(`${YT}\n\nSee :t[the cut]{at="1:60"}.`),
+    'post.md:3:5: at="1:60" is not a timecode (write 83, 1:23, 1:02:03 or 1m23s)',
+  );
+  assert.equal(
+    await errorOf(`::video{src="${YT}" end="1:00"}\n\n:t[1:00]`),
+    'post.md:3:1: 1:00 is not within the part of the video that plays',
+  );
+  // VK Video drops start="30", so 0:10 is within the video.
+  const result = await renderMarkdown('::video{src="https://vkvideo.ru/video-12345_456239017" start="30"}\n\n:t[0:10]\n');
+  assert.equal(result.videoWarnings.length, 2);
+});
+
+test('seek links: the checks run in the order of the specification', async () => {
+  const cases = [
+    // Every video before any seek link, whatever comes first in the text.
+    [`:t[1:00]\n\n::video{src="${YT}" size="big"}`, 'post.md:3:1: a video has no attribute "size" (the attributes are src, start, end, poster, load and id)'],
+    // S2 before S1.
+    [`${YT}\n\n:t[soon]{size="big"}`, 'post.md:3:1: a seek link has no attribute "size" (the attributes are at and video)'],
+    // S3 before V11.
+    [`${YT}\n\n:t[]{at="soon"}`, 'post.md:3:1: a seek link needs a text in square brackets'],
+    // V11 before S4 and S5.
+    [`:t[x]{at="soon" video="other"}`, 'post.md:1:1: at="soon" is not a timecode (write 83, 1:23, 1:02:03 or 1m23s)'],
+    // S5 before V16.
+    [`::video{src="${YT}?t=30"}\n\n:t[0:10]{video="other"}`, 'post.md:3:1: there is no video with the id "other"'],
+    // Seek links in document order.
+    [`${YT}\n\n:t[soon] :t[1:00]{video="x"}`, 'post.md:3:1: a seek link needs a timecode in square brackets, or at="..."'],
+    // An error discards the warnings found before it.
+    ['::video{src="https://vimeo.com/76979871" end="30"}\n\n:t[soon]', 'post.md:3:1: a seek link needs a timecode in square brackets, or at="..."'],
+  ];
+  for (const [source, message] of cases) assert.equal(await errorOf(source), message, source);
+});
+
+test('seek links: the VK Video vector of 15.6 writes the time without a link', async () => {
+  const result = await renderMarkdown('https://vkvideo.ru/video-12345_456239017\n\nSee :t[1:00].\n', { file: 'post.md' });
+  assert.deepEqual(warningsOf(result), ['3:5: VK Video videos cannot seek to a time; the seek link is shown as text']);
+  assert.equal(result.html, '<div data-coffer-video="0"></div>\n<p>See <time datetime="PT1M">1:00</time>.</p>');
+});
+
+test('seek links: the YouTube vector of 15.6 has no warning', async () => {
+  const result = await renderMarkdown(`${YT}\n\n:t[1:00]\n`, { file: 'post.md' });
+  assert.deepEqual(result.videoWarnings, []);
+  assert.deepEqual(seekLinksOf(result.html), [
+    {
+      attributes: {
+        class: 'video-seek',
+        href: 'https://www.youtube.com/watch?v=aBcD3fGh1_-&t=60s',
+        'data-video-seek': '60',
+        'data-video-target': 'video-1',
+        'data-video-play': 'https://www.youtube-nocookie.com/embed/aBcD3fGh1_-?start=60&autoplay=1',
+      },
+      content: '<time datetime="PT1M">1:00</time>',
+    },
+  ]);
+});
+
+test('seek links: with at, the text in square brackets is the content, inline Markdown included', async () => {
+  const result = await renderMarkdown(`${MAIN_VECTOR}\nSee :t[the *dry* fit]{at="1:05" video="drawer"} first.\n`);
+  const [, link] = seekLinksOf(result.html);
+  assert.equal(link.content, 'the <em>dry</em> fit');
+  assert.equal(link.attributes.href, 'https://www.youtube.com/watch?v=aBcD3fGh1_-&t=65s');
+  assert.equal(link.attributes['data-video-seek'], '65');
+  // A W4 seek link with at keeps its text.
+  const vk = await renderMarkdown('https://vkvideo.ru/video-12345_456239017\n\nSee :t[the *cut*]{at="1:00"}.\n');
+  assert.equal(vk.html, '<div data-coffer-video="0"></div>\n<p>See the <em>cut</em>.</p>');
+});
+
+test('seek links: the time as written is the text of <time>, in any form of a timecode', async () => {
+  const result = await renderMarkdown(`${YT}\n\n:t[160] :t[2m40s] :t[0:02:40]\n`);
+  assert.deepEqual(
+    seekLinksOf(result.html).map((link) => [link.attributes['data-video-seek'], link.content]),
+    [
+      ['160', '<time datetime="PT2M40S">160</time>'],
+      ['160', '<time datetime="PT2M40S">2m40s</time>'],
+      ['160', '<time datetime="PT2M40S">0:02:40</time>'],
+    ],
+  );
+});
+
+test('seek links: the target is the nearest video before, or the one named, which may come later', async () => {
+  const source =
+    `:t[0:01]{video="later"}\n\n${YT}\n\n:t[0:02]\n\n::video{src="https://vimeo.com/76979871" id="later"}\n\n:t[0:03] :t[0:04]{video="video-1"}\n`;
+  // "video-1" is the html id of the first video, not its id.
+  assert.equal(await errorOf(source), 'post.md:9:10: there is no video with the id "video-1"');
+  const result = await renderMarkdown(source.replace(' :t[0:04]{video="video-1"}', ''));
+  assert.deepEqual(
+    seekLinksOf(result.html).map((link) => [link.attributes['data-video-target'], link.attributes.href]),
+    [
+      ['video-later', 'https://vimeo.com/76979871#t=1s'],
+      ['video-1', 'https://www.youtube.com/watch?v=aBcD3fGh1_-&t=2s'],
+      ['video-later', 'https://vimeo.com/76979871#t=3s'],
+    ],
+  );
+  // Without video="...", a video that comes later is no target.
+  assert.equal(await errorOf(`:t[0:01]\n\n${YT}`), 'post.md:1:1: a seek link needs a video before it, or video="..."');
+});
+
+test('seek links: a local target links to the file at #t= and has no data-video-play', async () => {
+  const result = await renderMarkdown('::video{src="clip.mp4"}\n\nAt :t[0:30].\n', LOCAL);
+  assert.deepEqual(seekLinksOf(result.html), [
+    {
+      attributes: { class: 'video-seek', href: '/journal/p/clip.mp4#t=30', 'data-video-seek': '30', 'data-video-target': 'video-1' },
+      content: '<time datetime="PT30S">0:30</time>',
+    },
+  ]);
+  assert.deepEqual(result.videoWarnings, []);
+});
+
+test('seek links: the target carries the idPrefix', async () => {
+  const result = await renderMarkdown(`${YT}\n\n:t[0:30]\n`, { idPrefix: 'p1-' });
+  assert.equal(seekLinksOf(result.html)[0].attributes['data-video-target'], 'p1-video-1');
+});
+
+test('seek links: they are not links, and their text counts toward words', async () => {
+  const result = await renderMarkdown(`${YT}\n\nOne :t[1:00] and :t[the *dry* fit]{at="1:05"}.\n`);
+  assert.deepEqual(result.links, []);
+  // The words of the same text written without seek links.
+  assert.equal(result.words, (await renderMarkdown('One 1:00 and the *dry* fit.')).words);
+  assert.ok(result.words >= 6);
+});
+
+test('seek links: their warnings come after those of the videos', async () => {
+  const source = 'https://vkvideo.ru/video-12345_456239017\n\nSee :t[1:00].\n\n::video{src="https://vimeo.com/76979871" end="30"}\n';
+  const result = await renderMarkdown(source, { startLine: 3 });
+  assert.deepEqual(warningsOf(result), [
+    '7:1: Vimeo videos cannot stop at a given time; end="30" is ignored',
+    '5:5: VK Video videos cannot seek to a time; the seek link is shown as text',
+  ]);
+});
+
+test('seek links: one in a chapter title is V14', async () => {
+  assert.equal(
+    await errorOf(`:::video{src="${YT}"}\n- 0:12 Marking out, see :t[1:00]\n:::`),
+    'post.md:2:1: a chapter must start with a timecode, a space and a title',
+  );
+});
+
+test('seek links: a seek link cannot be inside a link or hold one', async () => {
+  assert.equal(await errorOf(`${YT}\n\n[See :t[1:00]](https://example.org)`), 'post.md:3:6: a seek link cannot be inside a link');
+  assert.equal(
+    await errorOf(`${YT}\n\nSee :t[the [notes](https://example.org)]{at="1:00"}.`),
+    'post.md:3:5: the text of a seek link cannot hold a link',
+  );
+  assert.equal(
+    await errorOf(`${YT}\n\nSee :t[the notes[^n]]{at="1:00"}.\n\n[^n]: A note.`),
+    'post.md:3:5: the text of a seek link cannot hold a link',
+  );
+  assert.equal(await errorOf(`${YT}\n\nSee :t[a :t[1:00]]{at="1:00"}.`), 'post.md:3:10: a seek link cannot be inside a link');
+  // Shown as text, a seek link may be inside a link.
+  const result = await renderMarkdown('https://vkvideo.ru/video-12345_456239017\n\n[See :t[1:00]](https://example.org)\n');
+  assert.equal(result.html, '<div data-coffer-video="0"></div>\n<p><a href="https://example.org">See <time datetime="PT1M">1:00</time></a></p>');
+});
+
+test('seek links: inside an unknown directive, the unknown directive is the error', async () => {
+  assert.match(await errorOf(':::note\nSee :t[1:00].\n:::'), /^post\.md:1:1: unknown directive "note"/);
+});

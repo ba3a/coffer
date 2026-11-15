@@ -162,7 +162,7 @@ export const DEFAULT_CAROUSEL_LABELS = Object.freeze({
  * @property {import('./directives/readme.js').ReadmeDirective[]} readmes The `::readme` directives of the text, in document order. Each one is an empty `<div data-coffer-readme="n"></div>` in `html`, n being its `index`, for the caller to fill in.
  * @property {import('../video/types.js').VideoDirective[]} videos The videos of the text, in document order. Each one is an empty `<div data-coffer-video="n"></div>` in `html`, n being its `index`, for the caller to fill in.
  * @property {import('../video/types.js').VideoWarning[]} videoWarnings Features the providers of the videos lack that the text asks for; the text renders without them.
- * @property {FoundLink[]} links Every Markdown link and image written in the text (links the renderer makes up, such as footnote back references, are left out).
+ * @property {FoundLink[]} links Every Markdown link and image written in the text (links the renderer makes up, such as footnote back references and seek links, are left out).
  * @property {string[]} ids Every `id` a link can point at: heading ids, ids of other elements and of videos and ids and names set by raw HTML, without duplicates.
  */
 
@@ -344,9 +344,9 @@ function readmes({ file, lineOffset, enabled, onFound }) {
 }
 
 /**
- * Remark plugin: the `::video` and `:::video` directives and video addresses
- * alone in a paragraph, with their mistakes reported as errors that name the
- * file and the line.
+ * Remark plugin: the `::video` and `:::video` directives, video addresses
+ * alone in a paragraph and `:t` seek links, with their mistakes reported as
+ * errors that name the file and the line.
  *
  * @param {{ source: string, file?: string, lineOffset: number, video: import('./directives/video.js').VideoOptions, idPrefix: string, onFound: (videos: import('../video/types.js').VideoDirective[], warnings: import('../video/types.js').VideoWarning[]) => void }} options
  * @returns {(tree: import('mdast').Root) => void}
@@ -377,9 +377,11 @@ function videos({ source, file, lineOffset, video, idPrefix, onFound }) {
 }
 
 /**
- * Remark plugin: apart from the ones that are defined (see `carousels`, `maps`, `readmes` and `videos`),
- * directives are reserved syntax, so each one is an error that names the file
- * and the line.
+ * Remark plugin: apart from the ones that are defined (see `carousels`, `maps`,
+ * `readmes`, and `videos` for `video` and `t`), directives are reserved syntax,
+ * so each one is an error that names the file and the line. The defined ones
+ * are gone from the tree by now, except where a directive that is not defined
+ * holds them.
  *
  * @param {{ file?: string, lineOffset: number }} options
  * @returns {(tree: import('mdast').Root) => void}
@@ -793,7 +795,7 @@ function responsiveImages({ images, lineOffset, onViewerImages }) {
   };
 }
 
-const INLINE_TAGS = new Set(['a', 'em', 'strong', 'code', 'del', 'span', 'sup', 'sub']);
+const INLINE_TAGS = new Set(['a', 'em', 'strong', 'code', 'del', 'span', 'sup', 'sub', 'time']);
 
 /**
  * Rehype plugin: replaces each fenced code block with Shiki's output, which
@@ -850,7 +852,7 @@ function highlightCode({ themes }) {
  * @param {string} source Markdown text without front matter.
  * @param {RenderOptions} [options]
  * @returns {Promise<RenderResult>}
- * @throws {MarkdownError} for an unknown directive, or a carousel, map, README section or video that is written wrongly.
+ * @throws {MarkdownError} for an unknown directive, or a carousel, map, README section, video or seek link that is written wrongly.
  * @throws {TypeError} for an invalid option.
  */
 export async function renderMarkdown(source, options = {}) {
