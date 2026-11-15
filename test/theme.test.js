@@ -423,3 +423,24 @@ test('every page type of the example site extends base.njk, so the frame is the 
   assert.equal(base.match(/<main\b/g)?.length, 1);
   assert.equal(base.match(/<footer class="site-footer"/g)?.length, 1);
 });
+
+const VIDEO_CLASSES = ['video', 'video-preview', 'video-play', 'video-placeholder', 'video-frame', 'video-chapters', 'video-seek'];
+
+test('the video figure, its preview, player box and chapters are styled with the design tokens only', () => {
+  const rules = allRules().filter((rule) => rule.selectors.some((selector) => /\.video\b/.test(selector)));
+  for (const name of VIDEO_CLASSES) {
+    const pattern = new RegExp(`\\.${name}(?![\\w-])`);
+    assert.ok(
+      rules.some((rule) => rule.selectors.some((selector) => pattern.test(selector)) && rule.body.trim() !== ''),
+      `.${name} is styled`,
+    );
+  }
+  assert.match(ruleBody(bare, '.video-preview,\n.video-frame'), /aspect-ratio:\s*16 \/ 9/, 'the player box is 16:9');
+  assert.match(ruleBody(bare, '.video-frame iframe'), /width:\s*100%[\s\S]*height:\s*100%/, 'the player fills its box');
+  for (const rule of rules) {
+    for (const [, name] of rule.body.matchAll(/var\((--[\w-]+)/g)) {
+      assert.ok(TOKENS.includes(name ?? ''), `${rule.selectors.join(', ')} uses ${name}, a design token`);
+    }
+    assert.doesNotMatch(rule.body, /\b(rgb|hsl|hwb|lab|lch|oklch|oklab)a?\(|#[0-9a-f]{3,8}\b/i, `${rule.selectors.join(', ')}: colours come from tokens`);
+  }
+});
