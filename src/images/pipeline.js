@@ -93,7 +93,7 @@ export class ImageError extends Error {
  * @property {string} source Absolute path of the original.
  * @property {string} sha256 Hash of the original.
  * @property {string} key Hash of the original and of the options; names the folder the files are published in.
- * @property {string} name Base name of the files, made from the name of the original.
+ * @property {string} name Base name of the files: the name given to `process`, else made from the name of the original.
  * @property {number} width Upright width of the original.
  * @property {number} height Upright height of the original.
  * @property {ImageFile[]} variants The WebP variants, narrowest first. Never wider than the original.
@@ -161,6 +161,19 @@ export class ImageError extends Error {
  * @property {import('./metadata.js').PublishedPosition | null} gps
  * @property {import('./metadata.js').CameraFields | null} camera
  */
+
+/**
+ * How `process` names the files it makes.
+ *
+ * @typedef {object} ProcessOptions
+ * @property {string} [name] Base name of the files, used instead of the one made from the name of the original, such as `youtube-preview`. Lower-case letters and digits separated by single hyphens, at most 60 characters. It is part of the cache key.
+ */
+
+/** What a name given to `process` must look like: what {@link baseNameOf} makes. */
+const NAME_PATTERN = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
+
+/** Longest base name of the files of an image. */
+const NAME_MAX_LENGTH = 60;
 
 /**
  * @typedef {object} ImagePipelineOptions
@@ -294,7 +307,7 @@ function baseNameOf(file) {
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, '-')
     .replace(/^-+|-+$/g, '');
-  return stem === '' ? 'image' : stem.slice(0, 60).replace(/-+$/, '');
+  return stem === '' ? 'image' : stem.slice(0, NAME_MAX_LENGTH).replace(/-+$/, '');
 }
 
 /**
@@ -637,13 +650,24 @@ export function createImagePipeline(options) {
      *
      * @param {string} source Absolute path of a JPEG, PNG, WebP or HEIC file.
      * @param {Partial<MetadataPolicy>} [policy] What the viewer JPEG keeps of the original's location and camera fields (default `strip` for both).
+     * @param {ProcessOptions} [processOptions] The base name of the files (default one made from the name of the original).
      * @returns {Promise<ProcessedImage>}
      * @throws {ImageError} When the file is not an image of an accepted format or cannot be decoded.
-     * @throws {TypeError} When the policy has an unknown value.
+     * @throws {TypeError} When the policy has an unknown value or the name is not valid.
      */
-    process(source, policy = {}) {
+    process(source, policy = {}, processOptions = {}) {
       const effective = effectivePolicy(policy);
-      const id = `${source}\n${effective.location}\n${effective.camera}`;
+      const given = processOptions.name;
+      if (
+        given !== undefined &&
+        (typeof given !== 'string' || given.length > NAME_MAX_LENGTH || !NAME_PATTERN.test(given))
+      ) {
+        throw new TypeError(
+          `name must be lower-case letters and digits separated by hyphens, at most ${NAME_MAX_LENGTH} characters`,
+        );
+      }
+      // A file processed under a name is a different result from the same file without one.
+      const id = `${source}\n${effective.location}\n${effective.camera}\n${given ?? ''}`;
       let pending = processing.get(id);
       if (!pending) {
         pending = limit(async () => {
@@ -658,7 +682,7 @@ export function createImagePipeline(options) {
           }
           const sha256 = createHash('sha256').update(bytes).digest('hex');
           const heic = isHeic(bytes);
-          const name = baseNameOf(source);
+          const name = given ?? baseNameOf(source);
           const key = createHash('sha256')
             .update(
               JSON.stringify({

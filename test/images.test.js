@@ -349,6 +349,59 @@ test('only JPEG, PNG and WebP images are accepted, and a broken file is an Image
   });
 });
 
+test('an image processed under an explicit name publishes files of that name, apart from the same file without one', async () => {
+  await inTemp(async (root) => {
+    addFiles(root, { 'a1b2c3d4e5f6a7b8.jpg': await solidImage(1000, 700) });
+    const source = join(root, 'a1b2c3d4e5f6a7b8.jpg');
+    const cacheDir = join(root, 'cache');
+    const pipeline = createImagePipeline({ cacheDir });
+
+    const named = await pipeline.process(source, { location: 'strip', camera: 'strip' }, { name: 'youtube-preview' });
+    assert.equal(named.name, 'youtube-preview');
+    assert.deepEqual(
+      named.variants.map((variant) => variant.file),
+      ['youtube-preview-480.webp', 'youtube-preview-800.webp', 'youtube-preview-1000.webp'],
+    );
+    assert.equal(named.viewer.file, 'youtube-preview-full.jpg');
+    const out = join(root, 'out');
+    pipeline.publish(named, out);
+    assert.ok(existsSync(join(out, 'img', named.key, 'youtube-preview-480.webp')));
+    assert.equal(imageFileUrl(named, /** @type {import('../src/images/pipeline.js').ImageFile} */ (named.variants[0])), `/img/${named.key}/youtube-preview-480.webp`);
+
+    // Without a name the file is named after the original, as before, and is a separate result.
+    const plain = await pipeline.process(source);
+    assert.equal(plain.name, 'a1b2c3d4e5f6a7b8');
+    assert.deepEqual(
+      plain.variants.map((variant) => variant.file),
+      ['a1b2c3d4e5f6a7b8-480.webp', 'a1b2c3d4e5f6a7b8-800.webp', 'a1b2c3d4e5f6a7b8-1000.webp'],
+    );
+    assert.notEqual(plain.key, named.key);
+    assert.notEqual(plain.dir, named.dir);
+    assert.notEqual(plain, named);
+    assert.deepEqual(pipeline.stats, { generated: 2, reused: 0 });
+    assert.equal(await pipeline.process(source, {}, { name: 'youtube-preview' }), named, 'processed once per name');
+    assert.equal(await pipeline.process(source, {}, {}), plain, 'an empty options object is the same as none');
+
+    // The name is part of the cache key: another pipeline finds each in the cache.
+    const again = createImagePipeline({ cacheDir });
+    const cachedNamed = await again.process(source, {}, { name: 'youtube-preview' });
+    assert.equal(cachedNamed.cached, true);
+    assert.equal(cachedNamed.key, named.key);
+    assert.deepEqual(cachedNamed.variants, named.variants);
+    const otherName = await again.process(source, {}, { name: 'vimeo-preview' });
+    assert.notEqual(otherName.key, named.key);
+    assert.equal(otherName.viewer.file, 'vimeo-preview-full.jpg');
+
+    for (const name of ['', 'YouTube', 'a/b', '../x', '-x', 'x-', 'a.b', 'x'.repeat(61), 42]) {
+      assert.throws(
+        () => pipeline.process(source, {}, { name: /** @type {string} */ (name) }),
+        (error) => error instanceof TypeError && /name/.test(error.message),
+        String(name),
+      );
+    }
+  });
+});
+
 test('invalid pipeline options are rejected', () => {
   assert.throws(() => createImagePipeline({ cacheDir: 'c', widths: [] }), /widths/);
   assert.throws(() => createImagePipeline({ cacheDir: 'c', widths: [4] }), /width/);
