@@ -78,6 +78,7 @@ import { BLOG_FILTER, SEARCH_DIR_NAME, SEARCH_URL_NAME, buildSearchIndex, search
 import { SHARE_FILE_NAME, SHARE_SCRIPT, hashtagsFor, renderShareText, shareUrlFor } from './share.js';
 import { ROBOTS_FILE_NAME, SITEMAP_FILE_NAME, renderRobots, renderSitemap } from './sitemap.js';
 import { readVersion } from './version.js';
+import { renderVideoHtml } from './video/html.js';
 import { resolveVideoRules } from './video/rules.js';
 import { VIEWER_SCRIPTS, VIEWER_STYLES, viewerJson } from './viewer.js';
 
@@ -172,6 +173,24 @@ export class BuildError extends Error {
  * @property {{ slug: string, number: number, count: number } | null} series The series the post belongs to, with its place in it ("part number of count"), or null.
  * @property {ManifestTrack[]} tracks The GPX tracks published with the post, in the order they are shown; empty when it has none.
  * @property {import('./geo/post-maps.js').ManifestMap[]} maps The maps of the post in the order they appear; empty when the post has none.
+ * @property {ManifestVideo[]} videos The videos of the post in document order; empty when it has none.
+ */
+
+/**
+ * One video of a post, as listed in the manifest.
+ *
+ * @typedef {object} ManifestVideo
+ * @property {number} index From 0, in document order.
+ * @property {string | null} id The `id` attribute.
+ * @property {import('./video/rules.js').Provider | 'file'} provider
+ * @property {string} src As written.
+ * @property {string | null} title The resolved title when it is shown, else null.
+ * @property {number | null} start
+ * @property {number | null} end
+ * @property {'click' | 'iframe' | null} load Null for a local video.
+ * @property {string | null} preview Site-relative URL of the preview or poster, or null for none.
+ * @property {string | null} file Site-relative URL of the published local video, or null for a remote one.
+ * @property {number[]} chapters The times of the chapters, in seconds.
  */
 
 /**
@@ -477,7 +496,7 @@ function localVideoName(file) {
   return `${stem === '' ? 'video' : stem}${extension.toLowerCase()}`;
 }
 
-const VIDEO_PLACEHOLDER_RE = new RegExp(`<div ${VIDEO_PLACEHOLDER_ATTRIBUTE}="\\d+"></div>`, 'g');
+const VIDEO_PLACEHOLDER_RE = new RegExp(`<div ${VIDEO_PLACEHOLDER_ATTRIBUTE}="(\\d+)"></div>`, 'g');
 
 /**
  * The HTML of a text without the placeholders of its videos, for feeds and
@@ -488,6 +507,49 @@ const VIDEO_PLACEHOLDER_RE = new RegExp(`<div ${VIDEO_PLACEHOLDER_ATTRIBUTE}="\\
  */
 function withoutVideoPlaceholders(html) {
   return html.replace(VIDEO_PLACEHOLDER_RE, '');
+}
+
+/**
+ * A video of a text with what its figure shows besides the video itself.
+ *
+ * @typedef {Pick<import('./video/html.js').VideoRenderInput, 'video' | 'title' | 'titleShown' | 'preview'>} ResolvedVideo
+ */
+
+/**
+ * The HTML of a text with the placeholder of each video replaced by its figure.
+ *
+ * @param {string} html
+ * @param {readonly ResolvedVideo[]} videos The videos of the text, by index.
+ * @param {{ sizes: string, labels: import('./video/html.js').VideoLabels, feed: boolean }} options
+ * @returns {string}
+ */
+function fillVideoPlaceholders(html, videos, { sizes, labels, feed }) {
+  return html.replace(VIDEO_PLACEHOLDER_RE, (_whole, index) => {
+    const resolved = videos[Number(index)];
+    return resolved ? renderVideoHtml({ ...resolved, sizes, labels, feed }) : '';
+  });
+}
+
+/**
+ * A video of a post as the manifest lists it.
+ *
+ * @param {ResolvedVideo} resolved
+ * @returns {ManifestVideo}
+ */
+function manifestVideoOf({ video, title, titleShown, preview }) {
+  return {
+    index: video.index,
+    id: video.id,
+    provider: video.provider,
+    src: video.src,
+    title: titleShown ? title : null,
+    start: video.start,
+    end: video.end,
+    load: video.load,
+    preview: preview === null ? null : preview.src,
+    file: video.file === null ? null : video.file.url,
+    chapters: video.chapters.map((chapter) => chapter.seconds),
+  };
 }
 
 /**
@@ -741,6 +803,17 @@ async function buildSite(config, site, options, outRoot, version, report) {
     previous: templates.translator.t('carousel.previous'),
     next: templates.translator.t('carousel.next'),
   };
+  /**
+   * The words of videos, in the language of the site.
+   * @type {import('./video/html.js').VideoLabels}
+   */
+  const videoLabels = {
+    play: templates.translator.t('video.play'),
+    watchOn: templates.translator.t('video.watch_on'),
+    untitled: templates.translator.t('video.untitled'),
+    chapters: templates.translator.t('video.chapters'),
+    download: templates.translator.t('video.download'),
+  };
   /** The words of the image viewer, in the language of the site. */
   const viewerLabels = {
     close: templates.translator.t('viewer.close'),
@@ -751,13 +824,15 @@ async function buildSite(config, site, options, outRoot, version, report) {
     showOnMap: templates.translator.t('viewer.show_on_map'),
   };
   /**
-   * The part of a rendered text that decides what its page loads.
+   * The part of a rendered text that decides what its page loads. Only the
+   * number of `videos` matters.
    *
-   * @typedef {{ carousels: number, viewerImages: import('./markdown/render.js').ViewerImage[] }} PageText
+   * @typedef {{ carousels: number, videos: readonly unknown[], viewerImages: import('./markdown/render.js').ViewerImage[] }} PageText
    */
   /**
    * What a page needs besides its HTML, as template variables: the carousel
-   * script when the page has a carousel and, when it has images the viewer can
+   * script when the page has a carousel, the video script when it has a video
+   * and, when it has images the viewer can
    * open, the viewer (PhotoSwipe, its styles, the engine's script and styles)
    * and the list of those images as JSON for it. Pages without such images load
    * nothing of it.
@@ -774,6 +849,7 @@ async function buildSite(config, site, options, outRoot, version, report) {
     const texts = rendered === null ? [] : Array.isArray(rendered) ? rendered : [rendered];
     const viewerImages = texts.flatMap((text) => text.viewerImages);
     const scripts = texts.some((text) => text.carousels > 0) ? ['/assets/carousel.js'] : [];
+    if (texts.some((text) => text.videos.length > 0)) scripts.push('/assets/video.js');
     const styles = [];
     let viewerData = '';
     if (viewerImages.length > 0) {
@@ -1056,6 +1132,55 @@ async function buildSite(config, site, options, outRoot, version, report) {
   };
 
   /**
+   * Processes and publishes an image of a text, the way a Markdown image is:
+   * under the page's metadata policy, listed in the manifest with the use
+   * `body`. A problem is reported with the position of the image.
+   *
+   * @param {object} image
+   * @param {string} image.file Absolute path of the original.
+   * @param {string} image.src The address as written in the text.
+   * @param {string} image.shown How findings name the text's file.
+   * @param {number} image.line
+   * @param {number} image.column
+   * @param {string} pageUrl Site-relative URL of the page the text appears on.
+   * @param {PageImages} page Decides the metadata policy of the image.
+   * @returns {Promise<import('./markdown/render.js').ResponsiveImage | null>} Null when the image cannot be made; the problem is reported.
+   */
+  const processBodyImage = async ({ file, src, shown, line, column }, pageUrl, page) => {
+    if (!IMAGE_EXTENSIONS.includes(extname(file).toLowerCase())) {
+      report.addError({
+        site: site.id,
+        file: shown,
+        line,
+        column,
+        message: `unsupported image format '${src}' (use JPEG, PNG, WebP or HEIC)`,
+      });
+      return null;
+    }
+    try {
+      const policy = page.policyFor(addressPath(src));
+      const processed = await images.process(file, { location: policy.location.value, camera: policy.camera.value });
+      const standIn = publishImage(processed, pageUrl, 'body', page, policy);
+      return {
+        src: imageFileUrl(processed, standIn),
+        width: standIn.width,
+        height: standIn.height,
+        srcset: processed.variants.map((entry) => ({ url: imageFileUrl(processed, entry), width: entry.width })),
+        viewer: {
+          src: imageFileUrl(processed, processed.viewer),
+          width: processed.viewer.width,
+          height: processed.viewer.height,
+        },
+        location: processed.gps,
+      };
+    } catch (error) {
+      if (!(error instanceof ImageError)) throw error;
+      report.addError({ site: site.id, file: shown, line, column, message: `image '${src}': ${error.message}` });
+      return null;
+    }
+  };
+
+  /**
    * How the Markdown renderer turns the images of a text into responsive
    * pictures. Problems are reported with the file, line and column of the image.
    *
@@ -1085,37 +1210,7 @@ async function buildSite(config, site, options, outRoot, version, report) {
           file = localImageFile(sourceFile, src);
         }
         if (file === null) return null;
-        if (!IMAGE_EXTENSIONS.includes(extname(file).toLowerCase())) {
-          report.addError({
-            site: site.id,
-            file: shown,
-            line,
-            column,
-            message: `unsupported image format '${src}' (use JPEG, PNG, WebP or HEIC)`,
-          });
-          return null;
-        }
-        try {
-          const policy = page.policyFor(addressPath(src));
-          const processed = await images.process(file, { location: policy.location.value, camera: policy.camera.value });
-          const standIn = publishImage(processed, pageUrl, 'body', page, policy);
-          return {
-            src: imageFileUrl(processed, standIn),
-            width: standIn.width,
-            height: standIn.height,
-            srcset: processed.variants.map((entry) => ({ url: imageFileUrl(processed, entry), width: entry.width })),
-            viewer: {
-              src: imageFileUrl(processed, processed.viewer),
-              width: processed.viewer.width,
-              height: processed.viewer.height,
-            },
-            location: processed.gps,
-          };
-        } catch (error) {
-          if (!(error instanceof ImageError)) throw error;
-          report.addError({ site: site.id, file: shown, line, column, message: `image '${src}': ${error.message}` });
-          return null;
-        }
+        return processBodyImage({ file, src, shown, line, column }, pageUrl, page);
       },
     };
   };
@@ -1199,6 +1294,36 @@ async function buildSite(config, site, options, outRoot, version, report) {
         return `${url}${name}`;
       },
     };
+  };
+
+  /**
+   * The videos of a post with their titles and previews. A poster is made like
+   * a Markdown image of the post; one that does not exist fails the build. A
+   * remote video without a poster has no preview.
+   *
+   * @param {Post} post
+   * @param {string} url Site-relative URL of the post.
+   * @param {readonly import('./video/types.js').VideoDirective[]} videos
+   * @returns {Promise<ResolvedVideo[]>}
+   */
+  const resolvePostVideos = async (post, url, videos) => {
+    const shown = posix(relative(config.dir, post.file));
+    const page = /** @type {PageImages} */ (pageImages.get(post.file));
+    /** @type {ResolvedVideo[]} */
+    const resolved = [];
+    for (const video of videos) {
+      const { poster, line, column } = video;
+      /** @type {ResolvedVideo['preview']} */
+      let preview = null;
+      if (poster !== null) {
+        const file = localImageFile(post.file, poster);
+        if (file === null) throw new BuildError(`${shown}:${line}:${column}: poster "${poster}" does not exist`);
+        const image = await processBodyImage({ file, src: poster, shown, line, column }, url, page);
+        if (image !== null) preview = { src: image.src, width: image.width, height: image.height, srcset: image.srcset };
+      }
+      resolved.push({ video, title: video.title ?? videoLabels.untitled, titleShown: video.title !== null, preview });
+    }
+    return resolved;
   };
 
   /** @type {ManifestPage[]} */
@@ -2507,6 +2632,7 @@ async function buildSite(config, site, options, outRoot, version, report) {
       if (forLists) listBodies.set(url, { post, url, rendered: forLists, hasMap: mapped.maps.length > 0 });
       // The text of the post for feeds and excerpts: without maps and, for now, without videos.
       const feedHtml = withoutVideoPlaceholders(mapped.feedHtml);
+      const videos = await resolvePostVideos(post, url, rendered.videos);
 
       const aboutProjects = aboutPost.get(post) ?? [];
       if (!unpublished) {
@@ -2601,7 +2727,7 @@ async function buildSite(config, site, options, outRoot, version, report) {
         page: {
           title: post.title,
           description: post.summary ?? '',
-          content: mapped.html,
+          content: fillVideoPlaceholders(mapped.html, videos, { sizes: site.images.sizes, labels: videoLabels, feed: false }),
         },
       });
       writeOutput(outDir, file, html);
@@ -2656,6 +2782,7 @@ async function buildSite(config, site, options, outRoot, version, report) {
           : null,
         tracks: manifestTracks,
         maps: mapped.maps.map((map) => map.summary),
+        videos: videos.map(manifestVideoOf),
       });
     }
 

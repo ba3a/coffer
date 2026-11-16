@@ -7,6 +7,7 @@ import { join } from 'node:path';
 import { BuildError, buildSites } from '../src/build.js';
 import { loadConfig } from '../src/config.js';
 import { MarkdownError } from '../src/markdown/render.js';
+import { solidImage } from './helpers/images.js';
 
 const NOW = new Date('2026-06-01T12:00:00Z');
 
@@ -58,6 +59,9 @@ const CONFIG = [
 function post(body, extra = '') {
   return `---\ntitle: Glue-up\ndate: 2026-05-01\n${extra}---\n\n${body}\n`;
 }
+
+/** A poster picture, 800 by 450. */
+const POSTER = await solidImage(800, 450, 'jpeg');
 
 /** @param {string} root */
 function build(root) {
@@ -229,4 +233,226 @@ test('feeds, the meta description and the share summary of a post with a video h
       assert.doesNotMatch(share, /data-coffer-video/);
     },
   );
+});
+
+/**
+ * The page of a post.
+ *
+ * @param {string} outDir
+ * @param {string} slug
+ * @returns {string}
+ */
+function pageOf(outDir, slug) {
+  return readFileSync(join(outDir, 'log', slug, 'index.html'), 'utf8');
+}
+
+/**
+ * The figure of the video `htmlId` in a page.
+ *
+ * @param {string} page
+ * @param {string} htmlId
+ * @returns {string}
+ */
+function figureOf(page, htmlId) {
+  const start = page.indexOf(`<figure class="video" id="${htmlId}"`);
+  assert.ok(start >= 0, `no figure ${htmlId}`);
+  const end = page.indexOf('</figure>', start);
+  return page.slice(start, end + '</figure>'.length);
+}
+
+test('a post with a local video and a poster shows the local figure with the published poster and file', async () => {
+  await inTree(
+    {
+      'coffer.yaml': CONFIG,
+      'notes/glue/index.md': post('::video[Glue-up, sped up]{src="Glue Up.MP4" start="5" poster="glue.jpg"}'),
+      'notes/glue/Glue Up.MP4': CLIP,
+      'notes/glue/glue.jpg': POSTER,
+    },
+    async (root) => {
+      const [result] = await build(root);
+      const [entry] = result.manifest.posts;
+      const poster = entry.videos[0].preview;
+      assert.ok(poster !== null && poster.startsWith('/img/'), String(poster));
+      const image = result.manifest.images.find((candidate) => candidate.source === 'notes/glue/glue.jpg');
+      assert.ok(image, 'the poster is listed in the manifest');
+      assert.equal(image.use, 'body');
+      assert.equal(image.post, '/log/glue/');
+      assert.ok(image.outputs.some((output) => output.role === 'variant' && output.url === poster));
+      assert.ok(existsSync(join(result.outDir, ...poster.split('/').filter(Boolean))), 'the poster is published');
+      const page = pageOf(result.outDir, 'glue');
+      assert.ok(
+        page.includes(
+          [
+            '<figure class="video" id="video-1" data-video="file">',
+            `<video controls preload="metadata" poster="${poster}"><source src="/log/glue/glue-up.mp4#t=5" type="video/mp4"><a href="/log/glue/glue-up.mp4">Download the video</a></video>`,
+            '<figcaption><span class="video-title">Glue-up, sped up</span></figcaption>',
+            '</figure>',
+          ].join('\n'),
+        ),
+        page,
+      );
+      assert.doesNotMatch(page, /data-coffer-video/);
+      assert.deepEqual(result.warnings, []);
+    },
+  );
+});
+
+test('a remote video with a poster shows the click-mode figure with the poster under /img/', async () => {
+  await inTree(
+    {
+      'coffer.yaml': CONFIG,
+      'notes/plane/index.md': post('::video[Planing end grain]{src="https://youtu.be/aBcD3fGh1_-" poster="cover.jpg"}'),
+      'notes/plane/cover.jpg': POSTER,
+    },
+    async (root) => {
+      const [result] = await build(root);
+      const figure = figureOf(pageOf(result.outDir, 'plane'), 'video-1');
+      const lines = figure.split('\n');
+      assert.equal(
+        lines[0],
+        '<figure class="video" id="video-1" data-video="youtube" data-video-load="click" data-video-play="https://www.youtube-nocookie.com/embed/aBcD3fGh1_-?autoplay=1" data-video-title="Planing end grain">',
+      );
+      assert.match(
+        lines[1],
+        /^<a class="video-preview" href="https:\/\/www\.youtube\.com\/watch\?v=aBcD3fGh1_-"><img src="\/img\/[^"]+\.webp" srcset="[^"]+ \d+w" sizes="\(min-width: 44rem\) 41rem, calc\(100vw - 2rem\)" width="\d+" height="\d+" alt="" loading="lazy" decoding="async"><span class="video-play">Play: Planing end grain<\/span><\/a>$/,
+      );
+      assert.equal(
+        lines[2],
+        '<figcaption><span class="video-title">Planing end grain</span> <a class="video-source" href="https://www.youtube.com/watch?v=aBcD3fGh1_-">Watch on YouTube</a></figcaption>',
+      );
+      assert.equal(lines[3], '</figure>');
+      const image = result.manifest.images.find((candidate) => candidate.source === 'notes/plane/cover.jpg');
+      assert.equal(image?.use, 'body');
+    },
+  );
+});
+
+test('a remote video without a poster has a placeholder preview and the untitled title, in the language of the site', async () => {
+  await inTree(
+    {
+      'coffer.yaml': CONFIG.replace('lang: en', 'lang: ru'),
+      'notes/remote.md': post('https://youtu.be/aBcD3fGh1_-'),
+    },
+    async (root) => {
+      const [result] = await build(root);
+      assert.equal(
+        figureOf(pageOf(result.outDir, 'remote'), 'video-1'),
+        [
+          '<figure class="video" id="video-1" data-video="youtube" data-video-load="click" data-video-play="https://www.youtube-nocookie.com/embed/aBcD3fGh1_-?autoplay=1" data-video-title="Видео">',
+          '<a class="video-preview" href="https://www.youtube.com/watch?v=aBcD3fGh1_-"><span class="video-placeholder"></span><span class="video-play">Смотреть: Видео</span></a>',
+          '<figcaption><a class="video-source" href="https://www.youtube.com/watch?v=aBcD3fGh1_-">Смотреть на YouTube</a></figcaption>',
+          '</figure>',
+        ].join('\n'),
+      );
+      assert.equal(result.manifest.posts[0].videos[0].title, null);
+      assert.equal(result.manifest.posts[0].videos[0].preview, null);
+    },
+  );
+});
+
+test('a missing poster fails the build with its position in the post file', async () => {
+  await inTree(
+    {
+      'coffer.yaml': CONFIG,
+      'notes/plane.md': post('Before.\n\n::video{src="https://youtu.be/aBcD3fGh1_-" poster="nope.jpg"}'),
+    },
+    async (root) => {
+      await assert.rejects(build(root), (error) => {
+        assert.ok(error instanceof BuildError);
+        assert.equal(error.message, 'notes/plane.md:8:1: poster "nope.jpg" does not exist');
+        return true;
+      });
+    },
+  );
+});
+
+test('a page with a video loads the video script with defer, a page without one does not', async () => {
+  await inTree(
+    {
+      'coffer.yaml': CONFIG,
+      'notes/remote.md': post('https://youtu.be/aBcD3fGh1_-'),
+      'notes/plain.md': post('No video here.'),
+    },
+    async (root) => {
+      const [result] = await build(root);
+      assert.equal(pageOf(result.outDir, 'remote').match(/<script src="\/assets\/video\.js" defer><\/script>/g)?.length, 1);
+      assert.ok(!pageOf(result.outDir, 'plain').includes('video.js'));
+      assert.ok(existsSync(join(result.outDir, 'assets', 'video.js')));
+    },
+  );
+});
+
+test('the manifest entry of a post lists its videos in document order', async () => {
+  const body = [
+    ':::video[Fitting the drawer]{src="https://youtu.be/aBcD3fGh1_-?t=12" id="drawer" end="4:00" load="iframe"}',
+    '- 0:12 Marking out',
+    '- 1:05 Sawing the *tails*',
+    ':::',
+    '',
+    '::video{src="Glue Up.MP4" poster="glue.jpg"}',
+    '',
+    'https://vimeo.com/76979871',
+  ].join('\n');
+  await inTree(
+    {
+      'coffer.yaml': CONFIG,
+      'notes/glue/index.md': post(body),
+      'notes/glue/Glue Up.MP4': CLIP,
+      'notes/glue/glue.jpg': POSTER,
+    },
+    async (root) => {
+      const [result] = await build(root);
+      const { videos } = result.manifest.posts[0];
+      const poster = videos[1].preview;
+      assert.ok(poster !== null && poster.startsWith('/img/'));
+      assert.deepEqual(videos, [
+        {
+          index: 0,
+          id: 'drawer',
+          provider: 'youtube',
+          src: 'https://youtu.be/aBcD3fGh1_-?t=12',
+          title: 'Fitting the drawer',
+          start: 12,
+          end: 240,
+          load: 'iframe',
+          preview: null,
+          file: null,
+          chapters: [12, 65],
+        },
+        {
+          index: 1,
+          id: null,
+          provider: 'file',
+          src: 'Glue Up.MP4',
+          title: null,
+          start: null,
+          end: null,
+          load: null,
+          preview: poster,
+          file: '/log/glue/glue-up.mp4',
+          chapters: [],
+        },
+        {
+          index: 2,
+          id: null,
+          provider: 'vimeo',
+          src: 'https://vimeo.com/76979871',
+          title: null,
+          start: null,
+          end: null,
+          load: 'click',
+          preview: null,
+          file: null,
+          chapters: [],
+        },
+      ]);
+    },
+  );
+});
+
+test('a post without videos has an empty list of videos in the manifest', async () => {
+  await inTree({ 'coffer.yaml': CONFIG, 'notes/plain.md': post('No video here.') }, async (root) => {
+    const [result] = await build(root);
+    assert.deepEqual(result.manifest.posts[0].videos, []);
+  });
 });
