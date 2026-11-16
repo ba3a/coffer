@@ -1,5 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import { createHash } from 'node:crypto';
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -63,9 +64,25 @@ function post(body, extra = '') {
 /** A poster picture, 800 by 450. */
 const POSTER = await solidImage(800, 450, 'jpeg');
 
-/** @param {string} root */
-function build(root) {
-  return buildSites(loadConfig({ configPath: join(root, 'coffer.yaml') }), { out: join(root, 'out'), now: NOW });
+/**
+ * A host that answers every request with 404, so that no test reaches the
+ * network.
+ *
+ * @type {typeof fetch}
+ */
+const offline = async () => new Response('', { status: 404 });
+
+/**
+ * @param {string} root
+ * @param {import('../src/build.js').BuildOptions} [options]
+ */
+function build(root, options = {}) {
+  return buildSites(loadConfig({ configPath: join(root, 'coffer.yaml') }), {
+    out: join(root, 'out'),
+    now: NOW,
+    videoFetch: { fetch: offline },
+    ...options,
+  });
 }
 
 test('a local video is published under its normalised name in the folder of the post, unchanged', async () => {
@@ -455,4 +472,272 @@ test('a post without videos has an empty list of videos in the manifest', async 
     const [result] = await build(root);
     assert.deepEqual(result.manifest.posts[0].videos, []);
   });
+});
+
+// Vector 15.8: a build that fetches the preview of a remote video.
+
+const VERSION = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8')).version;
+const OEMBED = 'https://www.youtube.com/oembed?format=json&url=https%3A%2F%2Fwww.youtube.com%2Fwatch%3Fv%3DaBcD3fGh1_-';
+const THUMBNAIL = 'https://i.ytimg.com/vi/aBcD3fGh1_-/hqdefault.jpg';
+const KEY = createHash('sha256').update('https://www.youtube.com/watch?v=aBcD3fGh1_-', 'utf8').digest('hex');
+const CLIP_CONFIG = [
+  'sites:',
+  '  - id: demo',
+  '    baseUrl: https://demo.example',
+  '    lang: en',
+  '    title: Demo',
+  '    contentLicense: Some rights reserved',
+  '    contentDir: content',
+  '    blogs:',
+  '      - { id: journal, dir: content/journal, prefix: journal, title: Journal }',
+  '',
+].join('\n');
+/** The post of the vector; its body, the single line, is on line 6. */
+const CLIP_POST = post('https://youtu.be/aBcD3fGh1_-');
+/** A valid 480 by 360 JPEG, as the thumbnail host answers. */
+const THUMBNAIL_JPEG = await solidImage(480, 360, 'jpeg');
+
+/**
+ * @typedef {object} Call
+ * @property {string} url
+ * @property {string | undefined} method
+ * @property {string | null} accept
+ * @property {string | null} userAgent
+ */
+
+/**
+ * A fetch that answers from `routes` (404 for any other address) and records
+ * every request.
+ *
+ * @param {Record<string, () => Response | Promise<Response>>} routes
+ * @returns {{ fetch: typeof fetch, calls: Call[] }}
+ */
+function fakeFetch(routes) {
+  /** @type {Call[]} */
+  const calls = [];
+  /** @type {typeof globalThis.fetch} */
+  const answer = async (input, init) => {
+    const url = String(input);
+    const headers = new Headers(init?.headers);
+    calls.push({ url, method: init?.method, accept: headers.get('accept'), userAgent: headers.get('user-agent') });
+    const route = routes[url];
+    return route ? route() : new Response('', { status: 404 });
+  };
+  return { fetch: answer, calls };
+}
+
+/** The routes of a host that knows the video. */
+const HOST = {
+  [OEMBED]: () =>
+    Response.json({ title: 'Cutting a mortise', thumbnail_url: THUMBNAIL }, { headers: { 'content-type': 'application/json' } }),
+  [THUMBNAIL]: () => new Response(new Uint8Array(THUMBNAIL_JPEG), { headers: { 'content-type': 'image/jpeg' } }),
+};
+
+/**
+ * The files of the video cache.
+ *
+ * @param {string} cacheDir
+ * @returns {string[]}
+ */
+function videoCache(cacheDir) {
+  const folder = join(cacheDir, 'videos');
+  return existsSync(folder) ? readdirSync(folder).sort() : [];
+}
+
+test('vector 15.8: the preview is fetched with two requests, cached, shown on the page and listed in the manifest', async () => {
+  await inTree({ 'coffer.yaml': CLIP_CONFIG, 'content/journal/clip-test.md': CLIP_POST }, async (root) => {
+    const cacheDir = join(root, 'cache');
+    const { fetch, calls } = fakeFetch(HOST);
+    const [result] = await build(root, { cacheDir, videoFetch: { fetch } });
+
+    // 1. Two requests, in this order.
+    const userAgent = `coffer/${VERSION}`;
+    assert.deepEqual(calls, [
+      { url: OEMBED, method: 'GET', accept: 'application/json', userAgent },
+      { url: THUMBNAIL, method: 'GET', accept: 'image/*', userAgent },
+    ]);
+
+    // 2. The cache.
+    assert.deepEqual(videoCache(cacheDir), [`${KEY}.jpg`, `${KEY}.json`]);
+    assert.equal(
+      readFileSync(join(cacheDir, 'videos', `${KEY}.json`), 'utf8'),
+      `{"title":"Cutting a mortise","thumbnail":"${KEY}.jpg"}`,
+    );
+
+    // 3. The page.
+    const page = readFileSync(join(result.outDir, 'journal', 'clip-test', 'index.html'), 'utf8');
+    const lines = figureOf(page, 'video-1').split('\n');
+    assert.equal(
+      lines[0],
+      '<figure class="video" id="video-1" data-video="youtube" data-video-load="click" data-video-play="https://www.youtube-nocookie.com/embed/aBcD3fGh1_-?autoplay=1" data-video-title="Cutting a mortise">',
+    );
+    const src = lines[1].match(/<img src="([^"]+)"/)?.[1];
+    assert.ok(src !== undefined, lines[1]);
+    assert.match(src, /^\/img\/[^"]*youtube-preview-480\.webp$/);
+    assert.ok(lines[1].endsWith('<span class="video-play">Play: Cutting a mortise</span></a>'), lines[1]);
+    assert.equal(
+      lines[2],
+      '<figcaption><span class="video-title">Cutting a mortise</span> <a class="video-source" href="https://www.youtube.com/watch?v=aBcD3fGh1_-">Watch on YouTube</a></figcaption>',
+    );
+    assert.equal(lines[3], '</figure>');
+    assert.match(page, /<script src="\/assets\/video\.js" defer><\/script>/);
+    assert.ok(existsSync(join(result.outDir, ...src.split('/').filter(Boolean))), 'the preview is published');
+
+    // 4. The manifest.
+    assert.deepEqual(result.manifest.posts[0].videos, [
+      {
+        index: 0,
+        id: null,
+        provider: 'youtube',
+        src: 'https://youtu.be/aBcD3fGh1_-',
+        title: 'Cutting a mortise',
+        start: null,
+        end: null,
+        load: 'click',
+        preview: src,
+        file: null,
+        chapters: [],
+      },
+    ]);
+    // A fetched preview is not an image of the author (plan.md assumption 6).
+    assert.deepEqual(result.manifest.images, []);
+    assert.deepEqual(result.warnings, []);
+
+    // 5. A second build with the same cache makes no request and writes the same page.
+    const again = fakeFetch(HOST);
+    const [second] = await build(root, { cacheDir, videoFetch: { fetch: again.fetch } });
+    assert.deepEqual(again.calls, []);
+    assert.equal(readFileSync(join(second.outDir, 'journal', 'clip-test', 'index.html'), 'utf8'), page);
+    assert.deepEqual(second.manifest.posts[0].videos, result.manifest.posts[0].videos);
+    assert.deepEqual(second.warnings, []);
+  });
+});
+
+test('vector 15.8: an oEmbed answer of 404 is a warning, the figure has the placeholder, nothing is cached and the build succeeds', async () => {
+  await inTree({ 'coffer.yaml': CLIP_CONFIG, 'content/journal/clip-test.md': CLIP_POST }, async (root) => {
+    const cacheDir = join(root, 'cache');
+    const { fetch, calls } = fakeFetch({});
+    const [result] = await build(root, { cacheDir, videoFetch: { fetch } });
+    assert.deepEqual(calls.map((call) => call.url), [OEMBED]);
+    assert.deepEqual(result.warnings, [
+      `content/journal/clip-test.md:6:1: video "https://youtu.be/aBcD3fGh1_-": preview not fetched: ${OEMBED} answered 404`,
+    ]);
+    const figure = figureOf(readFileSync(join(result.outDir, 'journal', 'clip-test', 'index.html'), 'utf8'), 'video-1');
+    assert.match(figure, /data-video-title="Video">/);
+    assert.match(figure, /<span class="video-placeholder"><\/span>/);
+    assert.doesNotMatch(figure, /<span class="video-title">/);
+    assert.deepEqual(videoCache(cacheDir), []);
+    assert.equal(result.manifest.posts[0].videos[0].preview, null);
+    assert.equal(result.manifest.posts[0].videos[0].title, null);
+    const report = JSON.parse(readFileSync(join(root, '.coffer', 'report.json'), 'utf8'));
+    assert.ok(JSON.stringify(report).includes('preview not fetched'), 'the warning is in the report');
+  });
+});
+
+test('vector 15.8: with fetchPreviews false and an empty cache the build makes no request and has no warning', async () => {
+  const config = CLIP_CONFIG.replace('    blogs:', '    video: { fetchPreviews: false }\n    blogs:');
+  await inTree({ 'coffer.yaml': config, 'content/journal/clip-test.md': CLIP_POST }, async (root) => {
+    const cacheDir = join(root, 'cache');
+    const { fetch, calls } = fakeFetch(HOST);
+    const [result] = await build(root, { cacheDir, videoFetch: { fetch } });
+    assert.deepEqual(calls, []);
+    assert.deepEqual(result.warnings, []);
+    assert.match(figureOf(readFileSync(join(result.outDir, 'journal', 'clip-test', 'index.html'), 'utf8'), 'video-1'), /data-video-title="Video">/);
+  });
+});
+
+test('with fetchPreviews false a preview already in the cache is still used', async () => {
+  await inTree({ 'coffer.yaml': CLIP_CONFIG, 'content/journal/clip-test.md': CLIP_POST }, async (root) => {
+    const cacheDir = join(root, 'cache');
+    await build(root, { cacheDir, videoFetch: { fetch: fakeFetch(HOST).fetch } });
+    writeFileSync(join(root, 'coffer.yaml'), CLIP_CONFIG.replace('    blogs:', '    video: { fetchPreviews: false }\n    blogs:'));
+    const { fetch, calls } = fakeFetch(HOST);
+    const [result] = await build(root, { cacheDir, videoFetch: { fetch } });
+    assert.deepEqual(calls, []);
+    assert.equal(result.manifest.posts[0].videos[0].title, 'Cutting a mortise');
+    assert.match(String(result.manifest.posts[0].videos[0].preview), /youtube-preview-480\.webp$/);
+  });
+});
+
+test('a title from the host is kept when the thumbnail cannot be fetched', async () => {
+  await inTree({ 'coffer.yaml': CLIP_CONFIG, 'content/journal/clip-test.md': CLIP_POST }, async (root) => {
+    const cacheDir = join(root, 'cache');
+    const { fetch } = fakeFetch({ [OEMBED]: HOST[OEMBED] });
+    const [result] = await build(root, { cacheDir, videoFetch: { fetch } });
+    assert.deepEqual(result.warnings, [
+      `content/journal/clip-test.md:6:1: video "https://youtu.be/aBcD3fGh1_-": preview not fetched: ${THUMBNAIL} answered 404`,
+    ]);
+    const figure = figureOf(readFileSync(join(result.outDir, 'journal', 'clip-test', 'index.html'), 'utf8'), 'video-1');
+    assert.match(figure, /data-video-title="Cutting a mortise">/);
+    assert.match(figure, /<span class="video-placeholder"><\/span>/);
+    assert.match(figure, /<span class="video-title">Cutting a mortise<\/span>/);
+    assert.equal(result.manifest.posts[0].videos[0].title, 'Cutting a mortise');
+    assert.deepEqual(videoCache(cacheDir), []);
+  });
+});
+
+test('the own title of a video wins over the title from the host', async () => {
+  await inTree(
+    { 'coffer.yaml': CLIP_CONFIG, 'content/journal/clip-test.md': post('::video[Mortise, take two]{src="https://youtu.be/aBcD3fGh1_-"}') },
+    async (root) => {
+      const [result] = await build(root, { cacheDir: join(root, 'cache'), videoFetch: { fetch: fakeFetch(HOST).fetch } });
+      const { videos } = result.manifest.posts[0];
+      assert.equal(videos[0].title, 'Mortise, take two');
+      assert.match(String(videos[0].preview), /youtube-preview-480\.webp$/);
+    },
+  );
+});
+
+test('a timeout is a warning with the time the build waited', async () => {
+  await inTree({ 'coffer.yaml': CLIP_CONFIG, 'content/journal/clip-test.md': CLIP_POST }, async (root) => {
+    /** @type {typeof fetch} */
+    const hang = (_input, init) =>
+      new Promise((_resolve, reject) => {
+        init?.signal?.addEventListener('abort', () => reject(init.signal?.reason));
+      });
+    const [result] = await build(root, { cacheDir: join(root, 'cache'), videoFetch: { fetch: hang, timeoutMs: 20 } });
+    assert.deepEqual(result.warnings, [
+      `content/journal/clip-test.md:6:1: video "https://youtu.be/aBcD3fGh1_-": preview not fetched: ${OEMBED} did not answer within 20 ms`,
+    ]);
+  });
+});
+
+test('one request sequence per video address in a build; each video warns once, though its post is also shown in full on the list pages', async () => {
+  const config = CLIP_CONFIG.replace('title: Journal }', 'title: Journal, index: full }');
+  await inTree(
+    {
+      'coffer.yaml': config,
+      'content/journal/clip-test.md': post('https://youtu.be/aBcD3fGh1_-\n\n::video{src="https://www.youtube.com/watch?v=aBcD3fGh1_-" id="again"}'),
+      'content/journal/other.md': post('https://youtu.be/aBcD3fGh1_-', 'tags: [wood]\n'),
+    },
+    async (root) => {
+      const { fetch, calls } = fakeFetch({});
+      const [result] = await build(root, { cacheDir: join(root, 'cache'), videoFetch: { fetch } });
+      assert.deepEqual(calls.map((call) => call.url), [OEMBED]);
+      const reason = `preview not fetched: ${OEMBED} answered 404`;
+      assert.deepEqual([...result.warnings].sort(), [
+        `content/journal/clip-test.md:6:1: video "https://youtu.be/aBcD3fGh1_-": ${reason}`,
+        `content/journal/clip-test.md:8:1: video "https://www.youtube.com/watch?v=aBcD3fGh1_-": ${reason}`,
+        `content/journal/other.md:7:1: video "https://youtu.be/aBcD3fGh1_-": ${reason}`,
+      ]);
+    },
+  );
+});
+
+test('a successful fetch is shared by every video of the build with the same address', async () => {
+  await inTree(
+    {
+      'coffer.yaml': CLIP_CONFIG,
+      'content/journal/clip-test.md': CLIP_POST,
+      'content/journal/other.md': post('https://www.youtube.com/watch?v=aBcD3fGh1_-'),
+    },
+    async (root) => {
+      const { fetch, calls } = fakeFetch(HOST);
+      const [result] = await build(root, { cacheDir: join(root, 'cache'), videoFetch: { fetch } });
+      assert.equal(calls.length, 2);
+      const previews = result.manifest.posts.map((entry) => entry.videos[0].preview);
+      assert.match(String(previews[0]), /youtube-preview-480\.webp$/);
+      assert.equal(previews[1], previews[0]);
+    },
+  );
 });

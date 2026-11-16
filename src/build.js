@@ -79,6 +79,7 @@ import { SHARE_FILE_NAME, SHARE_SCRIPT, hashtagsFor, renderShareText, shareUrlFo
 import { ROBOTS_FILE_NAME, SITEMAP_FILE_NAME, renderRobots, renderSitemap } from './sitemap.js';
 import { readVersion } from './version.js';
 import { renderVideoHtml } from './video/html.js';
+import { VIDEO_CACHE_DIR, createVideoPreviews } from './video/previews.js';
 import { resolveVideoRules } from './video/rules.js';
 import { VIEWER_SCRIPTS, VIEWER_STYLES, viewerJson } from './viewer.js';
 
@@ -140,6 +141,7 @@ export class BuildError extends Error {
  * @property {string} [cacheDir] Directory for work that is worth keeping between builds, such as title cards (default `.cache` beside the configuration file; an absolute path, or relative to the working directory).
  * @property {{ timeoutMs?: number, exec?: import('./docs/sources.js').FetchOptions['exec'], env?: Record<string, string | undefined> }} [docsFetch] How the documentation sources of tool projects are fetched: the time one git call can take, a replacement for running git, and the environment git's is made from. Used by tests.
  * @property {{ timeoutMs?: number, env?: Record<string, string | undefined> }} [reference] How the reference commands of tool projects are run: the time one command can take, and the environment it gets (default the process's). Used by tests.
+ * @property {{ fetch?: typeof fetch, timeoutMs?: number }} [videoFetch] How the previews of remote videos are fetched: the `fetch` that makes the requests (default the global one) and the time one request can take, in milliseconds (default 10000). Used by tests.
  * @property {string} [reportDir] Directory that receives `report.json`, the errors, warnings and notes of the build (default `.coffer` beside the configuration file; an absolute path, or relative to the working directory). It is never inside the output.
  */
 
@@ -1297,9 +1299,28 @@ async function buildSite(config, site, options, outRoot, version, report) {
   };
 
   /**
+   * The previews of the remote videos of the site: a title and a thumbnail
+   * from the host, fetched once per video address and kept in the cache. The
+   * thumbnail is made by the image pipeline under the name `{provider}-preview`
+   * with no position and no camera fields.
+   */
+  const videoPreviews = createVideoPreviews({
+    cacheDir: join(cacheRoot, VIDEO_CACHE_DIR),
+    fetch: options.videoFetch?.fetch,
+    timeoutMs: options.videoFetch?.timeoutMs,
+    userAgent: `coffer/${version}`,
+    enabled: site.video.fetchPreviews,
+    processImage: (file, match) =>
+      images.process(file, { location: 'strip', camera: 'strip' }, { name: `${match.provider}-preview` }),
+  });
+
+  /**
    * The videos of a post with their titles and previews. A poster is made like
    * a Markdown image of the post; one that does not exist fails the build. A
-   * remote video without a poster has no preview.
+   * remote video without a poster shows the preview of its host, fetched or
+   * from the cache; one that cannot be fetched is a warning, never an error.
+   * A fetched preview is published but is not an image of the author, so the
+   * manifest does not list it under `images`.
    *
    * @param {Post} post
    * @param {string} url Site-relative URL of the post.
@@ -1315,13 +1336,34 @@ async function buildSite(config, site, options, outRoot, version, report) {
       const { poster, line, column } = video;
       /** @type {ResolvedVideo['preview']} */
       let preview = null;
+      /** @type {string | null} */
+      let hostTitle = null;
       if (poster !== null) {
         const file = localImageFile(post.file, poster);
         if (file === null) throw new BuildError(`${shown}:${line}:${column}: poster "${poster}" does not exist`);
         const image = await processBodyImage({ file, src: poster, shown, line, column }, url, page);
         if (image !== null) preview = { src: image.src, width: image.width, height: image.height, srcset: image.srcset };
+      } else if (video.match !== null) {
+        const found = await videoPreviews.preview(video.match);
+        if (found !== undefined) {
+          hostTitle = found.title;
+          if ('image' in found) {
+            const processed = found.image;
+            images.publish(processed, outDir);
+            const standIn = pickVariant(processed.variants);
+            preview = {
+              src: imageFileUrl(processed, standIn),
+              width: standIn.width,
+              height: standIn.height,
+              srcset: processed.variants.map((entry) => ({ url: imageFileUrl(processed, entry), width: entry.width })),
+            };
+          } else {
+            warnings.push(`${shown}:${line}:${column}: video "${video.src}": preview not fetched: ${found.warning}`);
+          }
+        }
       }
-      resolved.push({ video, title: video.title ?? videoLabels.untitled, titleShown: video.title !== null, preview });
+      const title = video.title ?? hostTitle;
+      resolved.push({ video, title: title ?? videoLabels.untitled, titleShown: title !== null, preview });
     }
     return resolved;
   };
