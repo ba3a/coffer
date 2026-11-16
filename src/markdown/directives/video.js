@@ -74,6 +74,15 @@ const LOCAL_TYPES = { '.mp4': 'video/mp4', '.webm': 'video/webm' };
  * @property {(src: string) => string | null} locateFile The site-relative URL at which the build publishes a local video, or null when the file does not exist.
  */
 
+/**
+ * The title of each chapter as HAST, so that the renderer can put its id
+ * prefixes into the links of the title and write its `html` again. Kept
+ * apart from the chapter, which lists only what the result describes.
+ *
+ * @type {WeakMap<import('../../video/types.js').VideoChapter, import('hast').ElementContent[]>}
+ */
+export const CHAPTER_TITLES = new WeakMap();
+
 /** The video options of a text rendered without any. */
 export const DEFAULT_VIDEO_OPTIONS = Object.freeze({
   rules: DEFAULT_VIDEO_RULES,
@@ -257,7 +266,9 @@ function readChapters(body, { start, end, line, column }, definitions) {
     if (seconds < (start ?? 0) || (end !== null && seconds >= end)) {
       throw new VideoSyntaxError(`${formatTimecode(seconds)} is not within the part of the video that plays`, where);
     }
-    chapters.push({ seconds, html: toHtml(title, { allowDangerousHtml: true }), text });
+    const chapter = { seconds, html: toHtml(title, { allowDangerousHtml: true }), text };
+    CHAPTER_TITLES.set(chapter, title);
+    chapters.push(chapter);
   }
   return chapters;
 }

@@ -210,7 +210,8 @@ export function createVideoPreviews(options) {
       const url = /** @type {string} */ (thumbnail);
       const { ext, bytes } = await request(url, 'image/*', async (response) => {
         const header = response.headers.get('content-type');
-        const type = header === null ? 'no type' : header.split(';')[0].trim().toLowerCase();
+        // A missing header and an empty media type are the same: no type.
+        const type = (header ?? '').split(';')[0].trim().toLowerCase() || 'no type';
         const ext = EXTENSIONS[type];
         if (!ext) {
           await response.body?.cancel().catch(() => {});

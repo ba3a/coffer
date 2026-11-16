@@ -208,7 +208,7 @@ video:
   builtinRules: true
   peertubeHosts: [video.example.org]
   rules:
-    - pattern: 'https://tube.example/v/(?<id>[a-z0-9]{8})(?:[?#].*)?'
+    - pattern: 'https://tube\.example/v/(?<id>[a-z0-9]{8})(?:[?#].*)?'
       provider: generic
       name: Example Tube
       embed: 'https://player.tube.example/e/{id}'

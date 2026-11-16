@@ -62,7 +62,7 @@ See :t[the dry fit]{at="1:05" video="drawer"} first.
 ```
 
 - The body is one list, numbered or not, and nothing else.
-- Each item starts with a timecode in the form `83`, `1:23` or `1:02:03`, a space and the title of the chapter. The title may hold emphasis, code and links.
+- Each item starts with a timecode in the form `83`, `1:23` or `1:02:03`, a space and the title of the chapter. The title holds text, emphasis, code, links and raw HTML. An image, a footnote reference or a `:t` seek link in a title is the error `a chapter must start with a timecode, a space and a title`, and so is a task-list item or a title with no text. HTML comments in a title are removed.
 - The times increase from item to item, and each lies in the part of the video that plays: not before the start, and before the end when there is one.
 - A container without a body is a video without chapters.
 
@@ -93,6 +93,8 @@ Minutes and seconds after a colon have two digits (`1:05`, not `1:5`). The large
 ### Words, links and ids
 
 The title of a video does not count toward the reading time; the titles of chapters and the texts of seek links do. Video addresses are not links of the text, so the build does not check them like links, and a video is never the first image of a post. The HTML `id` of a video is `video-` followed by its `id`, or by its number in the text counted from 1 (`video-1`). It is among the `ids` of the text, so a link to `#video-drawer` is checked like a link to a heading.
+
+Several texts on one page keep their video ids apart with a prefix, put into the id and into everything that points at it (seek links, chapter links, `#video-…` links). On a list page that shows whole posts, every id of a post starts with its slug. On a project page, the videos of README sections get `readme-{n}-video-…`, where `n` counts the `::readme` directives from 1, and those of the press kit descriptions `press-kit-short-video-…` and `press-kit-long-video-…`.
 
 ## Providers
 
@@ -189,7 +191,7 @@ A video file beside the post is written with its file name, found like a Markdow
 ```
 
 - The file must be `.mp4` or `.webm`, in any capitalisation.
-- It is copied unchanged into the folder of the post's page. Its published name is the original's name in lower case, with every run of other characters than `a` to `z` and `0` to `9` turned into one `-`: `Glue Up.MP4` becomes `glue-up.mp4`. A file used twice is copied once; two different files that would get the same name fail the build and name both.
+- It is copied unchanged into the folder of the post's page. Its published name is made from the original's: the stem (the name without its extension) is lower-cased, each run of characters other than `a` to `z` and `0` to `9` becomes one `-`, leading and trailing `-` are removed, and the lower-cased extension is added. `Glue Up.MP4` becomes `glue-up.mp4`. A stem with no `a`–`z` or `0`–`9` characters, such as that of `Склейка.mp4`, gives `video.mp4`. A file used twice is copied once; two different files that would get the same name fail the build and name both.
 - The page shows it in `<video controls preload="metadata">`, with the `poster` as the picture before it plays and a download link for browsers that cannot play it. `start` and `end` become a media fragment of the address (`glue-up.mp4#t=5`).
 - coffer does not convert videos or take pictures from them. Without a `poster`, the browser shows what it shows for the file.
 - The file is published as it is, so the [location and camera metadata policy](location-policy.md), which covers pictures, does not touch it. Remove location data from the file yourself.
@@ -212,7 +214,7 @@ A page that has at least one video loads `/assets/video.js` with `defer`. The sc
 - **Posts** show the figure in the text.
 - **Other texts** (the home page, project pages, guides, README sections and press kit descriptions) show remote videos the same way and load the script; their warnings name their file.
 - **List pages that show whole posts** (a blog with `index: full`) show each video with the preview of the post page; its ids start with the post's slug.
-- **Feeds** hold the figure in click mode, without the `data-` attributes and with absolute addresses, so a feed reader shows the preview as a link to the host (see [Feeds](feeds.md)).
+- **Feeds** hold the figure in click mode, without the `data-` attributes and with absolute addresses, so a feed reader shows the preview as a link to the host (see [Feeds](feeds.md)). Seek links in the text keep their `data-video-seek`, `data-video-target` and, for a remote video, `data-video-play` attributes; feed readers ignore them, and the link leads to the time on the host or in the file.
 - **Summaries** (the description of a page, the feed summary and the share summary) leave videos out.
 - **The manifest** lists the videos of each post (see [Building a site](build.md#the-build-manifest)): `index`, `id`, `provider` (`file` for a local video), `src`, `title` (null when none is shown), `start`, `end`, `load`, `preview` and `file` (site addresses, or null) and the `chapters` in seconds.
 

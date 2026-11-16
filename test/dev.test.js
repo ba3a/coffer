@@ -225,8 +225,17 @@ test('a change to a post rebuilds the sites and emits a reload event', async () 
     // A new file counts, too.
     write('content/devlog/fresh/index.md', post('Fresh from the editor', 'date: 2026-05-01\ndraft: true\n'));
     await proEvents.waitFor(2);
-    await running.idle();
-    assert.equal((await get(pro, '/devlog/fresh/')).status, 200);
+    // A loaded machine may report the new file in a later rebuild than the
+    // event above, so wait for the page rather than for one more event.
+    const deadline = Date.now() + 30_000;
+    let status = 0;
+    for (;;) {
+      await running.idle();
+      status = (await get(pro, '/devlog/fresh/')).status;
+      if (status === 200 || Date.now() > deadline) break;
+      await new Promise((resolve) => setTimeout(resolve, 250));
+    }
+    assert.equal(status, 200);
   } finally {
     await proEvents.close();
     await personalEvents.close();
@@ -342,17 +351,35 @@ test('sites take the ports after the first one', async () => {
 });
 
 test('a port in use stops the start and frees the ports already taken', async () => {
-  const blocker = await startServer({ dir, port: 0 });
-  const first = blocker.port - 1;
-  try {
-    // The first site listens on `first`, the second collides with the blocker.
-    await assert.rejects(start({ port: first, watch: false }), /EADDRINUSE/);
-    dev = undefined;
-    const again = await startServer({ dir, port: first });
-    await again.close();
-  } finally {
-    await blocker.close();
+  // The port below the blocker may be taken by another process on a loaded
+  // machine, so try again with another blocker; a port that was just freed may
+  // need a moment before it can be bound again.
+  let last;
+  for (let attempt = 0; attempt < 10; attempt += 1) {
+    const blocker = await startServer({ dir, port: 0 });
+    const first = blocker.port - 1;
+    try {
+      // The first site listens on `first`, the second collides with the blocker.
+      await assert.rejects(start({ port: first, watch: false }), /EADDRINUSE/);
+      dev = undefined;
+      for (let bind = 0; ; bind += 1) {
+        try {
+          const again = await startServer({ dir, port: first });
+          await again.close();
+          return;
+        } catch (error) {
+          if (bind >= 20) throw error;
+          await new Promise((resolve) => setTimeout(resolve, 100));
+        }
+      }
+    } catch (error) {
+      last = error;
+      dev = undefined;
+    } finally {
+      await blocker.close();
+    }
   }
+  throw last;
 });
 
 test('coffer dev prints the addresses and stops on a signal', async () => {

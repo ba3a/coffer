@@ -417,6 +417,18 @@ const FAILURES = [
     warning: `${THUMB} returned no type, not a JPEG, PNG or WebP image`,
   },
   {
+    label: 'the thumbnail has an empty type',
+    routes: { [META]: OEMBED, [THUMB]: image(JPEG, '') },
+    title: 'Cutting a mortise',
+    warning: `${THUMB} returned no type, not a JPEG, PNG or WebP image`,
+  },
+  {
+    label: 'the thumbnail has a blank type with parameters',
+    routes: { [META]: OEMBED, [THUMB]: image(JPEG, '  ; charset=utf-8') },
+    title: 'Cutting a mortise',
+    warning: `${THUMB} returned no type, not a JPEG, PNG or WebP image`,
+  },
+  {
     label: 'the thumbnail is larger than 10 MiB',
     routes: { [META]: OEMBED, [THUMB]: image(Buffer.alloc(MAX_PREVIEW_BYTES + 1)) },
     title: 'Cutting a mortise',

@@ -10,6 +10,11 @@ Every release is a git tag named `v` followed by the version, for example `v0.1.
 
 ## Unreleased
 
+### Fixed
+
+- Links in the chapter titles of a video now get the same id prefix as the rest of the text, so on a list page that shows whole posts a chapter link to `#notes` leads to `#{slug}-notes`, and in a README section a link to `#video-1` leads to `#readme-1-video-1`.
+- A video thumbnail whose `Content-Type` header is present but empty is now reported as `returned no type, not a JPEG, PNG or WebP image` instead of `returned , not …`.
+
 ## 0.2.0 - 2026-11-16
 
 ### Added

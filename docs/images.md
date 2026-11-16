@@ -175,3 +175,5 @@ pipeline.publish(image, 'dist/site');                        // copies variants 
 ```
 
 `process` takes the metadata policy as its second argument (both settings default to `strip`) and returns the upright `width` and `height`, the `variants` and the `viewer` file (each with `file`, `width`, `height` and `bytes`), the `policy`, the published `gps` (`{ latitude, longitude, precision }` or `null`) and `camera` fields, the cache folder `dir`, the published folder `url` and whether the files were `cached`. `pipeline.stats` counts images `generated` and `reused`.
+
+The third argument names the files: `process(source, policy, { name: 'youtube-preview' })`. The name replaces the one derived from the file, so the files are `{name}-{width}.webp` and `{name}-full.jpg`. It must match `^[a-z0-9]+(?:-[a-z0-9]+)*$` (lower-case letters and digits separated by single hyphens) and be at most 60 characters; anything else throws a `TypeError`. A given name is part of the cache key, so the same file processed with and without a name gives two results.

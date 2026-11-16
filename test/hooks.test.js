@@ -924,7 +924,11 @@ test('when coffer cannot be found a guarding hook fails and a following hook onl
 
 const DASH = findExecutable('dash', process.env.PATH);
 
-test('the pre-push script hands the ref lines on its standard input to coffer, unchanged', { skip: NO_SH }, async () => {
+// Git for Windows' sh.exe at times gives the stub an empty standard input, with
+// or without coffer's script in between, so the check is not reliable there.
+const NO_STDIN_CHECK = NO_SH || (process.platform === 'win32' ? "Git for Windows' sh.exe can give the stub an empty standard input" : false);
+
+test('the pre-push script hands the ref lines on its standard input to coffer, unchanged', { skip: NO_STDIN_CHECK }, async () => {
   const w = workingCopy({ name: 'a repo with spaces' });
   try {
     await installHooks({ cwd: w.repo });

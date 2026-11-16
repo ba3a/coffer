@@ -9,6 +9,7 @@ import { fileURLToPath } from 'node:url';
 import { parse } from 'yaml';
 
 import { normalizeConfig } from '../src/config.js';
+import { createImagePipeline } from '../src/images/pipeline.js';
 import { renderMarkdown } from '../src/markdown/render.js';
 import { PROVIDER_NAMES, resolveVideoRules } from '../src/video/rules.js';
 
@@ -166,4 +167,47 @@ test('the features section of the landing page lists videos', () => {
     text.indexOf('<div class="section-marker" id="compare"></div>'),
   );
   assert.match(features, /^- \*\*\S+ Videos?\b[^*]*\*\*/m);
+});
+
+test('docs/images.md documents the name option of process, and the pipeline does what it says', () => {
+  const text = section(read('docs/images.md'), '## From JavaScript');
+  for (const phrase of ['{ name', '{name}-{width}.webp', '{name}-full.jpg', '^[a-z0-9]+(?:-[a-z0-9]+)*$', '60 characters', 'TypeError', 'cache key']) {
+    assert.ok(text.includes(phrase), `"From JavaScript" mentions ${phrase}`);
+  }
+  const pipeline = createImagePipeline({ cacheDir: join(root, '.cache', 'never-created') });
+  for (const name of ['Preview', 'a--b', '-a', 'a_b', 'a'.repeat(61), '']) {
+    assert.throws(() => pipeline.process('/nowhere/photo.jpg', {}, { name }), TypeError, JSON.stringify(name));
+  }
+});
+
+test('docs/markdown.md documents videoIdPrefix, and docs/videos.md the prefixes of project pages', () => {
+  const options = section(read('docs/markdown.md'), '## Options');
+  assert.match(options, /\| `videoIdPrefix` +\|/);
+  assert.match(options, /between `idPrefix` and `video-`/);
+  assert.match(options, /Heading and footnote ids are unchanged/);
+  const ids = section(read('docs/videos.md'), '### Words, links and ids');
+  for (const phrase of ['readme-{n}-video-', 'press-kit-short-video-', 'press-kit-long-video-']) {
+    assert.ok(ids.includes(phrase), `"Words, links and ids" mentions ${phrase}`);
+  }
+});
+
+test('docs/videos.md says what a chapter title may hold, and the renderer agrees', async () => {
+  const chapters = section(read('docs/videos.md'), '### Chapters: `:::video`');
+  assert.match(chapters, /The title holds text, emphasis, code, links and raw HTML/);
+  assert.match(chapters, /An image, a footnote reference or a `:t` seek link in a title is the error `a chapter must start with a timecode, a space and a title`/);
+  assert.match(chapters, /HTML comments in a title are removed/);
+  const video = (/** @type {string} */ title) => `:::video{src="https://youtu.be/aBcD3fGh1_-"}\n- 0:05 ${title}\n:::\n\n[^1]: Note.\n`;
+  for (const title of ['A ![b](c.jpg)', 'A note[^1]', 'From :t[0:10]']) {
+    await assert.rejects(renderMarkdown(video(title), { file: 'post.md' }), /a chapter must start with a timecode, a space and a title/, title);
+  }
+  const fine = await renderMarkdown(video('*A* `b` [c](https://example.org/) <b>d</b><!-- gone -->'), { file: 'post.md' });
+  assert.equal(fine.videos[0].chapters[0].html, '<em>A</em> <code>b</code> <a href="https://example.org/">c</a> <b>d</b>');
+});
+
+test('docs/videos.md describes the published name of a local video exactly', () => {
+  const local = section(read('docs/videos.md'), '## Local videos');
+  assert.match(local, /the stem \(the name without its extension\) is lower-cased/);
+  assert.match(local, /leading and trailing `-` are removed, and the lower-cased extension is added/);
+  assert.match(local, /`Склейка\.mp4`, gives `video\.mp4`/);
+  assert.doesNotMatch(local, /original's name in lower case, with every run/, 'the old wording read as if the dot became "-"');
 });

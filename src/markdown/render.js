@@ -5,13 +5,14 @@ import remarkDirective from 'remark-directive';
 import remarkRehype from 'remark-rehype';
 import rehypeSlug from 'rehype-slug';
 import rehypeStringify from 'rehype-stringify';
+import { toHtml } from 'hast-util-to-html';
 import { toString } from 'hast-util-to-string';
 import { visit, SKIP } from 'unist-util-visit';
 import { bundledLanguages, createHighlighter } from 'shiki';
 import { CarouselSyntaxError, remarkCarousels } from './directives/carousel.js';
 import { MapSyntaxError, remarkMaps } from './directives/map.js';
 import { ReadmeSyntaxError, remarkReadmes } from './directives/readme.js';
-import { DEFAULT_VIDEO_OPTIONS, VideoSyntaxError, remarkVideos } from './directives/video.js';
+import { CHAPTER_TITLES, DEFAULT_VIDEO_OPTIONS, VideoSyntaxError, remarkVideos } from './directives/video.js';
 import { dropComments } from './comments.js';
 
 export { removeHtmlComments } from './comments.js';
@@ -571,44 +572,57 @@ function prefixRawHtml(html, prefix, prefixOf) {
  * elements are made later with the whole id, so only what points at them
  * changes here.
  *
- * @param {{ shift: number, prefix: string, videoPrefix: string, ids: () => Set<string>, videoIds: () => Set<string> }} options
+ * The titles of the chapters of the videos are HTML of their own, outside the
+ * tree; they get the same treatment and their `html` is written again.
+ *
+ * @param {{ shift: number, prefix: string, videoPrefix: string, ids: () => Set<string>, videoIds: () => Set<string>, chapters: () => import('../video/types.js').VideoChapter[] }} options
  * @returns {(tree: import('hast').Root) => void}
  */
-function shiftAndPrefix({ shift, prefix, videoPrefix, ids, videoIds }) {
+function shiftAndPrefix({ shift, prefix, videoPrefix, ids, videoIds, chapters }) {
   return (tree) => {
     if (shift === 0 && prefix === '' && videoPrefix === '') return;
     const known = ids();
     const videos = videoIds();
     /** @type {PrefixOf} */
     const prefixOf = (id) => (known.has(id) ? prefix + (videos.has(id) ? videoPrefix : '') : null);
-    visit(tree, (node) => {
-      if (/** @type {string} */ (node.type) === 'raw') {
-        const raw = /** @type {{ value: string }} */ (/** @type {unknown} */ (node));
-        if (prefix !== '' || videoPrefix !== '') raw.value = prefixRawHtml(raw.value, prefix, prefixOf);
-        return;
-      }
-      if (node.type !== 'element') return;
-      if (shift !== 0) {
-        const level = /^h([1-6])$/.exec(node.tagName);
-        if (level) node.tagName = `h${Math.min(6, Math.max(1, Number(level[1]) + shift))}`;
-      }
-      if (prefix === '' && videoPrefix === '') return;
-      const properties = node.properties;
-      if (typeof properties.id === 'string' && properties.id !== '') properties.id = prefix + properties.id;
-      const href = properties.href;
-      if (node.tagName === 'a' && typeof href === 'string' && href.startsWith('#')) {
-        const fragment = href.slice(1);
-        const decoded = decodeFragment(fragment);
-        const before = prefixOf(decoded);
-        // A fragment in a link is percent-encoded when it holds more than ASCII.
-        if (before !== null) properties.href = `#${decoded === fragment ? before : encodeURIComponent(before)}${fragment}`;
-      }
-      for (const name of ['ariaDescribedBy', 'ariaLabelledBy', 'ariaControls']) {
-        const value = properties[name];
-        if (typeof value === 'string') properties[name] = prefixReferences(value, prefixOf);
-        else if (Array.isArray(value)) properties[name] = value.map((entry) => prefixReferences(String(entry), prefixOf));
-      }
-    });
+    const rewrite = (/** @type {import('hast').Root} */ root) => {
+      visit(root, (node) => {
+        if (/** @type {string} */ (node.type) === 'raw') {
+          const raw = /** @type {{ value: string }} */ (/** @type {unknown} */ (node));
+          if (prefix !== '' || videoPrefix !== '') raw.value = prefixRawHtml(raw.value, prefix, prefixOf);
+          return;
+        }
+        if (node.type !== 'element') return;
+        if (shift !== 0) {
+          const level = /^h([1-6])$/.exec(node.tagName);
+          if (level) node.tagName = `h${Math.min(6, Math.max(1, Number(level[1]) + shift))}`;
+        }
+        if (prefix === '' && videoPrefix === '') return;
+        const properties = node.properties;
+        if (typeof properties.id === 'string' && properties.id !== '') properties.id = prefix + properties.id;
+        const href = properties.href;
+        if (node.tagName === 'a' && typeof href === 'string' && href.startsWith('#')) {
+          const fragment = href.slice(1);
+          const decoded = decodeFragment(fragment);
+          const before = prefixOf(decoded);
+          // A fragment in a link is percent-encoded when it holds more than ASCII.
+          if (before !== null) properties.href = `#${decoded === fragment ? before : encodeURIComponent(before)}${fragment}`;
+        }
+        for (const name of ['ariaDescribedBy', 'ariaLabelledBy', 'ariaControls']) {
+          const value = properties[name];
+          if (typeof value === 'string') properties[name] = prefixReferences(value, prefixOf);
+          else if (Array.isArray(value)) properties[name] = value.map((entry) => prefixReferences(String(entry), prefixOf));
+        }
+      });
+    };
+    rewrite(tree);
+    for (const chapter of chapters()) {
+      const title = CHAPTER_TITLES.get(chapter);
+      if (!title) continue;
+      const root = /** @type {import('hast').Root} */ ({ type: 'root', children: structuredClone(title) });
+      rewrite(root);
+      chapter.html = toHtml(root, { allowDangerousHtml: true });
+    }
   };
 }
 
@@ -957,6 +971,7 @@ export async function renderMarkdown(source, options = {}) {
       videoPrefix: videoIdPrefix,
       ids: () => collected?.ids ?? new Set(),
       videoIds: () => new Set(videoIds()),
+      chapters: () => videoDirectives.flatMap((video) => video.chapters),
     })
     .use(responsiveImages, {
       images: options.images ?? null,

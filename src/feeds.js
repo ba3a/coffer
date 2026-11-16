@@ -166,11 +166,12 @@ export function rfc3339(date) {
  * @param {Date} input.date
  * @param {string | null} input.summary Summary from the front matter, if any.
  * @param {string} input.html Rendered body of the post.
+ * @param {string} [input.excerptHtml] The body the automatic summary is taken from when there is no `summary` (default: `html`), such as the body without its videos.
  * @param {{ path: string, name: string }[]} input.tags
  * @param {string} input.tagsIndexUrl Site-relative URL of the tag tree, used as the scheme of the categories.
  * @returns {FeedEntry}
  */
-export function createFeedEntry({ baseUrl, url, title, date, summary, html, tags, tagsIndexUrl }) {
+export function createFeedEntry({ baseUrl, url, title, date, summary, html, excerptHtml, tags, tagsIndexUrl }) {
   const permalink = absoluteUri(baseUrl, url);
   const full = absolutizeHtml(simplifyPictures(html), permalink, baseUrl);
   return {
@@ -178,7 +179,7 @@ export function createFeedEntry({ baseUrl, url, title, date, summary, html, tags
     title,
     published: date,
     updated: date,
-    summary: summary !== null && summary.trim() !== '' ? summary.trim() : excerptOf(full),
+    summary: summary !== null && summary.trim() !== '' ? summary.trim() : excerptOf(excerptHtml ?? full),
     html: full,
     categories: tags.map((tag) => ({
       term: tag.path,

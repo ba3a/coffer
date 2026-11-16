@@ -104,8 +104,15 @@ test('a pattern with a hundred stars does not take longer to match twice as long
     return performance.now() - started;
   };
   time(1000);
-  const small = Math.max(time(20_000), 1);
-  const large = time(40_000);
-  // Linear in the name (times the pattern) would double; exponential would never finish.
-  assert.ok(large < small * 6 + 50, `${large} ms for the longer name against ${small} ms`);
+  // The best of a few runs, and a generous bound, so that a loaded machine does
+  // not fail it: linear in the name (times the pattern) would double, and
+  // exponential would never finish.
+  let small = Infinity;
+  let large = Infinity;
+  for (let run = 0; run < 3; run++) {
+    small = Math.min(small, time(20_000));
+    large = Math.min(large, time(40_000));
+  }
+  small = Math.max(small, 1);
+  assert.ok(large < small * 10 + 250, `${large} ms for the longer name against ${small} ms`);
 });

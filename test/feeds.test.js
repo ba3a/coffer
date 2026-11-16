@@ -6,7 +6,7 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { buildSites } from '../src/build.js';
-import { absoluteUri } from '../src/feeds.js';
+import { absoluteUri, createFeedEntry } from '../src/feeds.js';
 import { validateFeed } from '../src/check/feed-validator.js';
 import { loadConfig } from '../src/config.js';
 import { parseXml } from '../src/xml.js';
@@ -476,4 +476,22 @@ test('the feed validator rejects a relative or repeated <icon> or <logo>', async
     const twice = validateFeed(xml.replace(icon, `${icon}\n  <logo>${SITE}/a.png</logo>\n  <logo>${SITE}/b.png</logo>`));
     assert.match(twice.errors.join('\n'), /more than one <logo>/);
   });
+});
+
+test('createFeedEntry takes the automatic summary from excerptHtml when given, else from html', () => {
+  const input = {
+    baseUrl: SITE,
+    url: '/journal/clip/',
+    title: 'Clip',
+    date: new Date('2026-01-01T00:00:00Z'),
+    summary: null,
+    html: '<figure>Video label</figure><p>Body words.</p>',
+    tags: [],
+    tagsIndexUrl: '/tags/',
+  };
+  assert.equal(createFeedEntry(input).summary, 'Video label Body words.');
+  const entry = createFeedEntry({ ...input, excerptHtml: '<p>Body words.</p>' });
+  assert.equal(entry.summary, 'Body words.');
+  assert.equal(entry.html, '<figure>Video label</figure><p>Body words.</p>', 'the content stays the full html');
+  assert.equal(createFeedEntry({ ...input, summary: ' Given. ', excerptHtml: '<p>x</p>' }).summary, 'Given.');
 });

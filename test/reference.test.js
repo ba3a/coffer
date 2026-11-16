@@ -136,7 +136,8 @@ async function inSite(files, body) {
     }
     return await body(dir);
   } finally {
-    rmSync(dir, { recursive: true, force: true });
+    // On Windows a child process that was just killed can hold a file for a moment (EPERM).
+    rmSync(dir, { recursive: true, force: true, maxRetries: 10, retryDelay: 200 });
   }
 }
 
@@ -713,7 +714,8 @@ test('the cache key covers the contents of the files that the command names thro
       rmSync(copy, { recursive: true, force: true });
     }
   } finally {
-    rmSync(dir, { recursive: true, force: true });
+    // On Windows a child process that was just killed can hold a file for a moment (EPERM).
+    rmSync(dir, { recursive: true, force: true, maxRetries: 10, retryDelay: 200 });
   }
 });
 
@@ -760,6 +762,7 @@ test('the sample tool: its generator writes a JSON reference with one undocument
     const checked = await checkOutput(config, { out: dir });
     assert.deepEqual(checked.failures, []);
   } finally {
-    rmSync(dir, { recursive: true, force: true });
+    // On Windows a child process that was just killed can hold a file for a moment (EPERM).
+    rmSync(dir, { recursive: true, force: true, maxRetries: 10, retryDelay: 200 });
   }
 });

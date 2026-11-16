@@ -3,3 +3,6 @@ node_modules/
 example/dist/
 .cache/
 .coffer/
+
+# Specifications of this work, kept out of git.
+/specs/

@@ -2830,10 +2830,10 @@ async function buildSite(config, site, options, outRoot, version, report) {
           date: post.date,
           summary: post.summary,
           html: feedHtml,
+          excerptHtml,
           tags: post.tags.map((path) => ({ path, name: nameOf(path) })),
           tagsIndexUrl,
         });
-        if (post.summary === null || post.summary.trim() === '') feedEntry.summary = excerptOf(excerptHtml);
         feedEntries.set(post, feedEntry);
         for (const slug of aboutProjects) projectFeedEntries.get(slug)?.push(feedEntry);
       }

@@ -46,7 +46,8 @@ async function inTemp(body) {
   try {
     return await body(dir);
   } finally {
-    rmSync(dir, { recursive: true, force: true });
+    // On Windows a child process that was just killed can hold a file for a moment (EPERM).
+    rmSync(dir, { recursive: true, force: true, maxRetries: 10, retryDelay: 200 });
   }
 }
 

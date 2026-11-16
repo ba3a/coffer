@@ -990,3 +990,35 @@ test('seek links: a seek link cannot be inside a link or hold one', async () => 
 test('seek links: inside an unknown directive, the unknown directive is the error', async () => {
   assert.match(await errorOf(':::note\nSee :t[1:00].\n:::'), /^post\.md:1:1: unknown directive "note"/);
 });
+
+test('idPrefix reaches the links in chapter titles, only for ids of the text', async () => {
+  const source = [
+    ':::video{src="' + YT + '"}',
+    '- 0:05 See [the notes](#notes)',
+    '- 1:05 Elsewhere [there](#nowhere) and [away](https://example.org/#notes)',
+    ':::',
+    '',
+    '## Notes',
+    '',
+    'Text.',
+  ].join('\n');
+  const result = await renderMarkdown(source, { file: 'post.md', idPrefix: 'p-' });
+  assert.deepEqual(
+    result.videos[0].chapters.map((chapter) => chapter.html),
+    ['See <a href="#p-notes">the notes</a>', 'Elsewhere <a href="#nowhere">there</a> and <a href="https://example.org/#notes">away</a>'],
+  );
+});
+
+test('videoIdPrefix reaches the links to videos in chapter titles', async () => {
+  const source = [`::video{src="${YT}"}`, '', ':::video{src="' + YT + '"}', '- 0:05 Back to [the first](#video-1)', ':::'].join('\n');
+  const result = await renderMarkdown(source, { file: 'post.md', videoIdPrefix: 'readme-1-' });
+  assert.equal(result.videos[1].chapters[0].html, 'Back to <a href="#readme-1-video-1">the first</a>');
+  const both = await renderMarkdown(source, { file: 'post.md', idPrefix: 'p-', videoIdPrefix: 'readme-1-' });
+  assert.equal(both.videos[1].chapters[0].html, 'Back to <a href="#p-readme-1-video-1">the first</a>');
+});
+
+test('raw HTML links in chapter titles are prefixed too', async () => {
+  const source = [':::video{src="' + YT + '"}', '- 0:05 See <a href="#notes">the notes</a>', ':::', '', '## Notes'].join('\n');
+  const result = await renderMarkdown(source, { file: 'post.md', idPrefix: 'p-' });
+  assert.equal(result.videos[0].chapters[0].html, 'See <a href="#p-notes">the notes</a>');
+});

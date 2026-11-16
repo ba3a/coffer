@@ -317,3 +317,37 @@ test('a post with index: full is shown in full on tag and series pages of a summ
     },
   );
 });
+
+test('on a full-index list page, links in the chapters of a video carry the slug prefix', async () => {
+  const delta = [
+    '---',
+    'title: Delta',
+    'date: 2025-04-04',
+    'summary: Delta summary text.',
+    '---',
+    '',
+    ':::video{src="https://youtu.be/aBcD3fGh1_-"}',
+    '- 0:05 See [the notes](#notes)',
+    '- 1:05 Back to [this video](#video-1)',
+    ':::',
+    '',
+    '## Notes',
+    '',
+    'Delta notes.',
+    '',
+  ].join('\n');
+  const config = configYaml(', index: full').replace('    blogs:', '    video: { fetchPreviews: false }\n    blogs:');
+  await inTree({ 'coffer.yaml': config, 'notes/delta.md': delta }, async (root) => {
+    const { read } = await build(root);
+    const [item] = listItems(read('log/index.html'));
+    assert.ok(item, 'the list page shows the post');
+    assert.match(item, /<h3 id="delta-notes">/);
+    assert.match(item, /id="delta-video-1"/);
+    assert.match(item, /href="#delta-notes"/, 'the chapter link follows the prefixed heading id');
+    assert.match(item, /href="#delta-video-1"/, 'the chapter link follows the prefixed video id');
+    assert.doesNotMatch(item, /href="#notes"/);
+
+    const page = read('log/delta/index.html');
+    assert.match(page, /href="#notes"/, 'the post page keeps the ids as written');
+  });
+});
