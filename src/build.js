@@ -1315,21 +1315,76 @@ async function buildSite(config, site, options, outRoot, version, report) {
   });
 
   /**
-   * The videos of a post with their titles and previews. A poster is made like
-   * a Markdown image of the post; one that does not exist fails the build. A
+   * The video option of a text that is not a post (the home page, a project's
+   * page, a guide, a section of a README, a press kit description): the
+   * site's rules and way of loading, and no local videos, which exist only in
+   * posts.
+   *
+   * @type {import('./markdown/directives/video.js').VideoOptions}
+   */
+  const textVideoOptions = { rules: videoRules, load: site.video.load, locateFile: () => null };
+
+  /**
+   * Adds the features the providers of a text's videos lack to the build
+   * warnings, as `{file}:{line}:{column}: {message}`.
+   *
+   * @param {string} shown How findings name the text's file.
+   * @param {{ videoWarnings: readonly import('./video/types.js').VideoWarning[] }} rendered
+   */
+  const reportVideoWarnings = (shown, rendered) => {
+    for (const warning of rendered.videoWarnings) warnings.push(`${shown}:${warning.line}:${warning.column}: ${warning.message}`);
+  };
+
+  /**
+   * Where the poster of a video of a text lies: a file, a problem that is
+   * reported at the poster (a picture the image resolver refuses), or null
+   * when the image resolver cannot find it.
+   *
+   * @typedef {(poster: string) => { file: string } | { error: string } | null} LocatePoster
+   */
+
+  /**
+   * Finds a poster like a Markdown image of a text in the content directory.
+   *
+   * @param {string} sourceFile Markdown file of the text.
+   * @returns {LocatePoster}
+   */
+  const contentPoster = (sourceFile) => (poster) => {
+    const file = localImageFile(sourceFile, poster);
+    return file === null ? null : { file };
+  };
+
+  /**
+   * Finds a poster like an image of a guide: a file of the documentation
+   * source. One that is not there is not found; any other refusal is reported.
+   *
+   * @param {string} root The fetched documentation source.
+   * @param {string} rel Path of the text's file in it.
+   * @returns {LocatePoster}
+   */
+  const guidePoster = (root, rel) => (poster) => {
+    const located = locateGuideImage(root, rel, poster);
+    if (located !== null && 'error' in located && located.error.startsWith('missing image ')) return null;
+    return located;
+  };
+
+  /**
+   * The videos of a text with their titles and previews. A poster is made like
+   * a Markdown image of the text; one that does not exist fails the build. A
    * remote video without a poster shows the preview of its host, fetched or
    * from the cache; one that cannot be fetched is a warning, never an error.
    * A fetched preview is published but is not an image of the author, so the
    * manifest does not list it under `images`.
    *
-   * @param {Post} post
-   * @param {string} url Site-relative URL of the post.
    * @param {readonly import('./video/types.js').VideoDirective[]} videos
+   * @param {object} text
+   * @param {string} text.shown How findings name the text's file.
+   * @param {string} text.url Site-relative URL of the page the text appears on.
+   * @param {PageImages} text.page Decides the metadata policy of a poster.
+   * @param {LocatePoster} text.locatePoster
    * @returns {Promise<ResolvedVideo[]>}
    */
-  const resolvePostVideos = async (post, url, videos) => {
-    const shown = posix(relative(config.dir, post.file));
-    const page = /** @type {PageImages} */ (pageImages.get(post.file));
+  const resolveVideos = async (videos, { shown, url, page, locatePoster }) => {
     /** @type {ResolvedVideo[]} */
     const resolved = [];
     for (const video of videos) {
@@ -1339,10 +1394,14 @@ async function buildSite(config, site, options, outRoot, version, report) {
       /** @type {string | null} */
       let hostTitle = null;
       if (poster !== null) {
-        const file = localImageFile(post.file, poster);
-        if (file === null) throw new BuildError(`${shown}:${line}:${column}: poster "${poster}" does not exist`);
-        const image = await processBodyImage({ file, src: poster, shown, line, column }, url, page);
-        if (image !== null) preview = { src: image.src, width: image.width, height: image.height, srcset: image.srcset };
+        const located = locatePoster(poster);
+        if (located === null) throw new BuildError(`${shown}:${line}:${column}: poster "${poster}" does not exist`);
+        if ('error' in located) {
+          report.addError({ site: site.id, file: shown, line, column, message: `poster: ${located.error}` });
+        } else {
+          const image = await processBodyImage({ file: located.file, src: poster, shown, line, column }, url, page);
+          if (image !== null) preview = { src: image.src, width: image.width, height: image.height, srcset: image.srcset };
+        }
       } else if (video.match !== null) {
         const found = await videoPreviews.preview(video.match);
         if (found !== undefined) {
@@ -1367,6 +1426,32 @@ async function buildSite(config, site, options, outRoot, version, report) {
     }
     return resolved;
   };
+
+  /**
+   * The videos of a post with their titles and previews (see `resolveVideos`).
+   *
+   * @param {Post} post
+   * @param {string} url Site-relative URL of the post.
+   * @param {readonly import('./video/types.js').VideoDirective[]} videos
+   * @returns {Promise<ResolvedVideo[]>}
+   */
+  const resolvePostVideos = (post, url, videos) =>
+    resolveVideos(videos, {
+      shown: posix(relative(config.dir, post.file)),
+      url,
+      page: /** @type {PageImages} */ (pageImages.get(post.file)),
+      locatePoster: contentPoster(post.file),
+    });
+
+  /**
+   * The HTML of a text for its page, with the placeholder of each video
+   * replaced by its figure.
+   *
+   * @param {string} html
+   * @param {readonly ResolvedVideo[]} videos
+   * @returns {string}
+   */
+  const withVideos = (html, videos) => fillVideoPlaceholders(html, videos, { sizes: site.images.sizes, labels: videoLabels, feed: false });
 
   /** @type {ManifestPage[]} */
   const pages = [];
@@ -1436,17 +1521,14 @@ async function buildSite(config, site, options, outRoot, version, report) {
       // Both renders of a full post share it, so each local video is copied once.
       const video = postVideoOptions(post, postUrl(blog, post.slug));
       /** Reports the features the providers of the post's videos lack; once, from the page render. */
-      const reportVideoWarnings = (/** @type {RenderedPost} */ result) => {
-        const shown = posix(relative(config.dir, post.file));
-        for (const warning of result.videoWarnings) {
-          warnings.push(`${shown}:${warning.line}:${warning.column}: ${warning.message}`);
-        }
+      const reportPostVideoWarnings = (/** @type {RenderedPost} */ result) => {
+        reportVideoWarnings(posix(relative(config.dir, post.file)), result);
         return result;
       };
       if ((post.index ?? blog.index.type) !== 'full') {
         rendered.set(
           post,
-          reportVideoWarnings(
+          reportPostVideoWarnings(
             await renderMarkdown(post.body, {
               file: post.file,
               startLine: post.bodyLine,
@@ -1467,7 +1549,7 @@ async function buildSite(config, site, options, outRoot, version, report) {
       const imageKey = (request) => `${request.line}:${request.column}:${request.src}`;
       rendered.set(
         post,
-        reportVideoWarnings(
+        reportPostVideoWarnings(
           await renderMarkdown(post.body, {
             file: post.file,
             startLine: post.bodyLine,
@@ -1619,7 +1701,8 @@ async function buildSite(config, site, options, outRoot, version, report) {
    * @property {RenderedPost} rendered
    * @property {import('./check/source-links.js').SourceFile} source
    * @property {string} url Pseudo-address for the link check.
-   * @property {string} html The HTML to show; link rewrites are applied to it once the links are checked.
+   * @property {string} html The HTML to show; link rewrites are applied to it once the links are checked, then its videos are filled in.
+   * @property {ResolvedVideo[]} videos The videos of the description, by index.
    */
 
   /**
@@ -1660,7 +1743,11 @@ async function buildSite(config, site, options, outRoot, version, report) {
         file: project.file,
         startLine: description.line,
         carousel: carouselLabels,
+        video: textVideoOptions,
+        // The descriptions are on the project's page with its own text, so each gives its videos ids of their own.
+        videoIdPrefix: name === 'shortDescription' ? 'press-kit-short-' : 'press-kit-long-',
       });
+      reportVideoWarnings(shown, rendered);
       for (const directive of rendered.maps) {
         warnings.push(`${shown}:${directive.line ?? description.line}: pressKit.${name}: the ::map directive is only for posts and is left out`);
       }
@@ -1683,6 +1770,8 @@ async function buildSite(config, site, options, outRoot, version, report) {
         },
         url: `${url}${PRESS_KIT_DESCRIPTION_URL}${name}/`,
         html: withoutMapPlaceholders(rendered.html),
+        // A poster is found beside project.yaml, like a picture of the project's page.
+        videos: await resolveVideos(rendered.videos, { shown, url, page, locatePoster: contentPoster(project.file) }),
       };
     };
 
@@ -1800,6 +1889,7 @@ async function buildSite(config, site, options, outRoot, version, report) {
    * @property {import('./content/projects.js').Project} project
    * @property {string} url Site-relative URL of the project's page.
    * @property {RenderedPost} rendered
+   * @property {ResolvedVideo[]} videos The videos of the page's own text, by index; they are filled in once the links are checked.
    * @property {PageImages} page
    * @property {ProjectPicture | null} picture The card picture, or null when it could not be made (reported).
    * @property {Record<string, ProjectMedium | null>} media What the kind's `image`, `trailer` and `font-file` fields publish, by field name; null for a picture that could not be made (reported). A field that is not set has no entry.
@@ -1814,8 +1904,9 @@ async function buildSite(config, site, options, outRoot, version, report) {
    * A section of the README of a project, rendered for the project's page.
    *
    * @typedef {object} PreparedReadmeSection
-   * @property {string} html The section, links rewritten, no map placeholders.
+   * @property {string} html The section, links rewritten, no map placeholders, videos filled in.
    * @property {number} carousels Number of carousels in it.
+   * @property {readonly import('./video/types.js').VideoDirective[]} videos The videos in it.
    */
   /**
    * A card picture, ready for a template's `<picture>`.
@@ -1926,32 +2017,44 @@ async function buildSite(config, site, options, outRoot, version, report) {
     const urlOf = (page) => (page.slug === '' ? indexUrl : `${indexUrl}${page.slug}/`);
     /** @type {Map<import('./docs/guides.js').GuidePage, RenderedPost>} */
     const renderedPages = new Map();
+    /**
+     * The videos of each guide that could be rendered, with their titles and previews.
+     * @type {Map<import('./docs/guides.js').GuidePage, ResolvedVideo[]>}
+     */
+    const guideVideos = new Map();
     for (const guide of plan.pages) {
       const url = urlOf(guide);
       const sourceFile = join(fetched.root, ...guide.rel.split('/'));
       const images = pageImagesOf(sourceFile, null, resolver);
       images.shown = guide.label;
       pageImages.set(`docs:${project.slug}:${guide.rel}`, images);
+      /** @type {RenderedPost} */
+      let rendered;
       try {
-        renderedPages.set(
-          guide,
-          await renderMarkdown(guide.text, {
-            file: guide.label,
-            images: imageOptionsFor(sourceFile, url, images, {
-              shown: guide.label,
-              locate: (src) => locateGuideImage(fetched.root, guide.rel, src),
-            }),
-            carousel: carouselLabels,
+        rendered = await renderMarkdown(guide.text, {
+          file: guide.label,
+          images: imageOptionsFor(sourceFile, url, images, {
+            shown: guide.label,
+            locate: (src) => locateGuideImage(fetched.root, guide.rel, src),
           }),
-        );
+          carousel: carouselLabels,
+          video: textVideoOptions,
+        });
       } catch (error) {
         if (!(error instanceof MarkdownError)) throw error;
         report.addError({ site: site.id, file: guide.label, line: error.line, column: error.column, message: markdownMessageOf(error) });
+        continue;
       }
+      renderedPages.set(guide, rendered);
+      reportVideoWarnings(guide.label, rendered);
+      guideVideos.set(
+        guide,
+        await resolveVideos(rendered.videos, { shown: guide.label, url, page: images, locatePoster: guidePoster(fetched.root, guide.rel) }),
+      );
     }
     // The sections of the README that the project's page shows are texts of the repository too: they are rendered like guides and their links are resolved from their own file.
     const pageFile = landing ? landing.page.label : posix(relative(config.dir, project.pageFile));
-    /** @type {{ directive: import('./markdown/directives/readme.js').ReadmeDirective, page: import('./docs/guides.js').GuidePage }[]} */
+    /** @type {{ directive: import('./markdown/directives/readme.js').ReadmeDirective, page: import('./docs/guides.js').GuidePage, videos: ResolvedVideo[] }[]} */
     const sectionPages = [];
     for (const directive of directives) {
       const read = readSection(fetched, directive);
@@ -1968,26 +2071,37 @@ async function buildSite(config, site, options, outRoot, version, report) {
         shown: page.label,
         locate: (src) => locateGuideImage(fetched.root, page.rel, src),
       });
+      /** @type {RenderedPost} */
+      let rendered;
       try {
-        renderedPages.set(
-          page,
-          await renderMarkdown(page.text, {
-            file: page.label,
-            startLine: read.found.line,
-            // The pictures of the section are plain pictures: the viewer of the page lists the images of the page's own text, and the project page's first picture is not among these.
-            images: { ...own, leadingImage: true, resolve: async (request) => {
-                const image = await own.resolve(request);
-                return image === null ? null : { ...image, viewer: undefined };
-              },
+        rendered = await renderMarkdown(page.text, {
+          file: page.label,
+          startLine: read.found.line,
+          // The pictures of the section are plain pictures: the viewer of the page lists the images of the page's own text, and the project page's first picture is not among these.
+          images: { ...own, leadingImage: true, resolve: async (request) => {
+              const image = await own.resolve(request);
+              return image === null ? null : { ...image, viewer: undefined };
             },
-            carousel: carouselLabels,
-          }),
-        );
-        sectionPages.push({ directive, page });
+          },
+          carousel: carouselLabels,
+          video: textVideoOptions,
+          // The section is on the project's page with its text and the other sections, so its videos get ids of their own.
+          videoIdPrefix: `readme-${directive.index + 1}-`,
+        });
       } catch (error) {
         if (!(error instanceof MarkdownError)) throw error;
         report.addError({ site: site.id, file: page.label, line: error.line, column: error.column, message: markdownMessageOf(error) });
+        continue;
       }
+      renderedPages.set(page, rendered);
+      reportVideoWarnings(page.label, rendered);
+      const videos = await resolveVideos(rendered.videos, {
+        shown: page.label,
+        url: projectPageUrl,
+        page: images,
+        locatePoster: guidePoster(fetched.root, page.rel),
+      });
+      sectionPages.push({ directive, page, videos });
     }
     const ref = githubRefOf(fetched);
     // The landing file is the text of the project's page; its links are resolved from its own folder in the repository, like those of a guide.
@@ -2004,7 +2118,7 @@ async function buildSite(config, site, options, outRoot, version, report) {
       symbols: reference?.symbols ?? null,
     });
     for (const issue of links.issues) report.addError({ site: site.id, ...issue });
-    for (const { directive, page } of sectionPages) {
+    for (const { directive, page, videos } of sectionPages) {
       const rendered = /** @type {RenderedPost} */ (renderedPages.get(page));
       for (const map of rendered.maps) {
         warnings.push(`${page.label}:${map.line ?? 1}: the ::map directive is only for posts and is left out`);
@@ -2019,7 +2133,8 @@ async function buildSite(config, site, options, outRoot, version, report) {
         autoLink: reference?.autoLink ?? true,
       });
       for (const issue of finished.issues) report.addError({ site: site.id, ...issue });
-      sections.set(directive.index, { html: finished.html, carousels: rendered.carousels });
+      // The section's videos are filled in here: once in the project's page, their placeholders could not be told from the page's own.
+      sections.set(directive.index, { html: withVideos(finished.html, videos), carousels: rendered.carousels, videos: rendered.videos });
     }
     if (landing) {
       const finished = finishGuidePage({
@@ -2059,7 +2174,8 @@ async function buildSite(config, site, options, outRoot, version, report) {
         file: fileForUrl(url),
         title: finished.title,
         titleId: finished.titleId,
-        html: finished.html,
+        // The description was taken from the text without the videos, so no label of a video is part of it.
+        html: withVideos(finished.html, guideVideos.get(guide) ?? []),
         description: finished.description,
         rendered,
         page: guide,
@@ -2184,6 +2300,14 @@ async function buildSite(config, site, options, outRoot, version, report) {
         carousel: carouselLabels,
         // Only the page of a project with a docs source can show a section of its README.
         readme: docsFetched.has(project.slug),
+        video: textVideoOptions,
+      });
+      reportVideoWarnings(pageLabel, rendered);
+      const videos = await resolveVideos(rendered.videos, {
+        shown: pageLabel,
+        url,
+        page,
+        locatePoster: landingText ? guidePoster(landingRoot, landingText.page.rel) : contentPoster(textFile),
       });
       const yamlFile = posix(relative(config.dir, project.file));
       // The brand folder of the docs source is published unchanged below /assets/{slug}/.
@@ -2244,6 +2368,7 @@ async function buildSite(config, site, options, outRoot, version, report) {
         project,
         url,
         rendered,
+        videos,
         page,
         picture,
         media,
@@ -2311,17 +2436,25 @@ async function buildSite(config, site, options, outRoot, version, report) {
     }
   }
   for (const entry of preparedProjects) {
-    entry.rendered = { ...entry.rendered, html: applyLinkRewrites(entry.rendered.html, linkCheck.rewrites.get(entry.source)) };
+    entry.rendered = {
+      ...entry.rendered,
+      html: withVideos(applyLinkRewrites(entry.rendered.html, linkCheck.rewrites.get(entry.source)), entry.videos),
+    };
     if (entry.rendered.readmes.length > 0) {
       // The sections come after the link rewrites of the page: their links were resolved from the file they come from.
       entry.rendered = {
         ...entry.rendered,
         html: fillReadmeSections(entry.rendered.html, new Map([...entry.readmes].map(([index, section]) => [index, section.html]))),
         carousels: entry.rendered.carousels + [...entry.readmes.values()].reduce((sum, section) => sum + section.carousels, 0),
+        videos: [...entry.rendered.videos, ...[...entry.readmes.values()].flatMap((section) => section.videos)],
       };
     }
     for (const description of [entry.pressKit?.shortDescription, entry.pressKit?.longDescription]) {
-      if (description) description.html = applyLinkRewrites(description.html, linkCheck.rewrites.get(description.source));
+      if (description) {
+        description.html = withVideos(applyLinkRewrites(description.html, linkCheck.rewrites.get(description.source)), description.videos);
+        // The descriptions are part of the project's page, which then loads the video script.
+        entry.rendered = { ...entry.rendered, videos: [...entry.rendered.videos, ...description.rendered.videos] };
+      }
     }
   }
 
@@ -2782,7 +2915,7 @@ async function buildSite(config, site, options, outRoot, version, report) {
         page: {
           title: post.title,
           description: post.summary ?? '',
-          content: fillVideoPlaceholders(mapped.html, videos, { sizes: site.images.sizes, labels: videoLabels, feed: false }),
+          content: withVideos(mapped.html, videos),
         },
       });
       writeOutput(outDir, file, html);
@@ -2889,7 +3022,7 @@ async function buildSite(config, site, options, outRoot, version, report) {
             enabled: body.post.map !== false,
             viewerOffset: offset,
           }).html;
-          html = fillVideoPlaceholders(mapped, body.videos, { sizes: site.images.sizes, labels: videoLabels, feed: false });
+          html = withVideos(mapped, body.videos);
           listMaps.set(key, html);
         }
         texts.push(body.rendered);
@@ -3428,8 +3561,15 @@ async function buildSite(config, site, options, outRoot, version, report) {
             startLine: home.bodyLine,
             images: imageOptionsFor(home.file, '/', homePage),
             carousel: carouselLabels,
+            video: textVideoOptions,
           })
         : null;
+    const homeShown = home ? posix(relative(config.dir, home.file)) : '';
+    if (rendered) reportVideoWarnings(homeShown, rendered);
+    const homeVideos =
+      home && homePage && rendered
+        ? await resolveVideos(rendered.videos, { shown: homeShown, url: '/', page: homePage, locatePoster: contentPoster(home.file) })
+        : [];
     // Only a post has tracks and located photos, so a map has nothing to show here.
     if (home) {
       for (const directive of rendered?.maps ?? []) {
@@ -3454,7 +3594,7 @@ async function buildSite(config, site, options, outRoot, version, report) {
       page: {
         title,
         description: site.description,
-        content: withoutMapPlaceholders(rendered?.html ?? ''),
+        content: withVideos(withoutMapPlaceholders(rendered?.html ?? ''), homeVideos),
       },
     });
     writeOutput(outDir, fileForUrl('/'), homeHtml);

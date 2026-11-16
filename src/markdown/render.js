@@ -41,6 +41,7 @@ export const DEFAULT_CODE_THEMES = Object.freeze({
  * @property {number} [headingShift] Whole number added to the level of every heading the Markdown makes, the result kept between h1 and h6 (default 0). A post shown inside a list page uses 1, so its h2 becomes h3 below the h2 that carries its title. Headings written as raw HTML are left as they are.
  * @property {Partial<import('./directives/video.js').VideoOptions>} [video] The rules that recognise remote videos, how they load, and where the local videos of the text are published (default: `DEFAULT_VIDEO_RULES`, `click`, and no local video exists).
  * @property {string} [idPrefix] Text put in front of every `id` of the output, so that several texts on one page have none in common (default: none; it must not contain whitespace). It applies to the ids of headings, of footnotes and of elements and anchors written as raw HTML, to the `aria-describedby`, `aria-labelledby` and `aria-controls` that point at them, and to every link of the text whose target is `#id` of such an id (links to other pages and to ids the text does not have stay as written). `toc`, `ids` and `links` in the result keep the values without the prefix, since they describe the text, not the page.
+ * @property {string} [videoIdPrefix] Text put between `idPrefix` and `video-` in the id of each video, and in everything that points at it, so that the videos of several texts on one page have different ids while the other ids of the texts stay as they are (default: none; it must not contain whitespace). `ids` keeps the ids of the videos without it.
  */
 
 /**
@@ -508,17 +509,23 @@ function decodeFragment(value) {
 }
 
 /**
- * Puts the prefix in front of each id of a space separated list that the text has.
+ * What goes in front of an id the text has to make its id on the page, or
+ * null for an id the text does not have.
+ *
+ * @typedef {(id: string) => string | null} PrefixOf
+ */
+
+/**
+ * Puts its prefix in front of each id of a space separated list that the text has.
  *
  * @param {string} value
- * @param {string} prefix
- * @param {Set<string>} known
+ * @param {PrefixOf} prefixOf
  * @returns {string}
  */
-function prefixReferences(value, prefix, known) {
+function prefixReferences(value, prefixOf) {
   return value
     .split(/(\s+)/)
-    .map((part) => (known.has(part) ? prefix + part : part))
+    .map((part) => (prefixOf(part) ?? '') + part)
     .join('');
 }
 
@@ -528,10 +535,10 @@ function prefixReferences(value, prefix, known) {
  *
  * @param {string} html
  * @param {string} prefix
- * @param {Set<string>} known
+ * @param {PrefixOf} prefixOf
  * @returns {string}
  */
-function prefixRawHtml(html, prefix, known) {
+function prefixRawHtml(html, prefix, prefixOf) {
   return html.replace(/<[a-zA-Z][^>]*>/g, (tag) => {
     const anchor = /^<a\s/i.test(tag);
     return tag.replace(
@@ -543,8 +550,8 @@ function prefixRawHtml(html, prefix, known) {
         let next;
         if (attribute === 'id' || (attribute === 'name' && anchor)) {
           next = value === '' ? value : prefix + value;
-        } else if (attribute === 'href' && value.startsWith('#') && known.has(decodeFragment(value.slice(1)))) {
-          next = `#${prefix}${value.slice(1)}`;
+        } else if (attribute === 'href' && value.startsWith('#') && prefixOf(decodeFragment(value.slice(1))) !== null) {
+          next = `#${prefixOf(decodeFragment(value.slice(1)))}${value.slice(1)}`;
         } else {
           return match;
         }
@@ -560,19 +567,24 @@ function prefixRawHtml(html, prefix, known) {
  * `collect`, so the table of contents, the ids and the links of the result
  * describe the text as written.
  *
- * @param {{ shift: number, prefix: string, ids: () => Set<string> }} options
+ * The ids of the videos also get `videoPrefix` after the prefix. Their
+ * elements are made later with the whole id, so only what points at them
+ * changes here.
+ *
+ * @param {{ shift: number, prefix: string, videoPrefix: string, ids: () => Set<string>, videoIds: () => Set<string> }} options
  * @returns {(tree: import('hast').Root) => void}
  */
-function shiftAndPrefix({ shift, prefix, ids }) {
+function shiftAndPrefix({ shift, prefix, videoPrefix, ids, videoIds }) {
   return (tree) => {
-    if (shift === 0 && prefix === '') return;
+    if (shift === 0 && prefix === '' && videoPrefix === '') return;
     const known = ids();
-    // A fragment in a link is percent-encoded when it holds more than ASCII.
-    const encodedPrefix = encodeURIComponent(prefix);
+    const videos = videoIds();
+    /** @type {PrefixOf} */
+    const prefixOf = (id) => (known.has(id) ? prefix + (videos.has(id) ? videoPrefix : '') : null);
     visit(tree, (node) => {
       if (/** @type {string} */ (node.type) === 'raw') {
         const raw = /** @type {{ value: string }} */ (/** @type {unknown} */ (node));
-        if (prefix !== '') raw.value = prefixRawHtml(raw.value, prefix, known);
+        if (prefix !== '' || videoPrefix !== '') raw.value = prefixRawHtml(raw.value, prefix, prefixOf);
         return;
       }
       if (node.type !== 'element') return;
@@ -580,19 +592,21 @@ function shiftAndPrefix({ shift, prefix, ids }) {
         const level = /^h([1-6])$/.exec(node.tagName);
         if (level) node.tagName = `h${Math.min(6, Math.max(1, Number(level[1]) + shift))}`;
       }
-      if (prefix === '') return;
+      if (prefix === '' && videoPrefix === '') return;
       const properties = node.properties;
       if (typeof properties.id === 'string' && properties.id !== '') properties.id = prefix + properties.id;
       const href = properties.href;
       if (node.tagName === 'a' && typeof href === 'string' && href.startsWith('#')) {
         const fragment = href.slice(1);
         const decoded = decodeFragment(fragment);
-        if (known.has(decoded)) properties.href = `#${decoded === fragment ? prefix : encodedPrefix}${fragment}`;
+        const before = prefixOf(decoded);
+        // A fragment in a link is percent-encoded when it holds more than ASCII.
+        if (before !== null) properties.href = `#${decoded === fragment ? before : encodeURIComponent(before)}${fragment}`;
       }
       for (const name of ['ariaDescribedBy', 'ariaLabelledBy', 'ariaControls']) {
         const value = properties[name];
-        if (typeof value === 'string') properties[name] = prefixReferences(value, prefix, known);
-        else if (Array.isArray(value)) properties[name] = value.map((entry) => prefixReferences(String(entry), prefix, known));
+        if (typeof value === 'string') properties[name] = prefixReferences(value, prefixOf);
+        else if (Array.isArray(value)) properties[name] = value.map((entry) => prefixReferences(String(entry), prefixOf));
       }
     });
   };
@@ -870,6 +884,10 @@ export async function renderMarkdown(source, options = {}) {
   if (typeof idPrefix !== 'string' || /\s/.test(idPrefix)) {
     throw new TypeError('idPrefix must be a string without whitespace');
   }
+  const videoIdPrefix = options.videoIdPrefix ?? '';
+  if (typeof videoIdPrefix !== 'string' || /\s/.test(videoIdPrefix)) {
+    throw new TypeError('videoIdPrefix must be a string without whitespace');
+  }
 
   /** @type {Collected | undefined} */
   let collected;
@@ -886,6 +904,8 @@ export async function renderMarkdown(source, options = {}) {
   /** @type {import('../video/types.js').VideoWarning[]} */
   let videoWarnings = [];
   const videoOptions = { ...DEFAULT_VIDEO_OPTIONS, ...options.video };
+  /** The ids of the videos of the text, without either prefix. */
+  const videoIds = () => videoDirectives.map((video) => `video-${video.id ?? String(video.index + 1)}`);
 
   const processor = unified()
     .use(remarkParse)
@@ -913,7 +933,7 @@ export async function renderMarkdown(source, options = {}) {
       file: options.file,
       lineOffset,
       video: videoOptions,
-      idPrefix,
+      idPrefix: idPrefix + videoIdPrefix,
       onFound: (found, warnings) => {
         videoDirectives = found;
         videoWarnings = warnings;
@@ -927,14 +947,16 @@ export async function renderMarkdown(source, options = {}) {
       lineOffset,
       onResult: (found) => {
         // A video's figure has its id only once the build fills the placeholder in.
-        for (const video of videoDirectives) found.ids.add(`video-${video.id ?? String(video.index + 1)}`);
+        for (const video of videoIds()) found.ids.add(video);
         collected = found;
       },
     })
     .use(shiftAndPrefix, {
       shift: headingShift,
       prefix: idPrefix,
+      videoPrefix: videoIdPrefix,
       ids: () => collected?.ids ?? new Set(),
+      videoIds: () => new Set(videoIds()),
     })
     .use(responsiveImages, {
       images: options.images ?? null,

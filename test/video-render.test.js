@@ -110,6 +110,40 @@ test('the html id carries the idPrefix, and ids lists it without the prefix', as
   assert.match(result.html, /href="#p1-video-drawer"/);
 });
 
+test('videoIdPrefix goes between the idPrefix and "video-" of the videos only', async () => {
+  const source =
+    `## Intro\n\n:::video{src="${YT}" id="drawer"}\n- 0:05 Start\n:::\n\n${YT}\n\n` +
+    'See :t[0:10]{video="drawer"}, [the drawer](#video-drawer), [the second](#video-2) and [the intro](#intro).\n\n' +
+    '<a href="#video-2">raw</a>\n';
+  const result = await renderMarkdown(source, { idPrefix: 'p-', videoIdPrefix: 'readme-1-' });
+  assert.deepEqual(
+    result.videos.map((video) => video.htmlId),
+    ['p-readme-1-video-drawer', 'p-readme-1-video-2'],
+  );
+  // The ids and links of the result describe the text, without either prefix.
+  assert.ok(result.ids.includes('video-drawer'));
+  assert.ok(result.ids.includes('intro'));
+  assert.ok(!result.ids.some((id) => id.includes('readme-1-')));
+  assert.match(result.html, /<h2 id="p-intro">/);
+  assert.match(result.html, /href="#p-readme-1-video-drawer"/);
+  assert.match(result.html, /href="#p-readme-1-video-2"/);
+  assert.match(result.html, /<a href="#p-readme-1-video-2">raw<\/a>/);
+  assert.match(result.html, /href="#p-intro"/);
+  assert.match(result.html, /data-video-target="p-readme-1-video-drawer"/);
+
+  // Without an idPrefix the video ids still get theirs, and nothing else changes.
+  const alone = await renderMarkdown(source, { videoIdPrefix: 'readme-1-' });
+  assert.deepEqual(
+    alone.videos.map((video) => video.htmlId),
+    ['readme-1-video-drawer', 'readme-1-video-2'],
+  );
+  assert.match(alone.html, /<h2 id="intro">/);
+  assert.match(alone.html, /href="#readme-1-video-drawer"/);
+  assert.match(alone.html, /href="#intro"/);
+
+  await assert.rejects(renderMarkdown('x', { videoIdPrefix: 'a b' }), /videoIdPrefix/);
+});
+
 test('the title is the label reduced to plain text and trimmed; an empty one is none', async () => {
   const titleOf = async (/** @type {string} */ label) =>
     (await renderMarkdown(`::video${label}{src="${YT}"}\n`)).videos[0].title;

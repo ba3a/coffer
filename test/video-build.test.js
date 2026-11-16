@@ -8,6 +8,7 @@ import { join } from 'node:path';
 import { BuildError, buildSites } from '../src/build.js';
 import { loadConfig } from '../src/config.js';
 import { MarkdownError } from '../src/markdown/render.js';
+import { ReportError } from '../src/report.js';
 import { solidImage } from './helpers/images.js';
 
 const NOW = new Date('2026-06-01T12:00:00Z');
@@ -893,4 +894,324 @@ test('a full-index list page without a video does not load the video script', as
     const [result] = await build(root, { cacheDir: join(root, 'cache') });
     assert.ok(!readFileSync(join(result.outDir, 'journal', 'index.html'), 'utf8').includes('video.js'));
   });
+});
+
+// Other texts: the home page, project pages, guides, README sections and press kit descriptions.
+
+const TEXTS_CONFIG = [
+  'sites:',
+  '  - id: demo',
+  '    baseUrl: https://demo.example',
+  '    lang: en',
+  '    title: Demo',
+  '    description: A demo site.',
+  '    contentDir: content',
+  '    blogs:',
+  '      - { id: journal, dir: content/journal, prefix: journal, title: Journal }',
+  '    projects: { dir: content/projects }',
+  '',
+].join('\n');
+
+/** The docs block of a tool whose documentation is the `tool` folder next to the configuration. */
+const TOOL_DOCS = 'docs:\n  source: { path: ../../../tool }\n  github: me/lathe\n  guides:\n    - { dir: docs }\n';
+
+/**
+ * A site with a home page, one post and one tool, `lathe`, whose page is
+ * `page` (its body starts on line 1).
+ *
+ * @param {string} page
+ * @param {Record<string, string | Uint8Array>} [extra] More files, by path from the root.
+ * @param {string} [home] The body of the home page, which starts on line 5.
+ * @returns {Record<string, string | Uint8Array>}
+ */
+function textsSite(page, extra = {}, home = 'About the demo.') {
+  return {
+    'coffer.yaml': TEXTS_CONFIG,
+    'content/home.md': `---\ntitle: Demo\n---\n\n${home}\n`,
+    'content/journal/first.md': post('Text.'),
+    'content/projects/lathe/project.yaml': `name: Lathe\npitch: Turns wood.\nkind: tool\nstatus: released\ncard: card.jpg\nrepo: https://github.example/me/lathe\n${TOOL_DOCS}`,
+    'content/projects/lathe/index.md': page,
+    'content/projects/lathe/card.jpg': POSTER,
+    'tool/README.md': '# Lathe\n\n## Demo\n\nThe lathe at work.\n',
+    'tool/docs/start.md': '# Start\n\nBegin.\n',
+    ...extra,
+  };
+}
+
+/**
+ * A page of the output, by its path below the output directory.
+ *
+ * @param {string} outDir
+ * @param {string} path
+ * @returns {string}
+ */
+function outputPage(outDir, path) {
+  return readFileSync(join(outDir, ...path.split('/'), 'index.html'), 'utf8');
+}
+
+/** @param {string} page */
+function videoScripts(page) {
+  return page.match(/<script src="\/assets\/video\.js" defer><\/script>/g)?.length ?? 0;
+}
+
+test('a project page with a remote ::video and a poster shows the figure and loads the video script', async () => {
+  await inTree(
+    textsSite('::video[Turning a bowl]{src="https://vimeo.com/76979871" poster="bowl.jpg"}\n', {
+      'content/projects/lathe/bowl.jpg': POSTER,
+    }),
+    async (root) => {
+      const { fetch, calls } = fakeFetch(HOST);
+      const [result] = await build(root, { cacheDir: join(root, 'cache'), videoFetch: { fetch } });
+      const page = outputPage(result.outDir, 'made/lathe');
+      const lines = figureOf(page, 'video-1').split('\n');
+      assert.equal(
+        lines[0],
+        '<figure class="video" id="video-1" data-video="vimeo" data-video-load="click" data-video-play="https://player.vimeo.com/video/76979871?dnt=1&amp;autoplay=1" data-video-title="Turning a bowl">',
+      );
+      assert.match(lines[1], /^<a class="video-preview" href="https:\/\/vimeo\.com\/76979871"><img src="\/img\/[^"]+\.webp" /);
+      assert.doesNotMatch(page, /data-coffer-video/);
+      assert.equal(videoScripts(page), 1);
+      // The poster replaces the fetched preview, and is an image of the project's page.
+      assert.deepEqual(calls, []);
+      const image = result.manifest.images.find((candidate) => candidate.source === 'content/projects/lathe/bowl.jpg');
+      assert.equal(image?.use, 'body');
+      assert.equal(image?.post, '/made/lathe/');
+      assert.deepEqual(result.warnings, []);
+      // Pages without a video do not load the script.
+      assert.equal(videoScripts(outputPage(result.outDir, '')), 0);
+      assert.equal(videoScripts(outputPage(result.outDir, 'made/lathe/docs/start')), 0);
+    },
+  );
+});
+
+test('the home page renders a lone YouTube address as a video figure with the fetched preview', async () => {
+  await inTree(textsSite('The page text.\n', {}, 'Welcome.\n\nhttps://youtu.be/aBcD3fGh1_-'), async (root) => {
+    const { fetch, calls } = fakeFetch(HOST);
+    const [result] = await build(root, { cacheDir: join(root, 'cache'), videoFetch: { fetch } });
+    assert.deepEqual(calls.map((call) => call.url), [OEMBED, THUMBNAIL]);
+    const page = outputPage(result.outDir, '');
+    const lines = figureOf(page, 'video-1').split('\n');
+    assert.equal(
+      lines[0],
+      '<figure class="video" id="video-1" data-video="youtube" data-video-load="click" data-video-play="https://www.youtube-nocookie.com/embed/aBcD3fGh1_-?autoplay=1" data-video-title="Cutting a mortise">',
+    );
+    assert.match(lines[1], /^<a class="video-preview" href="https:\/\/www\.youtube\.com\/watch\?v=aBcD3fGh1_-"><img src="\/img\/[^"]+youtube-preview-480\.webp" /);
+    assert.equal(
+      lines[2],
+      '<figcaption><span class="video-title">Cutting a mortise</span> <a class="video-source" href="https://www.youtube.com/watch?v=aBcD3fGh1_-">Watch on YouTube</a></figcaption>',
+    );
+    assert.equal(videoScripts(page), 1);
+    assert.doesNotMatch(page, /data-coffer-video/);
+    assert.deepEqual(result.warnings, []);
+  });
+});
+
+test('a preview that cannot be fetched for the home page is a warning with the home file', async () => {
+  await inTree(textsSite('The page text.\n', {}, 'https://youtu.be/aBcD3fGh1_-'), async (root) => {
+    const [result] = await build(root, { cacheDir: join(root, 'cache') });
+    assert.deepEqual(result.warnings, [
+      `content/home.md:5:1: video "https://youtu.be/aBcD3fGh1_-": preview not fetched: ${OEMBED} answered 404`,
+    ]);
+    assert.match(figureOf(outputPage(result.outDir, ''), 'video-1'), /<span class="video-placeholder"><\/span>/);
+  });
+});
+
+test('a local video in a project page fails with V6, even when the file exists', async () => {
+  await inTree(
+    textsSite('Intro.\n\n::video{src="clip.mp4"}\n', { 'content/projects/lathe/clip.mp4': CLIP }),
+    async (root) => {
+      await assert.rejects(build(root), (error) => {
+        assert.ok(error instanceof MarkdownError);
+        assert.match(error.message, /lathe[\\/]index\.md:3:1: local video "clip\.mp4" does not exist$/);
+        return true;
+      });
+    },
+  );
+});
+
+test('a local video on the home page fails with V6', async () => {
+  await inTree(textsSite('The page text.\n', { 'content/clip.mp4': CLIP }, '::video{src="clip.mp4"}'), async (root) => {
+    await assert.rejects(build(root), (error) => {
+      assert.ok(error instanceof MarkdownError);
+      assert.match(error.message, /home\.md:5:1: local video "clip\.mp4" does not exist$/);
+      return true;
+    });
+  });
+});
+
+test('a missing poster in a project page fails the build with its position', async () => {
+  await inTree(textsSite('::video{src="https://youtu.be/aBcD3fGh1_-" poster="nope.jpg"}\n'), async (root) => {
+    await assert.rejects(build(root), (error) => {
+      assert.ok(error instanceof BuildError);
+      assert.equal(error.message, 'content/projects/lathe/index.md:1:1: poster "nope.jpg" does not exist');
+      return true;
+    });
+  });
+});
+
+test('a guide shows its videos with a poster from the repository, reports their warnings and loads the video script', async () => {
+  await inTree(
+    textsSite('The page text.\n', {
+      'tool/docs/start.md': '# Start\n\n::video[Roughing]{src="https://vimeo.com/76979871" end="1:00" poster="rough.jpg"}\n',
+      'tool/docs/rough.jpg': POSTER,
+    }),
+    async (root) => {
+      const [result] = await build(root, { cacheDir: join(root, 'cache') });
+      const page = outputPage(result.outDir, 'made/lathe/docs/start');
+      const figure = figureOf(page, 'video-1');
+      assert.match(figure, /data-video-play="https:\/\/player\.vimeo\.com\/video\/76979871\?dnt=1&amp;autoplay=1" data-video-title="Roughing">/);
+      assert.match(figure, /<img src="\/img\/[^"]+\.webp" /);
+      assert.equal(videoScripts(page), 1);
+      assert.equal(result.warnings.length, 1, result.warnings.join('\n'));
+      assert.match(result.warnings[0], /:docs\/start\.md:3:1: Vimeo videos cannot stop at a given time; end="1:00" is ignored$/);
+      // The meta description of the guide leaves the video out.
+      assert.doesNotMatch(page, /<meta name="description" content="[^"]*Play:/);
+    },
+  );
+});
+
+test('a local video in a guide fails with V6', async () => {
+  await inTree(
+    textsSite('The page text.\n', { 'tool/docs/start.md': '# Start\n\n::video{src="clip.mp4"}\n', 'tool/docs/clip.mp4': CLIP }),
+    async (root) => {
+      await assert.rejects(build(root), (error) => {
+        assert.ok(error instanceof ReportError, String(error));
+        assert.equal(error.errors.length, 1, error.errors.join('\n'));
+        assert.match(error.errors[0], /docs\/start\.md:3:1 local video "clip\.mp4" does not exist$/);
+        return true;
+      });
+    },
+  );
+});
+
+test('a README section on a project page shows its video and the page loads the video script', async () => {
+  await inTree(
+    textsSite('Intro.\n\n::readme{section="Demo"}\n', {
+      'tool/README.md': '# Lathe\n\n## Demo\n\nhttps://youtu.be/aBcD3fGh1_-\n',
+    }),
+    async (root) => {
+      const [result] = await build(root, { cacheDir: join(root, 'cache') });
+      const page = outputPage(result.outDir, 'made/lathe');
+      assert.match(figureOf(page, 'readme-1-video-1'), /data-video="youtube"/);
+      assert.doesNotMatch(page, /data-coffer-video/);
+      assert.equal(videoScripts(page), 1);
+      assert.equal(result.warnings.length, 1, result.warnings.join('\n'));
+      assert.match(result.warnings[0], /README\.md:5:1: video "https:\/\/youtu\.be\/aBcD3fGh1_-": preview not fetched: /);
+    },
+  );
+});
+
+test('a press kit description shows its video on the project page, which loads the video script', async () => {
+  const yaml = 'name: Tumble\npitch: Falling joints.\nkind: game\nstatus: in-development\ncard: card.jpg\npressKit:\n  longDescription: |\n    Stacking blocks.\n\n    ::video[Trailer]{src="https://vimeo.com/76979871"}\n';
+  await inTree(
+    {
+      ...textsSite('The page text.\n'),
+      'content/projects/lathe/project.yaml': yaml,
+    },
+    async (root) => {
+      const [result] = await build(root, { cacheDir: join(root, 'cache') });
+      const page = outputPage(result.outDir, 'made/lathe');
+      assert.match(figureOf(page, 'press-kit-long-video-1'), /data-video="vimeo" [^>]*data-video-title="Trailer">/);
+      assert.doesNotMatch(page, /data-coffer-video/);
+      assert.equal(videoScripts(page), 1);
+    },
+  );
+});
+
+/**
+ * The ids of the video figures of a page, in document order.
+ *
+ * @param {string} page
+ * @returns {string[]}
+ */
+function figureIds(page) {
+  return [...page.matchAll(/<figure class="video" id="([^"]+)"/g)].map((match) => match[1]);
+}
+
+test('the videos of the page text and of its README sections have ids of their own, which their chapters and links target', async () => {
+  const readme = [
+    '# Lathe',
+    '',
+    '## Demo',
+    '',
+    ':::video[Bowl]{src="https://youtu.be/aBcD3fGh1_-"}',
+    '- 0:10 Roughing',
+    ':::',
+    '',
+    'Skip to :t[0:20], or [back to the bowl](#video-1).',
+    '',
+    '### Roughing out',
+    '',
+    'Slowly.',
+    '',
+    '## Usage',
+    '',
+    '::video{src="https://vimeo.com/76979871" id="setup"}',
+    '',
+    'See :t[0:05]{video="setup"}.',
+    '',
+  ].join('\n');
+  await inTree(
+    textsSite('::video{src="https://vimeo.com/76979871"}\n\nWatch from :t[0:30].\n\n::readme{section="Demo"}\n\n::readme{section="Usage"}\n', {
+      'tool/README.md': readme,
+    }),
+    async (root) => {
+      const [result] = await build(root, { cacheDir: join(root, 'cache') });
+      const page = outputPage(result.outDir, 'made/lathe');
+      assert.deepEqual(figureIds(page), ['video-1', 'readme-1-video-1', 'readme-2-video-setup']);
+      assert.match(figureOf(page, 'video-1'), /data-video="vimeo"/);
+      assert.match(figureOf(page, 'readme-1-video-1'), /data-video="youtube"/);
+      assert.match(figureOf(page, 'readme-2-video-setup'), /data-video="vimeo"/);
+      const targets = [...page.matchAll(/data-video-seek="(\d+)" data-video-target="([^"]+)"/g)].map((match) => [match[1], match[2]]);
+      assert.deepEqual(targets, [
+        ['30', 'video-1'],
+        ['10', 'readme-1-video-1'],
+        ['20', 'readme-1-video-1'],
+        ['5', 'readme-2-video-setup'],
+      ]);
+      assert.match(page, /<a href="#readme-1-video-1">back to the bowl<\/a>/);
+      // The headings of the sections keep their anchors.
+      assert.match(page, /<h3 id="roughing-out">Roughing out<\/h3>/);
+      assert.equal(videoScripts(page), 1);
+    },
+  );
+});
+
+test('the videos of both press kit descriptions and of the page text have ids of their own', async () => {
+  const yaml = [
+    'name: Tumble',
+    'pitch: Falling joints.',
+    'kind: game',
+    'status: in-development',
+    'card: card.jpg',
+    'pressKit:',
+    '  shortDescription: |',
+    '    Stacking blocks.',
+    '',
+    '    https://vimeo.com/76979871',
+    '',
+    '    From :t[0:15].',
+    '  longDescription: |',
+    '    The long story.',
+    '',
+    '    ::video[Trailer]{src="https://vimeo.com/76979871"}',
+    '',
+    '    From :t[0:25].',
+    '',
+  ].join('\n');
+  await inTree(
+    {
+      ...textsSite('::video{src="https://vimeo.com/76979871"}\n\nFrom :t[0:35].\n'),
+      'content/projects/lathe/project.yaml': yaml,
+    },
+    async (root) => {
+      const [result] = await build(root, { cacheDir: join(root, 'cache') });
+      const page = outputPage(result.outDir, 'made/lathe');
+      const ids = figureIds(page);
+      assert.deepEqual([...ids].sort(), ['press-kit-long-video-1', 'press-kit-short-video-1', 'video-1']);
+      const targets = new Map([...page.matchAll(/data-video-seek="(\d+)" data-video-target="([^"]+)"/g)].map((match) => [match[1], match[2]]));
+      assert.deepEqual(Object.fromEntries(targets), { 35: 'video-1', 15: 'press-kit-short-video-1', 25: 'press-kit-long-video-1' });
+      assert.equal(videoScripts(page), 1);
+    },
+  );
 });

@@ -31,7 +31,7 @@
  * @property {number} index From 0, in document order.
  * @property {'directive' | 'link'} source `link` for an auto-embed.
  * @property {string | null} id The `id` attribute.
- * @property {string} htmlId `idPrefix + 'video-' + (id ?? String(index + 1))`.
+ * @property {string} htmlId `idPrefix + videoIdPrefix + 'video-' + (id ?? String(index + 1))` (see `RenderOptions`).
  * @property {string} src As written (auto-embed: the URL, without angle brackets).
  * @property {Provider | 'file'} provider
  * @property {string} providerName `match.providerName`; empty for a file.
