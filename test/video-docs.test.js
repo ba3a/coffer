@@ -150,11 +150,13 @@ test('docs/feeds.md and docs/build.md mention videos', () => {
   assert.match(section(read('docs/build.md'), '## The build manifest'), /`videos`/);
 });
 
-test('the changelog lists videos under Added and the lone video address under Changed in Unreleased', () => {
+test('the changelog lists videos under Added and the lone video address under Changed in 0.2.0', () => {
   const text = read('CHANGELOG.md');
-  const unreleased = section(text, '## Unreleased');
-  assert.match(section(unreleased, '### Added'), /video/i);
-  assert.match(section(unreleased, '### Changed'), /video address/i);
+  const heading = text.split('\n').find((line) => /^## 0\.2\.0 - /.test(line));
+  assert.ok(heading, 'the changelog has a 0.2.0 section');
+  const release = section(text, heading);
+  assert.match(section(release, '### Added'), /video/i);
+  assert.match(section(release, '### Changed'), /video address/i);
 });
 
 test('the features section of the landing page lists videos', () => {

@@ -247,6 +247,24 @@ test('the 0.1.2 section is dated and groups its entries under Added and Fixed', 
   }
 });
 
+test('the 0.2.0 section is dated, groups its entries under Added and Changed, and is above 0.1.2', () => {
+  const text = read('CHANGELOG.md');
+  const heading = /^## 0\.2\.0 - (\d{4}-\d{2}-\d{2})$/m.exec(text);
+  assert.ok(heading, 'the heading is "## 0.2.0 - " and a date');
+  assert.ok(!Number.isNaN(Date.parse(heading[1])), 'the date is a real date');
+  const section = text.slice(heading.index + heading[0].length);
+  const next = section.search(/^## /m);
+  const body = next === -1 ? section : section.slice(0, next);
+  assert.match(body, /^### Added$/m);
+  assert.match(body, /^### Changed$/m);
+  assert.ok(text.indexOf('## Unreleased') < heading.index, 'Unreleased is above the released sections');
+  assert.ok(heading.index < text.indexOf('## 0.1.2 - '), '0.2.0 is above 0.1.2');
+  const unreleased = text.slice(text.indexOf('## Unreleased'), heading.index);
+  for (const entry of body.match(/^- .*$/gm) ?? []) {
+    assert.ok(!unreleased.includes(entry), `an entry of 0.2.0 is still under Unreleased: ${entry.slice(0, 60)}`);
+  }
+});
+
 test('package-lock.json has the version of package.json', () => {
   const version = JSON.parse(read('package.json')).version;
   const lock = JSON.parse(read('package-lock.json'));

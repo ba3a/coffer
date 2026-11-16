@@ -10,6 +10,8 @@ Every release is a git tag named `v` followed by the version, for example `v0.1.
 
 ## Unreleased
 
+## 0.2.0 - 2026-11-16
+
 ### Added
 
 - Videos in posts: a video address alone in a paragraph, the `::video` directive (a title in square brackets and the attributes `src`, `start`, `end`, `poster`, `load` and `id`), the `:::video` container with a list of chapters, and `:t` links that play a video from a time. YouTube, Vimeo, Rutube and VK Video are built in, PeerTube instances are recognised for the hosts in `video.peertubeHosts`, other hosts are described by rules in `video.rules`, and `.mp4` and `.webm` files beside a post are copied unchanged into the folder of the post under a lower-case name. Timecodes are written as `83`, `1:23`, `1:02:03` or `1m23s`. A mistake fails the build with the file, line and column; a start, end or seek that the provider cannot do (a start time on VK Video, an end time on Vimeo and Rutube, chapters and seek links on VK Video) is ignored with a warning. Documented in `docs/videos.md`.
