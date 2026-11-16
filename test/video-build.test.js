@@ -741,3 +741,156 @@ test('a successful fetch is shared by every video of the build with the same add
     },
   );
 });
+
+/**
+ * The HTML of the feed entry of a post, unescaped from the Atom document.
+ *
+ * @param {string} xml
+ * @param {string} url Absolute address of the post.
+ * @returns {string}
+ */
+function feedContentOf(xml, url) {
+  const entry = xml.split('<entry>').find((part) => part.includes(`<id>${url}</id>`));
+  assert.ok(entry, `no entry ${url}`);
+  const content = entry.match(/<content type="html">([\s\S]*?)<\/content>/)?.[1];
+  assert.ok(content !== undefined, entry);
+  return content.replaceAll('&lt;', '<').replaceAll('&gt;', '>').replaceAll('&quot;', '"').replaceAll('&amp;', '&');
+}
+
+/**
+ * The summary of the feed entry of a post.
+ *
+ * @param {string} xml
+ * @param {string} url Absolute address of the post.
+ * @returns {string}
+ */
+function feedSummaryOf(xml, url) {
+  const entry = xml.split('<entry>').find((part) => part.includes(`<id>${url}</id>`));
+  return String(entry?.match(/<summary>([\s\S]*?)<\/summary>/)?.[1]);
+}
+
+test('the feed entry of a post holds the click-mode figure without data- attributes and with absolute addresses', async () => {
+  await inTree(
+    {
+      'coffer.yaml': CLIP_CONFIG,
+      'content/journal/clip-test.md': post(':::video[Cutting a mortise]{src="https://youtu.be/aBcD3fGh1_-"}\n- 0:30 Marking out\n:::\n\nSee :t[1:00].'),
+    },
+    async (root) => {
+      const { fetch } = fakeFetch(HOST);
+      const [result] = await build(root, { cacheDir: join(root, 'cache'), videoFetch: { fetch } });
+      const preview = String(result.manifest.posts[0].videos[0].preview);
+      const html = feedContentOf(readFileSync(join(result.outDir, 'journal', 'feed.xml'), 'utf8'), 'https://demo.example/journal/clip-test/');
+      const figure = html.slice(html.indexOf('<figure'), html.indexOf('</figure>') + '</figure>'.length);
+      const lines = figure.split('\n');
+      assert.equal(lines[0], '<figure class="video" id="video-1">');
+      assert.ok(lines[1].startsWith(`<a class="video-preview" href="https://www.youtube.com/watch?v=aBcD3fGh1_-"><img src="https://demo.example${preview}" srcset="https://demo.example/img/`), lines[1]);
+      assert.ok(lines[1].endsWith('<span class="video-play">Play: Cutting a mortise</span></a>'), lines[1]);
+      assert.equal(
+        lines[3],
+        '<ol class="video-chapters" aria-label="Chapters"><li><a href="https://www.youtube.com/watch?v=aBcD3fGh1_-&amp;t=30s"><time datetime="PT30S">0:30</time></a> Marking out</li></ol>',
+      );
+      assert.equal(lines[4], '</figure>');
+      assert.doesNotMatch(figure, /\sdata-/);
+      assert.doesNotMatch(html, /data-coffer-video/);
+    },
+  );
+});
+
+test('the feed entry shows a remote video in click mode on a site that loads players at once', async () => {
+  const config = CLIP_CONFIG.replace('    blogs:', '    video: { load: iframe }\n    blogs:');
+  await inTree({ 'coffer.yaml': config, 'content/journal/clip-test.md': CLIP_POST }, async (root) => {
+    const [result] = await build(root, { cacheDir: join(root, 'cache') });
+    const html = feedContentOf(readFileSync(join(result.outDir, 'journal', 'feed.xml'), 'utf8'), 'https://demo.example/journal/clip-test/');
+    assert.match(html, /<figure class="video" id="video-1">\n<a class="video-preview" href="https:\/\/www\.youtube\.com\/watch\?v=aBcD3fGh1_-"><span class="video-placeholder"><\/span>/);
+    assert.doesNotMatch(html, /<iframe/);
+    const page = readFileSync(join(result.outDir, 'journal', 'clip-test', 'index.html'), 'utf8');
+    assert.match(figureOf(page, 'video-1'), /data-video-load="iframe"/);
+  });
+});
+
+test('the feed entry of a local video has absolute addresses for the file and the poster', async () => {
+  await inTree(
+    {
+      'coffer.yaml': CONFIG,
+      'notes/glue/index.md': post('::video{src="Glue Up.MP4" poster="glue.jpg"}'),
+      'notes/glue/Glue Up.MP4': CLIP,
+      'notes/glue/glue.jpg': POSTER,
+    },
+    async (root) => {
+      const [result] = await build(root);
+      const poster = String(result.manifest.posts[0].videos[0].preview);
+      const html = feedContentOf(readFileSync(join(result.outDir, 'log', 'feed.xml'), 'utf8'), 'https://demo.example/log/glue/');
+      assert.ok(
+        html.includes(
+          [
+            '<figure class="video" id="video-1">',
+            `<video controls preload="metadata" poster="https://demo.example${poster}"><source src="https://demo.example/log/glue/glue-up.mp4" type="video/mp4"><a href="https://demo.example/log/glue/glue-up.mp4">Download the video</a></video>`,
+            '</figure>',
+          ].join('\n'),
+        ),
+        html,
+      );
+    },
+  );
+});
+
+test('the meta description, the share summary and the feed summary of a post that starts with a video leave the video out', async () => {
+  const config = CLIP_CONFIG.replace('title: Journal }', 'title: Journal, shareSummary: true }');
+  await inTree(
+    { 'coffer.yaml': config, 'content/journal/clip-test.md': post('https://youtu.be/aBcD3fGh1_-\n\nThe dovetails come next.') },
+    async (root) => {
+      const { fetch } = fakeFetch(HOST);
+      const [result] = await build(root, { cacheDir: join(root, 'cache'), videoFetch: { fetch } });
+      const page = readFileSync(join(result.outDir, 'journal', 'clip-test', 'index.html'), 'utf8');
+      assert.match(page, /<span class="video-play">Play: Cutting a mortise<\/span>/);
+      assert.match(page, /<meta name="description" content="The dovetails come next\.">/);
+      assert.doesNotMatch(page, /<meta [^>]*content="[^"]*Play:/);
+      const share = readFileSync(join(result.outDir, 'journal', 'clip-test', 'share.txt'), 'utf8');
+      assert.match(share, /The dovetails come next\./);
+      assert.doesNotMatch(share, /Play:|Watch on/);
+      const xml = readFileSync(join(result.outDir, 'journal', 'feed.xml'), 'utf8');
+      assert.equal(feedSummaryOf(xml, 'https://demo.example/journal/clip-test/'), 'The dovetails come next.');
+      assert.match(feedContentOf(xml, 'https://demo.example/journal/clip-test/'), /Play: Cutting a mortise/);
+    },
+  );
+});
+
+test('a full-index list page shows the video figure with the slug prefix, the preview of the post page and the video script, without another request', async () => {
+  const config = CLIP_CONFIG.replace('title: Journal }', 'title: Journal, index: full }');
+  await inTree(
+    {
+      'coffer.yaml': config,
+      'content/journal/clip-test.md': post(
+        ':::video{src="https://youtu.be/aBcD3fGh1_-"}\n- 0:30 Marking out\n:::\n\nSee :t[1:00].',
+        'tags: [wood]\n',
+      ),
+    },
+    async (root) => {
+      const { fetch, calls } = fakeFetch(HOST);
+      const [result] = await build(root, { cacheDir: join(root, 'cache'), videoFetch: { fetch } });
+      assert.deepEqual(calls.map((call) => call.url), [OEMBED, THUMBNAIL]);
+      const postFigure = figureOf(readFileSync(join(result.outDir, 'journal', 'clip-test', 'index.html'), 'utf8'), 'video-1');
+      for (const list of [['journal', 'index.html'], ['journal', 'tags', 'wood', 'index.html']]) {
+        const page = readFileSync(join(result.outDir, ...list), 'utf8');
+        const figure = figureOf(page, 'clip-test-video-1');
+        assert.equal(
+          figure,
+          postFigure.replace('id="video-1"', 'id="clip-test-video-1"').replace('data-video-target="video-1"', 'data-video-target="clip-test-video-1"'),
+        );
+        assert.match(figure, /data-video-title="Cutting a mortise"/);
+        assert.match(page, /<a class="video-seek" [^>]*data-video-target="clip-test-video-1"[^>]*><time datetime="PT1M">1:00<\/time><\/a>/);
+        assert.doesNotMatch(page, /data-coffer-video/);
+        assert.equal(page.match(/<script src="\/assets\/video\.js" defer><\/script>/g)?.length, 1);
+      }
+      assert.deepEqual(result.warnings, []);
+    },
+  );
+});
+
+test('a full-index list page without a video does not load the video script', async () => {
+  const config = CLIP_CONFIG.replace('title: Journal }', 'title: Journal, index: full }');
+  await inTree({ 'coffer.yaml': config, 'content/journal/plain.md': post('No video here.') }, async (root) => {
+    const [result] = await build(root, { cacheDir: join(root, 'cache') });
+    assert.ok(!readFileSync(join(result.outDir, 'journal', 'index.html'), 'utf8').includes('video.js'));
+  });
+});

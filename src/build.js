@@ -501,8 +501,8 @@ function localVideoName(file) {
 const VIDEO_PLACEHOLDER_RE = new RegExp(`<div ${VIDEO_PLACEHOLDER_ATTRIBUTE}="(\\d+)"></div>`, 'g');
 
 /**
- * The HTML of a text without the placeholders of its videos, for feeds and
- * excerpts.
+ * The HTML of a text without the placeholders of its videos, for excerpts:
+ * meta descriptions and summaries.
  *
  * @param {string} html
  * @returns {string}
@@ -2645,8 +2645,9 @@ async function buildSite(config, site, options, outRoot, version, report) {
     /**
      * The post bodies that list pages show in full (`post.html`), by the address
      * of the post. Neither the table of contents, the series box, the project
-     * blocks nor the share summary are part of them.
-     * @type {Map<string, { post: Post, url: string, rendered: RenderedPost, hasMap: boolean }>}
+     * blocks nor the share summary are part of them. Their videos show the
+     * titles and previews of the post page under the ids of the list render.
+     * @type {Map<string, { post: Post, url: string, rendered: RenderedPost, hasMap: boolean, videos: ResolvedVideo[] }>}
      */
     const listBodies = new Map();
     for (const post of selected) {
@@ -2669,12 +2670,23 @@ async function buildSite(config, site, options, outRoot, version, report) {
         report.addError({ site: site.id, file: shownFile, line: problem.line, column: problem.column, message: problem.message });
       }
       for (const warning of mapped.warnings) warnings.push(`${shownFile}: ${warning}`);
-      const forLists = listRendered.get(post);
-      // The maps are the same as on the post page; their problems were reported there.
-      if (forLists) listBodies.set(url, { post, url, rendered: forLists, hasMap: mapped.maps.length > 0 });
-      // The text of the post for feeds and excerpts: without maps and, for now, without videos.
-      const feedHtml = withoutVideoPlaceholders(mapped.feedHtml);
       const videos = await resolvePostVideos(post, url, rendered.videos);
+      const forLists = listRendered.get(post);
+      if (forLists) {
+        listBodies.set(url, {
+          post,
+          url,
+          rendered: forLists,
+          // The maps are the same as on the post page; their problems were reported there.
+          hasMap: mapped.maps.length > 0,
+          // The same body, so the same videos in the same order; nothing is fetched again.
+          videos: forLists.videos.map((video, index) => ({ ...videos[index], video })),
+        });
+      }
+      // The text of the post for feeds: without maps, with the videos as feed readers can show them.
+      const feedHtml = fillVideoPlaceholders(mapped.feedHtml, videos, { sizes: site.images.sizes, labels: videoLabels, feed: true });
+      // The text of the post for excerpts: without maps and videos, so no label of a video becomes part of a summary.
+      const excerptHtml = withoutVideoPlaceholders(mapped.feedHtml);
 
       const aboutProjects = aboutPost.get(post) ?? [];
       if (!unpublished) {
@@ -2688,6 +2700,7 @@ async function buildSite(config, site, options, outRoot, version, report) {
           tags: post.tags.map((path) => ({ path, name: nameOf(path) })),
           tagsIndexUrl,
         });
+        if (post.summary === null || post.summary.trim() === '') feedEntry.summary = excerptOf(excerptHtml);
         feedEntries.set(post, feedEntry);
         for (const slug of aboutProjects) projectFeedEntries.get(slug)?.push(feedEntry);
       }
@@ -2729,7 +2742,7 @@ async function buildSite(config, site, options, outRoot, version, report) {
             baseUrl: site.baseUrl,
             url,
             title: post.title,
-            summary: post.summary || excerptOf(feedHtml),
+            summary: post.summary || excerptOf(excerptHtml),
             hashtags: blog.shareHashtags ? hashtagsFor(post.tags.map(nameOf)) : [],
           }),
           url: shareUrlFor(url),
@@ -2752,7 +2765,7 @@ async function buildSite(config, site, options, outRoot, version, report) {
         ]),
         meta: metaFor({
           title: post.title,
-          description: post.summary || excerptOf(feedHtml),
+          description: post.summary || excerptOf(excerptHtml),
           url,
           image: previewImage,
           type: 'article',
@@ -2865,7 +2878,7 @@ async function buildSite(config, site, options, outRoot, version, report) {
         const key = `${view.url}@${offset}`;
         let html = listMaps.get(key);
         if (html === undefined) {
-          html = renderPostMaps({
+          const mapped = renderPostMaps({
             lang: site.lang,
             basePath: templates.basePath,
             tiles: site.map,
@@ -2876,6 +2889,7 @@ async function buildSite(config, site, options, outRoot, version, report) {
             enabled: body.post.map !== false,
             viewerOffset: offset,
           }).html;
+          html = fillVideoPlaceholders(mapped, body.videos, { sizes: site.images.sizes, labels: videoLabels, feed: false });
           listMaps.set(key, html);
         }
         texts.push(body.rendered);
