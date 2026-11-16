@@ -16,6 +16,7 @@ The screenshot shows the home page and a post of the example site that ships wit
 - **Projects** as content: a registry of what you make, a page per project, a showcase on the home page, and templates for tools and games (including press kits). See [Projects](docs/projects.md).
 - **Project documentation** pulled from the project's own repository: guides rendered in your theme, a generated reference, links from guides to reference pages, and a README section on the project page. See [Project documentation](docs/project-docs.md) and [Documentation sources](docs/docs-sources.md).
 - **Images** resized and compressed at build time, with originals that never reach the published site. See [Images](docs/images.md), [Carousels](docs/carousels.md) and [The image viewer](docs/viewer.md).
+- **Videos** from YouTube, Vimeo, PeerTube, Rutube, VK Video, hosts you describe and files beside the post, with chapters, links to a time and previews fetched at build time. By default a page loads the host's player only when the reader clicks, and without JavaScript a video is a link to the host. See [Videos](docs/videos.md).
 - **Location and camera metadata policy** (`strip`, `coarse` or `keep`) set per site, per tag subtree, per post and per image. See [Location and camera metadata](docs/location-policy.md).
 - **Maps and GPX tracks** drawn from your recordings and photo locations, with no API key. See [Maps and GPX tracks](docs/maps.md).
 - **Media originals** kept out of git, in an S3-compatible store, with git hooks that sync them. See [Media originals](docs/media.md).

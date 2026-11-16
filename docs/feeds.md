@@ -50,6 +50,8 @@ Only published posts are in a feed. A draft, and a post whose date is after the 
 
 Images in feed content are plain `<img>` elements with the 1200 pixel variant as an absolute address (and their `width` and `height`); the `<picture>`, `srcset`, `loading` and `decoding` that pages use are left out, because feed readers do not all understand them. See [Images](images.md).
 
+Videos in feed content are figures in click mode, whatever `video.load` says, because feed readers run no scripts: the preview image (with its `srcset`) in a link to the video's page on the host, the caption, and the chapters as links to the host's page at their times. The figure has no `data-` attributes. A local video is a `<video>` element with the absolute addresses of the file and its poster. Links to a time in the text lead to the host's page at the time, or to the file at `#t=`. The `summary` of an entry leaves videos out. See [Videos](videos.md#where-videos-appear).
+
 ## Finding the feeds
 
 Every page lists the feeds of the site's blogs in its `<head>` as `<link rel="alternate" type="application/atom+xml">`, so readers can discover them from any address. Beyond that:

@@ -79,6 +79,7 @@ Unknown keys are errors everywhere in the file, so a misspelled key never passes
 | `location`       | no       | see below    | Image metadata policy.                                                                                                                                       |
 | `tracks`         | no       | see below    | How GPX tracks are simplified and summarized (see [Maps and GPX tracks](maps.md)).                                                                           |
 | `map`            | no       | OpenStreetMap | The tile server of the maps of posts (see [Maps and GPX tracks](maps.md#the-map)).                                                                          |
+| `video`          | no       | see below    | How videos load, whether their previews are fetched, and which addresses are videos (see [Videos](videos.md)).                                                |
 | `analytics`      | no       | none         | An optional analytics snippet, a third-party script in production builds only (see [Analytics](analytics.md)). |
 | `projects`       | no       | none         | Where the site's projects live. Without it the site has no projects.                                                                                         |
 
@@ -196,6 +197,61 @@ map:
 | `attribution` | the credit of OpenStreetMap                      | The credit of the tile provider, shown in the corner of every map; may contain links. Required when `tileUrl` is set, because the default credit belongs to the default server. |
 | `maxZoom`     | `19`                                             | The deepest zoom level of the tile server, an integer from 1 to 24. |
 
+## `video`
+
+How the videos of the site's texts load and which addresses are videos (see [Videos](videos.md)). Every key is optional.
+
+```yaml
+video:
+  load: click
+  fetchPreviews: true
+  builtinRules: true
+  peertubeHosts: [video.example.org]
+  rules:
+    - pattern: 'https://tube.example/v/(?<id>[a-z0-9]{8})(?:[?#].*)?'
+      provider: generic
+      name: Example Tube
+      embed: 'https://player.tube.example/e/{id}'
+      watch: 'https://tube.example/v/{id}'
+      startParam: t
+      autoplayParam: autoplay
+      thumbnail: 'https://img.tube.example/{id}/cover.jpg'
+```
+
+| Key             | Default | Description |
+| --------------- | ------- | ----------- |
+| `load`          | `click` | `click` or `iframe`: how remote videos load unless a video says otherwise. With `click` the page shows a preview and loads the host's player when the reader clicks; with `iframe` the player is in the page from the start, loaded lazily. Feeds always use `click`. |
+| `fetchPreviews` | `true`  | Whether the build may fetch titles and thumbnails from the hosts. With `false` it makes no request, and a video without `poster` has no preview; a preview already in the cache is still used. |
+| `builtinRules`  | `true`  | Whether the built-in rules for YouTube, Vimeo, Rutube and VK Video apply after the site's own rules. |
+| `peertubeHosts` | `[]`    | Host names of the PeerTube instances whose videos are recognised, in lower case, such as `video.example.org`. |
+| `rules`         | `[]`    | The site's own rules, tried before all others, in this order. |
+
+The rules are tried in this order: `rules`, then one rule for each host of `peertubeHosts`, then the built-in rules. Keys of a rule:
+
+| Key             | Required | Description |
+| --------------- | -------- | ----------- |
+| `pattern`       | yes      | A JavaScript regular expression that must match the whole address. It is compiled with the `u` flag and must have a named group `id`; a `peertube` rule also needs `host`, a `vkvideo` rule `oid`. Write it in single quotes, so YAML keeps the backslashes. |
+| `flags`         | no       | `""` (the default) or `"i"` to ignore case. |
+| `provider`      | yes      | `youtube`, `vimeo`, `peertube`, `rutube`, `vkvideo` or `generic`. A built-in provider builds its player and page addresses from the groups of the pattern; `generic` uses the templates below. |
+| `name`          | generic only, yes | The name of the host, shown as "Watch on {name}" and in warnings. |
+| `embed`         | generic only, yes | The address of the player. |
+| `watch`         | generic only, yes | The address of the video's page on the host, the link target without scripts. |
+| `startParam`    | generic only | The query parameter that carries the start in seconds. With it, videos of the host can start at a time, and chapters and seek links work. |
+| `endParam`      | generic only | The query parameter that carries the end in seconds. |
+| `autoplayParam` | generic only | The query parameter set to `1` when the reader clicks the preview. |
+| `thumbnail`     | generic only | The address of the preview image. |
+| `oembed`        | generic only | The address of an oEmbed service that answers with JSON (`title`, `thumbnail_url`); it may use `{url}`, the page address of the video without a time. At most one of `thumbnail` and `oembed`. |
+
+`embed`, `watch`, `thumbnail` and `oembed` are templates: `https` addresses without a fragment, in which `{name}` stands for the named group `name` of the pattern, percent-encoded. A `{` or `}` outside a placeholder is an error. A parameter name holds only letters, digits, `_`, `.` and `-`. The times are added to the expanded template as query parameters.
+
+Every problem is reported with its key path, for example:
+
+```
+coffer.yaml: sites[0].video.peertubeHosts[0]: must be a host name such as video.example.org
+coffer.yaml: sites[0].video.rules[0].pattern: must have a named group "id"
+coffer.yaml: sites[0].video.rules[1].embed: {code} is not a named group of the pattern
+```
+
 ## `analytics`
 
 ```yaml
@@ -276,4 +332,4 @@ try {
 }
 ```
 
-The shape of the result is documented with JSDoc typedefs in `src/config.js`: `CofferConfig`, `SiteConfig`, `BlogConfig`, `LinkConfig`, `UrlsConfig`, `LocationConfig` and `ProjectsConfig`.
+The shape of the result is documented with JSDoc typedefs in `src/config.js`: `CofferConfig`, `SiteConfig`, `BlogConfig`, `LinkConfig`, `UrlsConfig`, `LocationConfig`, `ProjectsConfig` and `SiteVideoConfig` (with `VideoRule`).

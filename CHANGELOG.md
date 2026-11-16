@@ -10,7 +10,21 @@ Every release is a git tag named `v` followed by the version, for example `v0.1.
 
 ## Unreleased
 
-Nothing yet.
+### Added
+
+- Videos in posts: a video address alone in a paragraph, the `::video` directive (a title in square brackets and the attributes `src`, `start`, `end`, `poster`, `load` and `id`), the `:::video` container with a list of chapters, and `:t` links that play a video from a time. YouTube, Vimeo, Rutube and VK Video are built in, PeerTube instances are recognised for the hosts in `video.peertubeHosts`, other hosts are described by rules in `video.rules`, and `.mp4` and `.webm` files beside a post are copied unchanged into the folder of the post under a lower-case name. Timecodes are written as `83`, `1:23`, `1:02:03` or `1m23s`. A mistake fails the build with the file, line and column; a start, end or seek that the provider cannot do (a start time on VK Video, an end time on Vimeo and Rutube, chapters and seek links on VK Video) is ignored with a warning. Documented in `docs/videos.md`.
+- Video previews: without a `poster`, the build fetches the title and the thumbnail of a remote video from the host (oEmbed, Rutube's video API, or the `thumbnail` of a rule) with `User-Agent: coffer/{version}` and a 10 second timeout, processes the thumbnail with the image pipeline (location and camera metadata removed) and keeps it in `{cacheDir}/videos`, so later builds make no request. A failure is a warning that names the video and the reason, never an error. `buildSites` takes `videoFetch: { fetch, timeoutMs }`, which tests use instead of the network.
+- A site key `video`: `load` (`click`, the default, shows the preview and loads the host's player on a click; `iframe` puts the player in the page, loaded lazily), `fetchPreviews`, `builtinRules`, `peertubeHosts` and `rules`. Every problem is reported with its key path. Documented in `docs/configuration.md`.
+- The markup of a video is fixed by the engine and works without JavaScript: the preview links to the host's page, chapters and seek links to the page at their time. Pages with a video load `/assets/video.js` with `defer`, which loads the player on a click and makes chapters and seek links play from their time. The default theme styles the figure, and the UI strings `video.play`, `video.watch_on`, `video.untitled`, `video.chapters` and `video.download` are in `i18n/en.yaml` and `i18n/ru.yaml`.
+- Videos work in every text of a site: posts, full posts on list pages, the home page, project pages, guides, README sections and press kit descriptions (local files only in posts). Feeds hold the figure in click mode without `data-` attributes and with absolute addresses. Descriptions, feed summaries and share summaries leave videos out.
+- The manifest entry of a post lists its `videos` (`index`, `id`, `provider`, `src`, `title`, `start`, `end`, `load`, `preview`, `file`, `chapters`).
+- `renderMarkdown` takes the option `video` and returns `videos` and `videoWarnings`; each video is a `<div data-coffer-video="n"></div>` placeholder in `html`, and its id is in `ids`. New exports: `parseTimecode`, `formatTimecode`, `isoDuration`, `DEFAULT_VIDEO_RULES`, `PROVIDER_NAMES`, `resolveVideoRules`, `matchVideoUrl`, `embedUrl`, `watchUrl`, `metadataUrl`, `thumbnailUrl`, `renderVideoHtml`, `DEFAULT_VIDEO_LABELS`, `VIDEO_PLACEHOLDER_ATTRIBUTE` and `VIDEO_CACHE_DIR`.
+- The example site has a video with a poster, chapters and a seek link in the post about the first dovetail, so its build makes no request.
+
+### Changed
+
+- A paragraph that is only a video address that a rule recognises (by default YouTube, Vimeo, Rutube and VK Video) now becomes a video instead of a link. An address inside a sentence, or written as `[text](address)`, stays a link. To keep such a paragraph a link, write it as `[address](address)`, or set `video.builtinRules: false`.
+- `:t` is now a directive, a link to a time in a video; it used to be an unknown directive and an error.
 
 ## 0.1.2 - 2026-11-12
 

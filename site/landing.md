@@ -51,7 +51,7 @@ Posts publishing exact locations (2)
   content/journal/ridge-walk/index.md: 1 image(s), 1 track(s)
 
 $ npx coffer check --config example/coffer.yaml
-workshop: 28 page(s), 12 feed(s), 21 image(s) checked, no failures
+workshop: 28 page(s), 12 feed(s), 22 image(s) checked, no failures
 ```
 
 <div class="section-marker" id="problem"></div>
@@ -157,6 +157,7 @@ We left at six. The ridge was clear by nine.
 
 - **🏷️ Tags and series.** Tags form a tree with a page for every subtree. A series gets "part n of m" and links to the previous and next part.
 - **🖼️ Images at build time.** Resized WebP variants and a full-size JPEG for the viewer, in carousels if you like. The originals are never published.
+- **🎬 Videos.** From YouTube, Vimeo, PeerTube, Rutube, VK Video or a file beside the post, with chapters and links to a time. The preview is fetched at build time, and by default the host's player loads only when a reader clicks.
 - **📍 Location policy.** `strip`, `coarse` or `keep`, set for a site, a tag, a post or an image. When tags disagree, the strictest wins.
 - **🗺️ Maps and GPX tracks.** Tracks and photo positions drawn on a map, with no API key. Visitors without JavaScript get a drawing of the route.
 - **📦 Originals out of git.** A lock file in git, the content in an S3-compatible store such as Cloudflare R2, and hooks that keep them in step.

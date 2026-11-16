@@ -24,6 +24,7 @@ coffer is a static site engine for people who make things and write about them. 
 - [Location and camera metadata](location-policy.md): the `strip`, `coarse` and `keep` policy and where it is set.
 - [Carousels](carousels.md): several images in the width of the text.
 - [The image viewer](viewer.md): the fullscreen viewer.
+- [Videos](videos.md): videos from YouTube, Vimeo, PeerTube, Rutube, VK Video, other hosts and files beside the post, with chapters, links to a time and previews fetched at build time.
 - [Maps and GPX tracks](maps.md): tracks, photo locations and the map of a post.
 - [Media originals](media.md): keeping original files outside git, the media store and the git hooks.
 

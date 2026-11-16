@@ -242,7 +242,9 @@ test('the 0.1.2 section is dated and groups its entries under Added and Fixed', 
   assert.ok(text.indexOf('## Unreleased') < heading.index, 'Unreleased is above the released sections');
   assert.ok(heading.index < text.indexOf('## 0.1.1 - '), '0.1.2 is above 0.1.1');
   const unreleased = text.slice(text.indexOf('## Unreleased'), heading.index);
-  assert.doesNotMatch(unreleased, /^### Added$/m, 'the entries moved from Unreleased to 0.1.2');
+  for (const entry of body.match(/^- .*$/gm) ?? []) {
+    assert.ok(!unreleased.includes(entry), `an entry of 0.1.2 is still under Unreleased: ${entry.slice(0, 60)}`);
+  }
 });
 
 test('package-lock.json has the version of package.json', () => {
