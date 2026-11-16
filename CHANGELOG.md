@@ -10,11 +10,6 @@ Every release is a git tag named `v` followed by the version, for example `v0.1.
 
 ## Unreleased
 
-### Fixed
-
-- Links in the chapter titles of a video now get the same id prefix as the rest of the text, so on a list page that shows whole posts a chapter link to `#notes` leads to `#{slug}-notes`, and in a README section a link to `#video-1` leads to `#readme-1-video-1`.
-- A video thumbnail whose `Content-Type` header is present but empty is now reported as `returned no type, not a JPEG, PNG or WebP image` instead of `returned , not …`.
-
 ## 0.2.0 - 2026-11-16
 
 ### Added
@@ -32,6 +27,11 @@ Every release is a git tag named `v` followed by the version, for example `v0.1.
 
 - A paragraph that is only a video address that a rule recognises (by default YouTube, Vimeo, Rutube and VK Video) now becomes a video instead of a link. An address inside a sentence, or written as `[text](address)`, stays a link. To keep such a paragraph a link, write it as `[address](address)`, or set `video.builtinRules: false`.
 - `:t` is now a directive, a link to a time in a video; it used to be an unknown directive and an error.
+
+### Fixed
+
+- Links in the chapter titles of a video now get the same id prefix as the rest of the text, so on a list page that shows whole posts a chapter link to `#notes` leads to `#{slug}-notes`, and in a README section a link to `#video-1` leads to `#readme-1-video-1`.
+- A video thumbnail whose `Content-Type` header is present but empty is now reported as `returned no type, not a JPEG, PNG or WebP image` instead of `returned , not …`.
 
 ## 0.1.2 - 2026-11-12
 
