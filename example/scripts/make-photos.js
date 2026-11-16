@@ -11,6 +11,8 @@
 //   workshop. Its post says `location: coarse`, so the published file carries
 //   the position only rounded to about a kilometre.
 // - marking-gauge.jpg: a plain landscape picture.
+// - dry-fit.jpg: a 16:9 picture, the poster of the made-up video in the same
+//   post, so that the example build fetches no preview from the host.
 // - screenshot-1.jpg, screenshot-2.jpg: made-up screenshots of the example
 //   game Tenon Tumble, for the gallery on its page.
 // - press-kit/logo.png and press-kit/logo.svg: the made-up logo of the game
@@ -95,6 +97,30 @@ function gaugeSvg() {
     <rect x="300" y="580" width="520" height="34" fill="#9c6b34" stroke="#4b3b21" stroke-width="4"/>
     <rect x="520" y="540" width="80" height="114" rx="8" fill="#7a5230" stroke="#4b3b21" stroke-width="4"/>
     <circle cx="920" cy="640" r="46" fill="#c9ced3" stroke="#4b3b21" stroke-width="4"/>
+  </svg>`;
+}
+
+/**
+ * The poster of the example video: the dry-fitted corner of two boards, seen
+ * from the end, 16:9 like a video frame.
+ *
+ * @returns {string}
+ */
+function dryFitSvg() {
+  const width = 1280;
+  const height = 720;
+  const tails = [0, 1, 2]
+    .map((index) => {
+      const y = 170 + index * 140;
+      return `<polygon points="560,${y} 700,${y - 20} 700,${y + 100} 560,${y + 80}" fill="#d8b27a" stroke="#6e4a22" stroke-width="4"/>`;
+    })
+    .join('');
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}">
+    ${grain(width, height, '#3f5a4a', 21)}
+    <rect x="300" y="120" width="260" height="480" rx="6" fill="#e6c590" stroke="#6e4a22" stroke-width="4"/>
+    <rect x="700" y="120" width="260" height="480" rx="6" fill="#e6c590" stroke="#6e4a22" stroke-width="4"/>
+    ${tails}
+    <rect x="0" y="630" width="${width}" height="90" fill="#1d1710" fill-opacity="0.6"/>
   </svg>`;
 }
 
@@ -232,6 +258,7 @@ save(
     .toBuffer(),
 );
 save('journal/first-dovetail/marking-gauge.jpg', await jpegOf(gaugeSvg()));
+save('journal/first-dovetail/dry-fit.jpg', await jpegOf(dryFitSvg()));
 
 // A phone holds the camera upright, stores the sensor's landscape picture and
 // notes in the EXIF orientation (6: turn a quarter clockwise) how to show it.

@@ -57,9 +57,19 @@ middle, so the edge never blew out.
 
 ## Fitting the joint
 
-The first four joints were loose. The fifth was tight on one side. The sixth
-slid together with a soft knock and stayed there. I did not glue it; it is
-sitting on the bench so I can look at it.
+The first four joints were loose. The fifth was tight on one side. For the
+sixth I set up a camera on the bench and filmed the whole joint, from the
+first saw cut to the dry fit:
+
+:::video[Cutting the sixth dovetail]{src="https://youtu.be/Dovetail-01" poster="dry-fit.jpg" id="sixth"}
+- 0:00 Sawing the tails
+- 1:40 Chopping the waste
+- 3:15 Marking the pins from the tails
+- 5:02 The dry fit
+:::
+
+It slid together with a soft knock, at :t[5:10], and stayed there. I did not
+glue it; it is sitting on the bench so I can look at it.
 
 ![Two boards joined by three dovetails, resting on the bench.](dovetail-joint.jpg "The sixth attempt, unglued, on the bench.")
 

@@ -597,15 +597,20 @@ test('a page serves figures with srcset; images after the first are lazy, every 
   await withExampleCopy(async (root) => {
     const result = await build(root);
     const html = pageHtml(result, '/journal/first-dovetail/');
+    // The marking gauge, the poster of the video and the joint, in this order.
     const tags = imgTags(html);
-    assert.equal(tags.length, 2);
+    assert.equal(tags.length, 3);
     assert.equal(attribute(tags[0], 'loading'), null, 'the first image is loaded at once');
-    assert.equal(attribute(tags[1], 'loading'), 'lazy');
-    assert.equal(attribute(tags[1], 'decoding'), 'async');
+    for (const tag of tags.slice(1)) {
+      assert.equal(attribute(tag, 'loading'), 'lazy');
+      assert.equal(attribute(tag, 'decoding'), 'async');
+    }
     assert.match(html, /<figure><a href="[^"]*\/marking-gauge-full\.jpg" class="viewer-link" data-viewer="0"><picture><source type="image\/webp" srcset="[^"]*\/marking-gauge-480\.webp 480w, [^"]*\/marking-gauge-800\.webp 800w, [^"]*\/marking-gauge-1200\.webp 1200w"/);
     assert.match(html, /<picture><source [^>]*sizes="\(min-width: 44rem\) 41rem, calc\(100vw - 2rem\)"/);
     assert.match(html, /<figcaption>The sixth attempt, unglued, on the bench\.<\/figcaption>/);
-    assert.equal(html.match(/<figcaption>/g)?.length, 1, 'only the image with a title has a caption');
+    // The video figure has a caption of its own; among the images, only the one with a title has one.
+    const imagesOnly = html.replace(/<figure class="video"[\s\S]*?<\/figure>/g, '');
+    assert.equal(imagesOnly.match(/<figcaption>/g)?.length, 1, 'only the image with a title has a caption');
     assert.ok(!html.includes('title="The sixth attempt'), 'the caption is not repeated as a tooltip');
 
     // Every img of every page has a size; all but the first of the page are lazy.
@@ -631,6 +636,7 @@ test('the manifest records every image with its original, its page and its outpu
       result.manifest.images.map((image) => [image.source, image.post, image.use]),
       [
         ['content/journal/first-dovetail/dovetail-joint.jpg', '/journal/first-dovetail/', 'body'],
+        ['content/journal/first-dovetail/dry-fit.jpg', '/journal/first-dovetail/', 'body'],
         ['content/journal/first-dovetail/marking-gauge.jpg', '/journal/first-dovetail/', 'body'],
         ['content/journal/photos/ridge.jpg', '/journal/mountain-weekend/', 'body'],
         ['content/journal/first-dovetail/dovetail-joint.jpg', '/journal/photo-notes/', 'body'],
@@ -668,18 +674,18 @@ test('a second build reuses the cached images', async () => {
   await withExampleCopy(async (root) => {
     const first = await build(root);
     // Three originals, each in the post that owns it and again in the carousel post, which has other settings,
-    // the two card pictures of the example projects and the two screenshots of the example game; then the
-    // press kit of the game: thumbnails of its PNG logo and its photograph, and four full-resolution downloads;
-    // and the picture in the guides of the example tool.
-    assert.deepEqual(first.images, { generated: 17, reused: 0 });
+    // the poster of the example video, the two card pictures of the example projects and the two screenshots
+    // of the example game; then the press kit of the game: thumbnails of its PNG logo and its photograph, and
+    // four full-resolution downloads; and the picture in the guides of the example tool.
+    assert.deepEqual(first.images, { generated: 18, reused: 0 });
     const cacheDir = join(root, '.cache', 'images');
     const cached = readdirSync(cacheDir).sort();
-    assert.equal(cached.length, 17);
+    assert.equal(cached.length, 18);
     const times = new Map(cached.map((name) => [name, statSync(join(cacheDir, name, 'info.json')).mtimeMs]));
     const published = listFiles(first.outDir).filter((name) => name.startsWith('img/'));
 
     const second = await build(root);
-    assert.deepEqual(second.images, { generated: 0, reused: 17 });
+    assert.deepEqual(second.images, { generated: 0, reused: 18 });
     assert.deepEqual(readdirSync(cacheDir).sort(), cached);
     for (const [name, time] of times) assert.equal(statSync(join(cacheDir, name, 'info.json')).mtimeMs, time, name);
     assert.deepEqual(listFiles(second.outDir).filter((name) => name.startsWith('img/')), published, 'the output is the same');
@@ -688,7 +694,7 @@ test('a second build reuses the cached images', async () => {
     // A replaced photo is processed again, once for each way it is published; the others stay cached.
     addFiles(root, { 'content/journal/first-dovetail/marking-gauge.jpg': await solidImage(1000, 600) });
     const third = await build(root);
-    assert.deepEqual(third.images, { generated: 2, reused: 15 });
+    assert.deepEqual(third.images, { generated: 2, reused: 16 });
   });
 });
 
@@ -769,7 +775,11 @@ test('feeds carry the 1200 pixel variant as a plain image with absolute links', 
     );
     assert.match(feed, /ridge-800\.webp" alt="[^"]*" width="800" height="1200"/, 'the upright photo keeps its true size');
     assert.ok(!feed.includes('&lt;picture'), 'feeds have no picture element');
-    assert.ok(!feed.includes('srcset'));
+    // The preview of a video keeps its srcset in feeds (the video markup is fixed by its own contract);
+    // pictures of the text have none.
+    const withoutVideos = feed.replace(/&lt;figure class="video"[\s\S]*?&lt;\/figure&gt;/g, '');
+    assert.notEqual(withoutVideos, feed, 'the feed has the example video');
+    assert.ok(!withoutVideos.includes('srcset'));
   });
 });
 

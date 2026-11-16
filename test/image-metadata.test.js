@@ -593,8 +593,8 @@ test('a second build reuses the cache and still knows what it published', async 
   await withExampleCopy(async (root) => {
     const first = await build(root);
     const second = await build(root);
-    // Eleven pictures of pages (one of them in the guides of the example tool) and, for the press kit of the example game, six more: its thumbnails of two pictures and four downloads.
-    assert.deepEqual(second.images, { generated: 0, reused: 17 });
+    // Twelve pictures of pages (one of them in the guides of the example tool, one the poster of the example video) and, for the press kit of the example game, six more: its thumbnails of two pictures and four downloads.
+    assert.deepEqual(second.images, { generated: 0, reused: 18 });
     assert.deepEqual(second.manifest.images, first.manifest.images);
     assert.deepEqual(second.exactLocations, first.exactLocations);
   });
@@ -660,8 +660,8 @@ async function assertFinding(out, pattern) {
 test('coffer check reads every published image back and passes on a build that follows its policies', async () => {
   const result = await checkOutput(loadConfig({ configPath: exampleConfig }), { out: join(pristine, 'dist') });
   assert.deepEqual(result.failures, []);
-  // Sixteen pictures of pages (the press kit thumbnails and the picture of the example tool's guides among them) and the five downloads of the press kit.
-  assert.equal(result.sites[0]?.checked.images, 16 + 5);
+  // Seventeen pictures of pages (the press kit thumbnails, the picture of the example tool's guides and the poster of the example video among them) and the five downloads of the press kit.
+  assert.equal(result.sites[0]?.checked.images, 17 + 5);
 });
 
 test('coffer check fails when a coarse image publishes the exact position', async () => {
@@ -807,7 +807,7 @@ test('the check command exits 1 and names the image that does not match its poli
       });
       assert.equal(code, 1);
       assert.match(err, /workshop\/img\/[0-9a-f]{16}\/dovetail-joint-full\.jpg: its position is not the original position rounded to two decimals/);
-      assert.match(stdout, /^workshop: \d+ page\(s\), 12 feed\(s\), 21 image\(s\) checked, 1 failure\(s\)$/m);
+      assert.match(stdout, /^workshop: \d+ page\(s\), 12 feed\(s\), 22 image\(s\) checked, 1 failure\(s\)$/m);
     },
   );
 });

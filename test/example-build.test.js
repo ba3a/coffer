@@ -20,16 +20,32 @@ const NOW = new Date('2026-06-01T12:00:00Z');
 
 /**
  * Builds the example site into a temporary directory and passes the site's
- * output directory and its manifest to `body`.
+ * output directory and its manifest to `body`. The example must build without
+ * any network request, so the build gets a `fetch` that records every call and
+ * the build fails the test if there was one.
  *
  * @param {{ drafts?: boolean }} options
  * @param {(site: string, manifest: import('../src/build.js').Manifest) => void | Promise<void>} body
  */
 async function withExample(options, body) {
   const out = mkdtempSync(join(tmpdir(), 'coffer-example-'));
+  /** @type {string[]} */
+  const requests = [];
+  /** @type {typeof globalThis.fetch} */
+  const noNetwork = async (input) => {
+    requests.push(input instanceof Request ? input.url : String(input));
+    throw new Error('the example build must not use the network');
+  };
   try {
     const config = loadConfig({ configPath: exampleConfig });
-    const [result] = await buildSites(config, { out, now: NOW, ...options });
+    const [result] = await buildSites(config, {
+      out,
+      now: NOW,
+      cacheDir: join(out, '.cache'),
+      videoFetch: { fetch: noNetwork },
+      ...options,
+    });
+    assert.deepEqual(requests, [], 'the example build made no request');
     await body(result.outDir, result.manifest);
   } finally {
     rmSync(out, { recursive: true, force: true });
@@ -43,6 +59,27 @@ async function withExample(options, body) {
  */
 function page(site, url) {
   return readFileSync(join(site, ...url.split('/').filter(Boolean), 'index.html'), 'utf8');
+}
+
+/**
+ * The attributes of an HTML start tag, with their values decoded.
+ *
+ * @param {string} source The text between the tag name and ">".
+ * @returns {Record<string, string>}
+ */
+function attributesOf(source) {
+  /** @type {Record<string, string>} */
+  const attributes = {};
+  for (const [, name, value] of source.matchAll(/([a-z-]+)="([^"]*)"/g)) {
+    attributes[name] = value
+      .replace(/&#x([0-9a-f]+);/gi, (_, hex) => String.fromCodePoint(parseInt(hex, 16)))
+      .replace(/&#(\d+);/g, (_, decimal) => String.fromCodePoint(Number(decimal)))
+      .replaceAll('&quot;', '"')
+      .replaceAll('&lt;', '<')
+      .replaceAll('&gt;', '>')
+      .replaceAll('&amp;', '&');
+  }
+  return attributes;
 }
 
 test('the example site builds the blog index, the published post and the assets', async () => {
@@ -163,6 +200,7 @@ test('the manifest is written and lists the pages and the posts', async () => {
       manifest.images.map((image) => [image.source, image.post, image.use]),
       [
         ['content/journal/first-dovetail/dovetail-joint.jpg', '/journal/first-dovetail/', 'body'],
+        ['content/journal/first-dovetail/dry-fit.jpg', '/journal/first-dovetail/', 'body'],
         ['content/journal/first-dovetail/marking-gauge.jpg', '/journal/first-dovetail/', 'body'],
         ['content/journal/photos/ridge.jpg', '/journal/mountain-weekend/', 'body'],
         ['content/journal/first-dovetail/dovetail-joint.jpg', '/journal/photo-notes/', 'body'],
@@ -239,6 +277,8 @@ test('the example script builds the example site with one command', () => {
     );
     assert.equal(result.status, 0, result.stderr);
     assert.ok(existsSync(join(out, 'workshop', 'journal', 'first-dovetail', 'index.html')));
+    // The example's video has a poster, so the build fetches no preview.
+    assert.doesNotMatch(result.stdout + result.stderr, /preview not fetched/);
   } finally {
     rmSync(out, { recursive: true, force: true });
   }
@@ -424,5 +464,80 @@ test('the example game has a press kit whose downloads are full resolution and c
     );
     const logo = await sharp(join(site, 'made', 'tenon-tumble', 'press-kit', 'tenon-tumble-logo-01.png')).metadata();
     assert.deepEqual([logo.format, logo.hasAlpha, logo.width], ['png', true, 512]);
+  });
+});
+
+test('the example post shows a video with a poster, chapters and a seek link, without fetching a preview', async () => {
+  await withExample({}, (site, manifest) => {
+    const html = page(site, '/journal/first-dovetail/');
+    const figure = /<figure class="video"[\s\S]*?<\/figure>/.exec(html)?.[0] ?? '';
+    const lines = figure.split('\n');
+    assert.equal(
+      lines[0],
+      '<figure class="video" id="video-sixth" data-video="youtube" data-video-load="click" data-video-play="https://www.youtube-nocookie.com/embed/Dovetail-01?autoplay=1" data-video-title="Cutting the sixth dovetail">',
+    );
+    // The poster beside the post is the preview, published by the image pipeline.
+    const entry = manifest.posts.find((post) => post.slug === 'first-dovetail');
+    const poster = entry?.videos[0].preview;
+    assert.ok(typeof poster === 'string' && poster.startsWith('/img/'), String(poster));
+    assert.ok(existsSync(join(site, ...poster.split('/').filter(Boolean))), 'the poster is published');
+    assert.match(
+      lines[1],
+      /^<a class="video-preview" href="https:\/\/www\.youtube\.com\/watch\?v=Dovetail-01"><img src="\/img\/[^"]+" srcset="[^"]+" sizes="[^"]+" width="\d+" height="\d+" alt="" loading="lazy" decoding="async"><span class="video-play">Play: Cutting the sixth dovetail<\/span><\/a>$/,
+    );
+    assert.ok(lines[1].includes(`src="${poster}"`), 'the preview image is the poster');
+    assert.equal(
+      lines[2],
+      '<figcaption><span class="video-title">Cutting the sixth dovetail</span> <a class="video-source" href="https://www.youtube.com/watch?v=Dovetail-01">Watch on YouTube</a></figcaption>',
+    );
+    assert.equal(
+      lines[3],
+      '<ol class="video-chapters" aria-label="Chapters">'
+        + '<li><a href="https://www.youtube.com/watch?v=Dovetail-01" data-video-seek="0" data-video-target="video-sixth" data-video-play="https://www.youtube-nocookie.com/embed/Dovetail-01?autoplay=1"><time datetime="PT0S">0:00</time></a> Sawing the tails</li>'
+        + '<li><a href="https://www.youtube.com/watch?v=Dovetail-01&amp;t=100s" data-video-seek="100" data-video-target="video-sixth" data-video-play="https://www.youtube-nocookie.com/embed/Dovetail-01?start=100&amp;autoplay=1"><time datetime="PT1M40S">1:40</time></a> Chopping the waste</li>'
+        + '<li><a href="https://www.youtube.com/watch?v=Dovetail-01&amp;t=195s" data-video-seek="195" data-video-target="video-sixth" data-video-play="https://www.youtube-nocookie.com/embed/Dovetail-01?start=195&amp;autoplay=1"><time datetime="PT3M15S">3:15</time></a> Marking the pins from the tails</li>'
+        + '<li><a href="https://www.youtube.com/watch?v=Dovetail-01&amp;t=302s" data-video-seek="302" data-video-target="video-sixth" data-video-play="https://www.youtube-nocookie.com/embed/Dovetail-01?start=302&amp;autoplay=1"><time datetime="PT5M2S">5:02</time></a> The dry fit</li>'
+        + '</ol>',
+    );
+    assert.equal(lines[4], '</figure>');
+
+    // The seek link in the text after the video jumps to the knock of the dry fit.
+    // Seek links are compared as parsed HTML: the stringifier may write "&" as "&#x26;".
+    const seeks = [...html.matchAll(/<a ([^>]*class="video-seek"[^>]*)>([\s\S]*?)<\/a>/g)];
+    assert.equal(seeks.length, 1);
+    const [, attributes, content] = seeks[0];
+    assert.deepEqual(attributesOf(attributes), {
+      class: 'video-seek',
+      href: 'https://www.youtube.com/watch?v=Dovetail-01&t=310s',
+      'data-video-seek': '310',
+      'data-video-target': 'video-sixth',
+      'data-video-play': 'https://www.youtube-nocookie.com/embed/Dovetail-01?start=310&autoplay=1',
+    });
+    assert.equal(content, '<time datetime="PT5M10S">5:10</time>');
+
+    assert.equal(html.match(/<script src="\/assets\/video\.js" defer><\/script>/g)?.length, 1);
+    assert.ok(existsSync(join(site, 'assets', 'video.js')));
+    // Pages without a video do not load the script.
+    assert.ok(!page(site, '/journal/walnut-box/').includes('video.js'));
+
+    assert.deepEqual(entry?.videos, [
+      {
+        index: 0,
+        id: 'sixth',
+        provider: 'youtube',
+        src: 'https://youtu.be/Dovetail-01',
+        title: 'Cutting the sixth dovetail',
+        start: null,
+        end: null,
+        load: 'click',
+        preview: poster,
+        file: null,
+        chapters: [0, 100, 195, 302],
+      },
+    ]);
+    // The other posts have no video.
+    for (const other of manifest.posts.filter((post) => post.slug !== 'first-dovetail')) {
+      assert.deepEqual(other.videos, [], other.slug);
+    }
   });
 });
