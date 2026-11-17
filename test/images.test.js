@@ -477,6 +477,28 @@ test('a Markdown image becomes a figure with picture, srcset, sizes, size attrib
   assert.ok(!plain.html.includes('<figcaption'), 'no caption without a title');
 });
 
+test('a caption is inline Markdown: emphasis, strong, code and strikethrough stay, everything else is text, and the viewer gets plain text', async () => {
+  const { resolve } = fakeResolver();
+  const viewerResolve = async (/** @type {Parameters<typeof resolve>[0]} */ image) => {
+    const resolved = await resolve(image);
+    return resolved && { ...resolved, viewer: { src: `/img/k/${image.src}-full.jpg`, width: 1200, height: 900 } };
+  };
+  const { html, images, viewerImages } = await renderMarkdown(
+    '![A hill](hill.jpg "_Fig. 1._ A **part** of `spec`, ~~old~~ and [a link](https://example.com/) <b>raw</b>")',
+    { images: { resolve: viewerResolve, sizes: '100vw' } },
+  );
+  assert.ok(
+    html.includes('<figcaption><em>Fig. 1.</em> A <strong>part</strong> of <code>spec</code>, <del>old</del> and a link &#x3C;b>raw&#x3C;/b></figcaption>'),
+    html,
+  );
+  assert.equal(images[0].caption, 'Fig. 1. A part of spec, old and a link <b>raw</b>');
+  assert.equal(viewerImages[0].caption, 'Fig. 1. A part of spec, old and a link <b>raw</b>');
+  assert.ok(!html.includes('<a href="https://example.com/"'), 'a link in a caption is not a link');
+
+  const blocks = await renderMarkdown('![A hill](hill.jpg "- one")', { images: { resolve, sizes: '100vw' } });
+  assert.ok(blocks.html.includes('<figcaption>- one</figcaption>'), 'a caption that is a list stays text');
+});
+
 test('all images but the first of a page are lazy, and the resolver is asked once per image', async () => {
   const { resolve, asked } = fakeResolver();
   const text = '![a](one.jpg "First")\n\n![b](two.jpg)\n\nText ![c](three.jpg) more.\n\n```md\n![d](code.jpg)\n```\n\n![e](four.jpg)';

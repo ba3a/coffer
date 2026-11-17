@@ -484,7 +484,7 @@ function collect({ lineOffset, onResult }) {
         found.images.push({
           src: node.properties.src,
           alt,
-          caption: typeof node.properties.title === 'string' ? node.properties.title.trim() : '',
+          caption: plainCaption(node.properties.title),
           carousel: slideImages.has(node),
         });
       }
@@ -641,6 +641,54 @@ function element(tagName, properties, children = []) {
   return { type: 'element', tagName, properties: kept, children };
 }
 
+const CAPTION_ELEMENTS = new Set(['em', 'strong', 'code', 'del']);
+
+/**
+ * The caption of an image (its title) as the nodes of its `<figcaption>`.
+ * The caption is inline Markdown: emphasis, strong text, code and strikethrough
+ * keep their markup. Anything else (a link, an image, raw HTML, a block such as
+ * a list) is reduced to its text, so a caption never adds a link the build did
+ * not check. A caption that is not a single paragraph stays plain text.
+ *
+ * @param {string} caption
+ * @returns {import('hast').ElementContent[]}
+ */
+function captionNodes(caption) {
+  const processor = unified().use(remarkParse).use(remarkGfm).use(remarkRehype, { allowDangerousHtml: true });
+  const root = processor.runSync(processor.parse(caption));
+  const only = root.children.length === 1 ? root.children[0] : undefined;
+  if (!only || only.type !== 'element' || only.tagName !== 'p') return [{ type: 'text', value: caption }];
+  /** @param {import('hast').ElementContent[]} nodes @returns {import('hast').ElementContent[]} */
+  const keep = (nodes) => {
+    /** @type {import('hast').ElementContent[]} */
+    const kept = [];
+    for (const node of nodes) {
+      if (node.type === 'text') kept.push(node);
+      // Raw HTML is shown as written, as before captions had markup.
+      else if (/** @type {string} */ (node.type) === 'raw') kept.push({ type: 'text', value: /** @type {{ value: string }} */ (/** @type {unknown} */ (node)).value });
+      else if (node.type !== 'element') continue;
+      else if (CAPTION_ELEMENTS.has(node.tagName)) kept.push({ ...node, properties: {}, children: node.tagName === 'code' ? node.children : keep(node.children) });
+      else if (node.tagName === 'br') kept.push({ type: 'text', value: ' ' });
+      else if (toString(node) !== '') kept.push({ type: 'text', value: toString(node) });
+    }
+    return kept;
+  };
+  return keep(only.children);
+}
+
+/**
+ * The caption of an image as plain text, without its inline Markdown (for the
+ * viewer, the lists of images and the name of a link).
+ *
+ * @param {unknown} title The title of the image.
+ * @returns {string}
+ */
+function plainCaption(title) {
+  const caption = typeof title === 'string' ? title.trim() : '';
+  if (caption === '') return '';
+  return captionNodes(caption).map((node) => (node.type === 'text' ? node.value : toString(node))).join('').trim();
+}
+
 /**
  * Rehype plugin: turns every image into a `<picture>` with a `srcset`, and an
  * image that stands alone in a paragraph into a `<figure>`, with its title as
@@ -709,7 +757,7 @@ function responsiveImages({ images, lineOffset, onViewerImages }) {
       const image = resolved.get(node);
       if (!image?.viewer || linked.has(node)) continue;
       const alt = typeof node.properties.alt === 'string' ? node.properties.alt : '';
-      const caption = typeof node.properties.title === 'string' ? node.properties.title.trim() : '';
+      const caption = plainCaption(node.properties.title);
       viewerIndex.set(node, viewerImages.length);
       viewerSources.push(String(node.properties.src));
       viewerImages.push({
@@ -751,7 +799,7 @@ function responsiveImages({ images, lineOffset, onViewerImages }) {
       const img = element('img', {
         src: image.src,
         alt: typeof node.properties.alt === 'string' ? node.properties.alt : '',
-        title: keepTitle && typeof node.properties.title === 'string' ? node.properties.title : undefined,
+        title: keepTitle && typeof node.properties.title === 'string' ? plainCaption(node.properties.title) : undefined,
         width: image.width,
         height: image.height,
         loading: lazy ? 'lazy' : undefined,
@@ -760,7 +808,7 @@ function responsiveImages({ images, lineOffset, onViewerImages }) {
       const inner = element('picture', {}, [source, img]);
       const index = viewerIndex.get(node);
       if (index === undefined || !image.viewer) return inner;
-      const caption = typeof node.properties.title === 'string' ? node.properties.title.trim() : '';
+      const caption = plainCaption(node.properties.title);
       const alt = typeof node.properties.alt === 'string' ? node.properties.alt : '';
       return element(
         'a',
@@ -787,7 +835,7 @@ function responsiveImages({ images, lineOffset, onViewerImages }) {
       const caption = typeof node.properties.title === 'string' ? node.properties.title.trim() : '';
       return element('figure', {}, [
         inner,
-        ...(caption === '' ? [] : [element('figcaption', {}, [{ type: 'text', value: caption }])]),
+        ...(caption === '' ? [] : [element('figcaption', {}, captionNodes(caption))]),
       ]);
     };
 
