@@ -10,6 +10,8 @@ Every release is a git tag named `v` followed by the version, for example `v0.1.
 
 ## Unreleased
 
+## 0.2.1 - 2026-11-17
+
 ### Fixed
 
 - The caption of an image (its title) is read as inline Markdown. `_Fig. 1._` now gives `<em>Fig. 1.</em>` in the `<figcaption>`, on the page and in feeds, instead of showing the underscores. Emphasis, strong text, code and strikethrough keep their markup; a link, an image or raw HTML is shown as its text. The image viewer, `images`, `viewerImages` and the title of a carousel slide get the caption as plain text.
