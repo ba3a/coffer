@@ -3,6 +3,7 @@
 /**
  * @typedef {object} TypesetOptions
  * @property {TypographyRules} rules The rules of the locale.
+ * @property {'locale' | 'spaced-en'} [dashStyle] `spaced-en` uses `rules.dash.spacedEnOption` for the sentence dash, when the rules have one.
  * @property {boolean} [plain] Text for titles and meta: normal spaces only. No effect on quotes.
  */
 
@@ -134,12 +135,76 @@ export function typesetSegments(segments, options) {
       }
     }
   });
-  return { segments: result, unpaired };
+  return { segments: result.map((s, i) => typesetSymbols(s, options, i === 0)), unpaired };
+}
+
+/** Bare URLs and email addresses. Symbol rules skip them. */
+const PROTECTED = /(?:\b(?:https?:\/\/|www\.)[^\s<>]+)|(?:[\p{L}\p{N}._%+-]+@[\p{L}\p{N}-]+(?:\.[\p{L}\p{N}-]+)+)/gu;
+/** Dates that are written with hyphens. Their hyphens are not ranges. */
+const HYPHEN_DATE = /\b\d{4}-\d{2}-\d{2}\b|\b\d{1,2}-\d{1,2}-\d{4}\b/;
+const RANGE = new RegExp(`${HYPHEN_DATE.source}|(?<![\\p{L}_]\\d*)(?<=\\d)-(?=\\d)`, 'gu');
+const MINUS = /(?<![\p{L}\p{N}_\-–—])-(?=\d)/gu;
+const TIMES = /(?<![\p{L}\d_.,])(\d+(?:[.,]\d+)*)( ?)x( ?)(?=\d)/gu;
+
+/**
+ * Dashes, minus, ellipsis and multiplication sign in one text segment.
+ *
+ * @param {string} text
+ * @param {TypesetOptions} options
+ * @param {boolean} blockStart True when the segment starts the block.
+ * @returns {string}
+ */
+function typesetSymbols(text, options, blockStart) {
+  const { rules } = options;
+  const spaced = rules.dash.spacedEnOption;
+  const sentence = options.dashStyle === 'spaced-en' && spaced !== undefined ? spaced : rules.dash.sentence;
+  const dashChar = sentence.replace(/^[\s  ]+|[\s  ]+$/gu, '');
+
+  // A dialogue dash at line start: only the character changes.
+  let head = '';
+  let body = text;
+  if (blockStart && /^- /.test(body)) {
+    head = dashChar;
+    body = body.slice(1);
+  }
+  body = body.replace(/\n- /g, `\n${dashChar} `);
+
+  let out = '';
+  let last = 0;
+  for (const m of body.matchAll(PROTECTED)) {
+    out += typesetPlain(body.slice(last, m.index), rules, sentence);
+    out += m[0];
+    last = m.index + m[0].length;
+  }
+  out += typesetPlain(body.slice(last), rules, sentence);
+  return head + out;
 }
 
 /**
- * Typesets a string: quote pairing and apostrophes. Unpaired quotes stay as
- * typed; use `typesetSegments` to get them reported.
+ * @param {string} text Text without URLs and emails.
+ * @param {TypographyRules} rules
+ * @param {string} sentence The sentence dash with its spacing.
+ * @returns {string}
+ */
+function typesetPlain(text, rules, sentence) {
+  let s = text
+    .replace(/(?<!-)---(?!-)/g, '—')
+    .replace(/(?<!-)--(?!-)/g, '–')
+    .replace(/ - /g, () => sentence)
+    .replace(RANGE, (m) => (m === '-' ? rules.dash.range : m))
+    .replace(MINUS, '−')
+    .replace(/(?<!\.)\.\.\.(?!\.)/g, () => rules.ellipsis);
+  for (let prev = ''; prev !== s; ) {
+    prev = s;
+    s = s.replace(TIMES, (m, num, a, b) => (num === '0' && a === '' && b === '' ? m : `${num}${a}×${b}`));
+  }
+  return s;
+}
+
+/**
+ * Typesets a string: quotes, apostrophes, dashes, minus, ellipsis and the
+ * multiplication sign. Unpaired quotes stay as typed; use `typesetSegments`
+ * to get them reported.
  *
  * @param {string} text
  * @param {TypesetOptions} options

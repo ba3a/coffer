@@ -9,7 +9,7 @@
  * @typedef {object} TypographyRules
  * @property {{ outer: MarkPair, inner: MarkPair }} quotes Quotation marks.
  * @property {string} apostrophe The apostrophe mark.
- * @property {{ sentence: string, range: string }} dash Dash for a sentence and for a range.
+ * @property {{ sentence: string, range: string, spacedEnOption?: string }} dash Dash for a sentence (with its spacing) and for a range. `spacedEnOption` is the sentence dash for `dashStyle: spaced-en`.
  * @property {string} ellipsis The ellipsis mark.
  * @property {Record<string, unknown>} nbsp Language-specific non-breaking space rules. Empty when there are none.
  * @property {'none' | 'title' | 'sentence' | 'german'} headingCase Heading case convention.

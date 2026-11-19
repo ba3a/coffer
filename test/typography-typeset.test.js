@@ -53,3 +53,49 @@ test('typesetting twice gives the same result as once', () => {
     assert.equal(typeset(once, { rules }), once, s);
   }
 });
+
+const ru = { ...neutral, dash: { sentence: ' — ', range: '–' } };
+const en = { ...neutral, dash: { sentence: '—', range: '–', spacedEnOption: ' – ' } };
+
+test('ranges become en dashes; hyphens in words stay', () => {
+  assert.equal(typeset('1-5', { rules }), '1–5');
+  assert.equal(typeset('pages 10-20, well-known, COVID-19, x86-64', { rules }), 'pages 10–20, well-known, COVID-19, x86-64');
+  assert.equal(typeset('12.05.2020-15.05.2020', { rules }), '12.05.2020–15.05.2020');
+  assert.equal(typeset('2024-05-17', { rules }), '2024-05-17');
+});
+
+test('--- and -- and the sentence dash', () => {
+  assert.equal(typeset('a---b', { rules }), 'a—b');
+  assert.equal(typeset('a--b', { rules }), 'a–b');
+  assert.equal(typeset('a - b', { rules }), 'a—b');
+  assert.equal(typeset('a - b', { rules: ru }), 'a — b');
+  assert.equal(typeset('a - b', { rules: en, dashStyle: 'spaced-en' }), 'a – b');
+  assert.equal(typeset('a - b', { rules: en }), 'a—b');
+  assert.equal(typeset('a - b', { rules, dashStyle: 'spaced-en' }), 'a—b');
+});
+
+test('a dialogue dash changes only the character', () => {
+  assert.equal(typeset('- Hi', { rules: ru }), '— Hi');
+  assert.equal(typeset('x\n- Hi', { rules: ru }), 'x\n— Hi');
+});
+
+test('minus, ellipsis and multiplication sign', () => {
+  assert.equal(typeset('-5 and (-3) and a-5', { rules }), '−5 and (−3) and a-5');
+  assert.equal(typeset('wait...', { rules }), 'wait…');
+  assert.equal(typeset('4x6, 4 x 6, 4x6x8, 0x1F, 4 xylophones', { rules }), '4×6, 4 × 6, 4×6×8, 0x1F, 4 xylophones');
+});
+
+test('URLs and emails are not changed', () => {
+  const s = 'see https://a.com/1-5--x...y?q=4x6 and me-1--2@a-b.com now';
+  assert.equal(typeset(s, { rules }), s);
+  assert.equal(typeset('a--b https://a.com/1-5 c...', { rules }), 'a–b https://a.com/1-5 c…');
+});
+
+test('symbols are idempotent', () => {
+  for (const s of ['1-5 a---b a--b a - b -5 wait... 4x6 - 4 x 6x8', '- Hi\n- there', 'https://x.y/1-5 a - b']) {
+    for (const r of [rules, ru, en]) {
+      const once = typeset(s, { rules: r });
+      assert.equal(typeset(once, { rules: r }), once, s);
+    }
+  }
+});
