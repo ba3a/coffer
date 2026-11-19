@@ -22,6 +22,7 @@
  * @property {string} ellipsis The ellipsis mark.
  * @property {NbspRules} nbsp Language-specific non-breaking space rules. Empty when there are none.
  * @property {'none' | 'title' | 'sentence' | 'german'} headingCase Heading case convention.
+ * @property {readonly string[]} [smallWords] Words that Title Case keeps in lower case (`headingCase: 'title'`).
  */
 
 /** @type {TypographyRules} */

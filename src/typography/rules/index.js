@@ -1,13 +1,14 @@
 import { neutral } from './neutral.js';
+import { en } from './en.js';
 
 /** @typedef {import('./neutral.js').TypographyRules} TypographyRules */
 
 /**
- * Rule sets by lower-case locale tag. Only the neutral set exists so far.
+ * Rule sets by lower-case locale tag. Neutral is the fallback.
  *
  * @type {Map<string, TypographyRules>}
  */
-const RULES = new Map();
+const RULES = new Map([['en', en]]);
 
 /**
  * Finds the rules for a locale: the exact tag, then its language
