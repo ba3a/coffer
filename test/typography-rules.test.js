@@ -65,3 +65,44 @@ test('en dashes and non-breaking spaces', () => {
   assert.equal(typeset('May the 5th, May 2020x', { rules }), 'May the 5th, May 2020x');
   assert.equal(typeset('In May 2020', { rules }), 'In May 2020');
 });
+
+test('ru falls back from regional tags and has the spec data', () => {
+  assert.equal(resolveRules('ru-RU'), resolveRules('ru'));
+  const ru = resolveRules('ru');
+  assert.deepEqual(ru.quotes.outer, ['«', '»']);
+  assert.deepEqual(ru.quotes.inner, ['„', '“']);
+  assert.equal(ru.apostrophe, '’');
+  assert.equal(ru.headingCase, 'sentence');
+});
+
+test('ru quotes pair as «…» with „…“ inside', () => {
+  const rules = resolveRules('ru');
+  assert.equal(typeset('Он сказал: "Она ответила: \'да\'".', { rules }), 'Он сказал: «Она ответила: „да“».');
+});
+
+test('ru keeps initials and surname together', () => {
+  const rules = resolveRules('ru');
+  assert.equal(typeset('А. С. Пушкин', { rules }), 'А. С. Пушкин');
+});
+
+test('ru binds short words and particles', () => {
+  const rules = resolveRules('ru');
+  assert.equal(typeset('в доме', { rules }), 'в доме');
+  assert.equal(typeset('Он и она не пошли на реку', { rules }), 'Он и она не пошли на реку');
+  assert.equal(typeset('сказал же', { rules }), 'сказал же');
+  assert.equal(typeset('придёшь ли', { rules }), 'придёшь ли');
+  assert.equal(typeset('в 1990 г. вышла', { rules }), 'в 1990 г. вышла');
+  assert.equal(typeset('и т. д. и т. е. далее', { rules }), 'и т. д. и т. е. далее');
+  assert.equal(typeset('5 тыс. руб. сейчас', { rules }), '5 тыс. руб. сейчас');
+});
+
+test('ru sentence dash has a no-break space before and a space after', () => {
+  const rules = resolveRules('ru');
+  assert.equal(typeset('слово - слово', { rules }), 'слово — слово');
+  assert.equal(typeset('слово — слово', { rules }), 'слово — слово');
+  assert.equal(typeset('1-5', { rules }), '1–5');
+});
+
+test('ru adds no space around the ellipsis', () => {
+  assert.equal(typeset('Ну... да', { rules: resolveRules('ru') }), 'Ну… да');
+});
