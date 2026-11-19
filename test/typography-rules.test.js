@@ -11,7 +11,7 @@ test('an unknown language gets the neutral set', () => {
 });
 
 test('a regional tag without rules gets the neutral set', () => {
-  assert.equal(resolveRules('fr-CH'), neutral);
+  assert.equal(resolveRules('it-CH'), neutral);
 });
 
 test('an empty or missing locale gets the neutral set', () => {

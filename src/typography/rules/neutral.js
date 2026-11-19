@@ -10,6 +10,8 @@
  * @property {readonly string[]} [wordsAfter] Words that bind to the next word (`в`, `Mr.`). Matched as whole words, ignoring case. Spaces inside an entry bind too.
  * @property {readonly string[]} [wordsBefore] Words that bind to the word before them (`же`, `ли`).
  * @property {readonly RegExp[]} [patterns] Each space (U+0020) inside a match becomes U+00A0.
+ * @property {Readonly<Record<string, string>>} [beforePunctuation] Space to put before a mark, by mark. A typed space (U+0020) or none becomes that space. Applies to marks that follow a letter, digit or closing mark.
+ * @property {string} [insideQuotes] Space put inside the outer quotation marks (`« text »`).
  */
 
 /**

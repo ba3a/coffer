@@ -2,6 +2,7 @@ import { neutral } from './neutral.js';
 import { en } from './en.js';
 import { ru } from './ru.js';
 import { de } from './de.js';
+import { fr } from './fr.js';
 
 /** @typedef {import('./neutral.js').TypographyRules} TypographyRules */
 
@@ -10,7 +11,7 @@ import { de } from './de.js';
  *
  * @type {Map<string, TypographyRules>}
  */
-const RULES = new Map([['en', en], ['ru', ru], ['de', de]]);
+const RULES = new Map([['en', en], ['ru', ru], ['de', de], ['fr', fr]]);
 
 /**
  * Finds the rules for a locale: the exact tag, then its language

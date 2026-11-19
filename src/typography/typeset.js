@@ -96,6 +96,7 @@ export function typesetSegments(segments, options) {
   for (const rest of stack) unpairedAt.add(rest);
 
   // Replace pairs by depth, and apostrophes.
+  const pad = rules.nbsp.insideQuotes ?? '';
   const out = chars.slice();
   let depth = 0;
   /** @type {Map<number, number>} closer index to the depth of its pair */
@@ -106,10 +107,18 @@ export function typesetSegments(segments, options) {
     } else if (partner.has(i)) {
       closerDepth.set(/** @type {number} */ (partner.get(i)), depth);
       out[i] = (depth % 2 === 0 ? rules.quotes.outer : rules.quotes.inner)[0];
+      if (depth % 2 === 0 && pad) {
+        out[i] += pad;
+        if (chars[i + 1] === ' ') out[i + 1] = '';
+      }
       depth++;
     } else if (closerDepth.has(i)) {
       depth--;
       out[i] = (depth % 2 === 0 ? rules.quotes.outer : rules.quotes.inner)[1];
+      if (depth % 2 === 0 && pad) {
+        out[i] = pad + out[i];
+        if (i > 0 && chars[i - 1] === ' ') out[i - 1] = '';
+      }
     }
   }
 
@@ -202,6 +211,30 @@ const NBSP_CACHE = new WeakMap();
 const alternation = (words) =>
   [...words].sort((a, b) => b.length - a.length).map(escapeRe).join('|');
 
+/** @type {WeakMap<object, RegExp>} */
+const PUNCT_CACHE = new WeakMap();
+
+/**
+ * A space (or none) before a mark that follows a word or a closing mark.
+ * The mark must end the word: a space, the end or more punctuation follows.
+ * A time such as `12:30` stays.
+ *
+ * @param {Readonly<Record<string, string>>} marks
+ * @returns {RegExp}
+ */
+function punctuationRegexp(marks) {
+  let re = PUNCT_CACHE.get(marks);
+  if (!re) {
+    const set = Object.keys(marks).map(escapeRe).join('');
+    re = new RegExp(
+      String.raw`(?<=[\p{L}\p{N}»”)\]…]) ?([${set}])(?=$|[\s  !?;:.,)»”])`,
+      'gu',
+    );
+    PUNCT_CACHE.set(marks, re);
+  }
+  return re;
+}
+
 /**
  * Compiles the word lists of a rule set once.
  *
@@ -237,6 +270,10 @@ function bindSpacesIn(text, rules) {
     .replace(DIGIT_GROUPS, bindSpaces)
     .replace(NUMBER_UNIT, (m) => m.slice(0, -1) + NBSP)
     .replace(NUMBER_SIGN, bindSpaces);
+  const marks = rules.nbsp.beforePunctuation;
+  if (marks) {
+    s = s.replace(punctuationRegexp(marks), (_m, mark) => `${marks[mark]}${mark}`);
+  }
   const { after, before } = wordRegexps(rules.nbsp);
   if (after) s = s.replace(after, bindSpaces);
   if (before) s = s.replace(before, NBSP);
