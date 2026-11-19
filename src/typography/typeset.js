@@ -1,3 +1,5 @@
+import { UNITS, NUMBER_SIGNS } from './rules/common.js';
+
 /** @typedef {import('./rules/neutral.js').TypographyRules} TypographyRules */
 
 /**
@@ -177,7 +179,72 @@ function typesetSymbols(text, options, blockStart) {
     last = m.index + m[0].length;
   }
   out += typesetPlain(body.slice(last), rules, sentence);
-  return head + out;
+  const result = head + out;
+  return options.plain ? result.replace(/[\u00A0\u202F]/g, ' ') : result;
+}
+
+const escapeRe = (/** @type {string} */ s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+const NBSP = '\u00A0';
+const bindSpaces = (/** @type {string} */ m) => m.replaceAll(' ', NBSP);
+const NUMBER_UNIT = new RegExp(
+  String.raw`(?<![\p{L}\p{N}_.,])\d+(?:[.,]\d+)* (?=(?:${[...UNITS].sort((a, b) => b.length - a.length).map(escapeRe).join('|')})(?![\p{L}\p{N}_]))`,
+  'gu',
+);
+const DIGIT_GROUPS = /(?<![\p{N}.,])\d{1,3}(?: \d{3})+(?![\p{N}])/gu;
+const NUMBER_SIGN = new RegExp(String.raw`[${NUMBER_SIGNS.join('')}] (?=\d)`, 'gu');
+/** @type {WeakMap<object, { after: RegExp | null, before: RegExp | null }>} */
+const NBSP_CACHE = new WeakMap();
+
+/**
+ * @param {readonly string[]} words
+ * @returns {string}
+ */
+const alternation = (words) =>
+  [...words].sort((a, b) => b.length - a.length).map(escapeRe).join('|');
+
+/**
+ * Compiles the word lists of a rule set once.
+ *
+ * @param {TypographyRules['nbsp']} nbsp
+ */
+function wordRegexps(nbsp) {
+  let cached = NBSP_CACHE.get(nbsp);
+  if (!cached) {
+    cached = {
+      after: nbsp.wordsAfter?.length
+        ? new RegExp(String.raw`(?<![\p{L}\p{N}_])(?:${alternation(nbsp.wordsAfter)}) (?=\S)`, 'giu')
+        : null,
+      before: nbsp.wordsBefore?.length
+        ? new RegExp(String.raw`(?<=\S) (?=(?:${alternation(nbsp.wordsBefore)})(?![\p{L}\p{N}_]))`, 'giu')
+        : null,
+    };
+    NBSP_CACHE.set(nbsp, cached);
+  }
+  return cached;
+}
+
+/**
+ * Non-breaking spaces: number and unit, digit groups, number signs, and the
+ * locale hooks. Only U+0020 is changed, so spaces the author wrote as U+00A0
+ * or U+202F stay.
+ *
+ * @param {string} text Text without URLs and emails.
+ * @param {TypographyRules} rules
+ * @returns {string}
+ */
+function bindSpacesIn(text, rules) {
+  let s = text
+    .replace(DIGIT_GROUPS, bindSpaces)
+    .replace(NUMBER_UNIT, (m) => m.slice(0, -1) + NBSP)
+    .replace(NUMBER_SIGN, bindSpaces);
+  const { after, before } = wordRegexps(rules.nbsp);
+  if (after) s = s.replace(after, bindSpaces);
+  if (before) s = s.replace(before, NBSP);
+  for (const pattern of rules.nbsp.patterns ?? []) {
+    const global = pattern.global ? pattern : new RegExp(pattern.source, `${pattern.flags}g`);
+    s = s.replace(global, bindSpaces);
+  }
+  return s;
 }
 
 /**
@@ -198,7 +265,7 @@ function typesetPlain(text, rules, sentence) {
     prev = s;
     s = s.replace(TIMES, (m, num, a, b) => (num === '0' && a === '' && b === '' ? m : `${num}${a}×${b}`));
   }
-  return s;
+  return bindSpacesIn(s, rules);
 }
 
 /**
