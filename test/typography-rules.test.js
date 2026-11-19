@@ -106,3 +106,33 @@ test('ru sentence dash has a no-break space before and a space after', () => {
 test('ru adds no space around the ellipsis', () => {
   assert.equal(typeset('Ну... да', { rules: resolveRules('ru') }), 'Ну… да');
 });
+
+test('de falls back from regional tags and has the spec data', () => {
+  assert.equal(resolveRules('de-AT'), resolveRules('de'));
+  const de = resolveRules('de');
+  assert.deepEqual(de.quotes.outer, ['„', '“']);
+  assert.deepEqual(de.quotes.inner, ['‚', '‘']);
+  assert.equal(de.apostrophe, '’');
+  assert.equal(de.dash.sentence, ' – ');
+  assert.equal(de.headingCase, 'german');
+});
+
+test('de quotes pair as „…“ with ‚…‘ inside', () => {
+  const rules = resolveRules('de');
+  assert.equal(typeset('"Hallo"', { rules }), '„Hallo“');
+  assert.equal(typeset('Er sagte: "Sie sagte \'innen\'".', { rules }), 'Er sagte: „Sie sagte ‚innen‘“.');
+});
+
+test('de sentence dash is a spaced en dash', () => {
+  const rules = resolveRules('de');
+  assert.equal(typeset('a - b', { rules }), 'a – b');
+  assert.equal(typeset('1-5', { rules }), '1–5');
+});
+
+test('de binds abbreviations and number with unit', () => {
+  const rules = resolveRules('de');
+  assert.equal(typeset('z. B. das', { rules }), 'z. B. das');
+  assert.equal(typeset('d. h. so, u. a. dies', { rules }), 'd. h. so, u. a. dies');
+  assert.equal(typeset('Nr. 5, Dr. Weber, Prof. Weber', { rules }), 'Nr. 5, Dr. Weber, Prof. Weber');
+  assert.equal(typeset('12 km', { rules }), '12 km');
+});
