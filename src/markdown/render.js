@@ -44,7 +44,7 @@ export const DEFAULT_CODE_THEMES = Object.freeze({
  * @property {number} [headingShift] Whole number added to the level of every heading the Markdown makes, the result kept between h1 and h6 (default 0). A post shown inside a list page uses 1, so its h2 becomes h3 below the h2 that carries its title. Headings written as raw HTML are left as they are.
  * @property {Partial<import('./directives/video.js').VideoOptions>} [video] The rules that recognise remote videos, how they load, and where the local videos of the text are published (default: `DEFAULT_VIDEO_RULES`, `click`, and no local video exists).
  * @property {string} [idPrefix] Text put in front of every `id` of the output, so that several texts on one page have none in common (default: none; it must not contain whitespace). It applies to the ids of headings, of footnotes and of elements and anchors written as raw HTML, to the `aria-describedby`, `aria-labelledby` and `aria-controls` that point at them, and to every link of the text whose target is `#id` of such an id (links to other pages and to ids the text does not have stay as written). `toc`, `ids` and `links` in the result keep the values without the prefix, since they describe the text, not the page.
- * @property {Pick<import('../typography/settings.js').TypographySettings, 'enabled' | 'locale' | 'dashStyle'> & Partial<Pick<import('../typography/settings.js').TypographySettings, 'headings' | 'keep'>>} [typography] The resolved typography settings. Given, the text is typeset by the rules of `locale` (unless `enabled` is false), backslash escapes and `:verbatim` are honoured, and unpaired quotes come back in `typographyWarnings`. Left out, the output is not typeset at all.
+ * @property {Pick<import('../typography/settings.js').TypographySettings, 'enabled' | 'locale' | 'dashStyle'> & Partial<Pick<import('../typography/settings.js').TypographySettings, 'headings' | 'keep' | 'hanging' | 'widows'>> & { plain?: boolean }} [typography] The resolved typography settings; `widows` and `hanging` (off when left out) join the last two words and wrap a hanging mark in `<span class="hang">`, and `plain` emits neither and uses normal spaces only. Given, the text is typeset by the rules of `locale` (unless `enabled` is false), backslash escapes and `:verbatim` are honoured, and unpaired quotes come back in `typographyWarnings`. Left out, the output is not typeset at all.
  * @property {string} [videoIdPrefix] Text put between `idPrefix` and `video-` in the id of each video, and in everything that points at it, so that the videos of several texts on one page have different ids while the other ids of the texts stay as they are (default: none; it must not contain whitespace). `ids` keeps the ids of the videos without it.
  */
 
@@ -1064,6 +1064,7 @@ export async function renderMarkdown(source, options = {}) {
     .use(highlightCode, { themes })
     .use(typesetting, {
       settings: typography,
+      plain: typography?.plain,
       file: options.file,
       lineOffset,
       onWarnings: (found) => {

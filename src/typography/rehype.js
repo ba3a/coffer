@@ -2,6 +2,7 @@ import { visit, SKIP } from 'unist-util-visit';
 import { resolveRules } from './rules/index.js';
 import { typesetSegments } from './typeset.js';
 import { headingCase } from './heading-case.js';
+import { widows } from './widows.js';
 
 /** @typedef {import('./settings.js').TypographySettings} TypographySettings */
 
@@ -18,6 +19,8 @@ import { headingCase } from './heading-case.js';
 /** Elements whose text is typeset as one block, with its inline elements. */
 const HEADINGS = new Set(['h1', 'h2', 'h3', 'h4', 'h5', 'h6']);
 const BLOCKS = new Set(['p', 'li', 'td', 'th', 'dd', 'dt', ...HEADINGS]);
+/** Blocks that get widow control and hanging punctuation. */
+const TEXT_BLOCKS = new Set(['p', 'li', ...HEADINGS]);
 /** Elements that end a run of inline text inside a block. */
 const BOUNDARIES = new Set([
   'p', 'li', 'ul', 'ol', 'dl', 'dd', 'dt', 'blockquote', 'table', 'thead', 'tbody', 'tfoot', 'tr', 'td', 'th',
@@ -34,6 +37,52 @@ const OPAQUE = '￼';
  */
 function isOff(node) {
   return SKIPPED.has(node.tagName) || node.properties?.dataTypography === 'off';
+}
+
+/** Characters that may hang, with the `data-m` value of their span. */
+const HANGING = new Map(/** @type {[string, string][]} */ ([
+  ...Array.from('“‘«„‚‹', (c) => [c, 'quote']),
+  ...Array.from('([{', (c) => [c, 'bracket']),
+  ...Array.from('—–', (c) => [c, 'dash']),
+]));
+
+/**
+ * Wraps the first character of a block in `<span class="hang" data-m="...">`
+ * when it is an opening quote, bracket or sentence dash.
+ *
+ * @param {import('hast').Element} block
+ */
+function hangFirst(block) {
+  /** @type {import('hast').Element} */
+  let parent = block;
+  for (;;) {
+    const first = parent.children[0];
+    if (!first) return;
+    if (first.type === 'element') {
+      const classes = first.properties?.className;
+      if (Array.isArray(classes) && classes.includes('hang')) return;
+      if (isOff(first) || isBareLink(first) || BOUNDARIES.has(first.tagName)) return;
+      if (['img', 'br', 'input'].includes(first.tagName)) return;
+      parent = first;
+      continue;
+    }
+    if (first.type !== 'text') return;
+    const char = Array.from(first.value)[0];
+    const mark = char === undefined ? undefined : HANGING.get(char);
+    if (!mark) return;
+    /** @type {import('hast').Element} */
+    const span = {
+      type: 'element',
+      tagName: 'span',
+      properties: { className: ['hang'], dataM: mark },
+      children: [{ type: 'text', value: char }],
+    };
+    const rest = first.value.slice(char.length);
+    /** @type {import('hast').ElementContent[]} */
+    const replacement = rest ? [span, { type: 'text', value: rest }] : [span];
+    parent.children.splice(0, 1, ...replacement);
+    return;
+  }
 }
 
 /**
@@ -113,10 +162,10 @@ function headingText(heading) {
  * the heading case of the locale applies, and each changed heading is reported
  * to `onHeadingChanges`.
  *
- * @param {{ settings: Pick<TypographySettings, 'enabled' | 'locale' | 'dashStyle'> & Partial<Pick<TypographySettings, 'headings' | 'keep'>>, file?: string, lineOffset?: number, onWarnings?: (warnings: TypographyWarning[]) => void, onHeadingChanges?: (changes: HeadingChange[]) => void }} options
+ * @param {{ settings: Pick<TypographySettings, 'enabled' | 'locale' | 'dashStyle'> & Partial<Pick<TypographySettings, 'headings' | 'keep' | 'hanging' | 'widows'>>, plain?: boolean, file?: string, lineOffset?: number, onWarnings?: (warnings: TypographyWarning[]) => void, onHeadingChanges?: (changes: HeadingChange[]) => void }} options
  * @returns {(tree: import('hast').Root) => void}
  */
-export function rehypeTypography({ settings, file, lineOffset = 0, onWarnings, onHeadingChanges }) {
+export function rehypeTypography({ settings, plain = false, file, lineOffset = 0, onWarnings, onHeadingChanges }) {
   return (tree) => {
     /** @type {TypographyWarning[]} */
     const warnings = [];
@@ -124,17 +173,27 @@ export function rehypeTypography({ settings, file, lineOffset = 0, onWarnings, o
     const headingChanges = [];
     if (settings.enabled !== false) {
       const rules = resolveRules(settings.locale);
-      const options = { rules, dashStyle: settings.dashStyle };
+      const options = { rules, dashStyle: settings.dashStyle, plain };
+      const keepWidows = !plain && settings.widows === true;
+      const keepHanging = !plain && settings.hanging === true;
+
+      /** @type {Entry[][]} Runs flushed for the block being typeset. */
+      let runs = [];
 
       /**
        * @param {Entry[]} run
        * @param {import('hast').Element} block
        */
       const flush = (run, block) => {
+        runs.push(run);
         if (run.every((entry) => entry.node === null)) return;
         const { segments, unpaired } = typesetSegments(run.map((entry) => entry.text), options);
         run.forEach((entry, i) => {
-          if (entry.node) entry.node.value = /** @type {string} */ (segments[i]);
+          if (entry.node) {
+            const value = /** @type {string} */ (segments[i]);
+            entry.node.value = plain ? value.replace(/[\u00A0\u202F]/g, ' ') : value;
+            entry.text = entry.node.value;
+          }
         });
         for (const quote of unpaired) {
           const entry = /** @type {Entry} */ (run[quote.segment]);
@@ -151,6 +210,7 @@ export function rehypeTypography({ settings, file, lineOffset = 0, onWarnings, o
        * @param {import('hast').Element} block
        */
       const typesetBlock = (block) => {
+        runs = [];
         /** @type {Entry[]} */
         let run = [];
         /** @param {import('hast').ElementContent[]} children */
@@ -177,6 +237,29 @@ export function rehypeTypography({ settings, file, lineOffset = 0, onWarnings, o
         collect(block.children);
         flush(run, block);
         if (HEADINGS.has(block.tagName) && settings.headings !== 'keep') caseHeading(block);
+        if (!TEXT_BLOCKS.has(block.tagName)) return;
+        if (keepWidows) joinWidows(runs);
+        if (keepHanging) hangFirst(block);
+      };
+
+      /**
+       * Joins the last two words of the last run that holds text, across inline elements.
+       *
+       * @param {Entry[][]} blockRuns
+       */
+      const joinWidows = (blockRuns) => {
+        const run = blockRuns.findLast((r) => r.some((entry) => entry.node && /\S/u.test(entry.text)));
+        if (!run) return;
+        const current = (/** @type {Entry} */ entry) => (entry.node ? entry.node.value : entry.text);
+        const text = run.map(current).join('');
+        const joined = widows(text);
+        if (joined === text) return;
+        let offset = 0;
+        for (const entry of run) {
+          const length = current(entry).length;
+          if (entry.node) entry.node.value = joined.slice(offset, offset + length);
+          offset += length;
+        }
       };
 
       /**

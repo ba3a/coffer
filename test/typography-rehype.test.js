@@ -201,3 +201,71 @@ test('a heading inside data-typography off is not changed or reported', async ()
   assert.match(html, /<h2[^>]*>the "x" -- y<\/h2>/);
   assert.deepEqual(typographyHeadingChanges, []);
 });
+
+const NB = ' ';
+const full = { ...typography, widows: true, hanging: true };
+
+test('an opening quote at the start of a paragraph gets a hang span', async () => {
+  const { html } = await render('«Hi there friend', { typography: { ...full, locale: 'ru' } });
+  assert.match(html, /<p><span class="hang" data-m="quote">«<\/span>Hi there/);
+});
+
+test('brackets and sentence dashes hang; other starts do not', async () => {
+  const bracket = await render('(see below) now ok', { typography: full });
+  assert.match(bracket.html, /<p><span class="hang" data-m="bracket">\(<\/span>see/);
+  const dash = await render('— Hi there friend', { typography: { ...full, locale: 'ru' } });
+  assert.match(dash.html, /<p><span class="hang" data-m="dash">—<\/span>/);
+  const none = await render('Hi there friend', { typography: full });
+  assert.equal(none.html.includes('hang'), false);
+  const quote = await render('> "Hi there friend"', { typography: full });
+  assert.match(quote.html, /<blockquote>\s*<p><span class="hang" data-m="quote">“<\/span>Hi/);
+  const item = await render('- "Hi there friend"\n\n# "Head" line here', { typography: full });
+  assert.equal((item.html.match(/class="hang"/g) ?? []).length, 2);
+});
+
+test('the hang span is found through an inline element', async () => {
+  const { html } = await render('*"a b* c" d', { typography: full });
+  assert.match(html, /<em><span class="hang" data-m="quote">“<\/span>a/);
+});
+
+test('widows join the last two words across inline elements', async () => {
+  const { html } = await render('one two *three* four', { typography: full });
+  assert.match(html, new RegExp(`<p>one two <em>three</em>${NB}four</p>`));
+  const heading = await render('## one two three', { typography: full });
+  assert.match(heading.html, new RegExp(`Two${NB}Three</h2>`));
+  const item = await render('- one two three', { typography: full });
+  assert.match(item.html, new RegExp(`two${NB}three</li>`));
+});
+
+test('widow join respects the word and length limits', async () => {
+  const two = await render('one two', { typography: full });
+  assert.equal(two.html.includes(NB), false);
+  const long = await render('one two abcdefghijklm', { typography: full });
+  assert.equal(long.html.includes(NB), false);
+  const ok = await render('one two abcdefghijkl', { typography: full });
+  assert.equal(ok.html.includes(NB), true);
+});
+
+test('hanging: false and widows: false switch each off', async () => {
+  const { html } = await render('“one two three four', { typography: { ...full, hanging: false, widows: false } });
+  assert.equal(html.includes('hang'), false);
+  assert.equal(html.includes(NB), false);
+  const off = await render('one two three four', { typography: { ...full, widows: false } });
+  assert.equal(off.html.includes(NB), false);
+  const noHang = await render('"one two three four', { typography: { ...full, hanging: false } });
+  assert.equal(noHang.html.includes('hang'), false);
+  assert.equal(noHang.html.includes(NB), true);
+});
+
+test('plain mode emits no span and no no-break space', async () => {
+  const { html } = await render('«Hi there, 12 km far — it is ok', {
+    typography: { ...full, locale: 'fr', plain: true },
+  });
+  assert.equal(html.includes('hang'), false);
+  assert.equal(/[  ]/.test(html), false);
+});
+
+test('a heading with widows is both cased and joined', async () => {
+  const { html } = await render('## the quick brown fox', { typography: { ...full, hanging: false } });
+  assert.match(html, /<h2[^>]*>The Quick Brown Fox<\/h2>/);
+});
