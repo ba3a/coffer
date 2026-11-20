@@ -29,6 +29,7 @@ test('a report keeps errors, warnings and info apart', () => {
     errors: [{ file: 'a.md', line: 1, column: 2, message: 'bad' }, { message: 'worse' }],
     warnings: [{ message: 'careful' }],
     exactLocations: [],
+    headingChanges: [],
     info: [{ site: 'demo', message: 'FYI' }],
   });
   assert.equal(
@@ -104,4 +105,15 @@ test('the exact-locations section counts tracks beside images, and a track-only 
     ]),
     'Posts publishing exact locations (3)\n  x.md: 2 image(s), 1 track(s)\n  y/index.md: 3 track(s)\n  z.md: 1 image(s)\n',
   );
+});
+
+test('the report lists headings changed by typography, and has no section without them', () => {
+  const report = new Report();
+  assert.equal(report.format(), '');
+  report.addHeadingChange({ site: 'demo', file: 'a.md', line: 3, before: 'using npm', after: 'Using Npm' });
+  assert.deepEqual(report.toJSON().headingChanges, [
+    { site: 'demo', file: 'a.md', line: 3, before: 'using npm', after: 'Using Npm' },
+  ]);
+  assert.equal(report.format(), 'Headings changed by typography (1)\n  a.md:3: "using npm" -> "Using Npm"\n');
+  assert.ok(!new Report().addWarning('x').format().includes('Headings changed'));
 });

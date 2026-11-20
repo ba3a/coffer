@@ -1351,12 +1351,16 @@ async function buildSite(config, site, options, outRoot, version, report) {
 
   /**
    * Adds the unpaired quotes that typography kept as typed to the build
-   * warnings, as `{file}:{line}: {message}`.
+   * warnings, as `{file}:{line}: {message}`, and lists the headings whose
+   * case it changed in the report.
    *
    * @param {string} shown How findings name the text's file.
-   * @param {{ typographyWarnings: readonly import('./typography/rehype.js').TypographyWarning[] }} rendered
+   * @param {{ typographyWarnings: readonly import('./typography/rehype.js').TypographyWarning[], typographyHeadingChanges?: readonly import('./typography/rehype.js').HeadingChange[] }} rendered
    */
   const reportTypographyWarnings = (shown, rendered) => {
+    for (const change of rendered.typographyHeadingChanges ?? []) {
+      report.addHeadingChange({ site: site.id, file: shown, line: change.line, before: change.before, after: change.after });
+    }
     for (const warning of rendered.typographyWarnings) {
       warnings.push(`${shown}${warning.line === undefined ? '' : `:${warning.line}`}: ${warning.message}`);
     }

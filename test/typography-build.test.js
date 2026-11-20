@@ -241,3 +241,20 @@ test('feeds: false leaves feed titles and summaries as written, still without ha
     assert.ok(!feed.includes('class=&quot;hang&quot;'));
   });
 });
+
+test('the report lists a heading whose case changed, with file, line, before and after', async () => {
+  await inTree({ 'coffer.yaml': config(), 'notes/a.md': post('Intro.\n\n## the end of the road: a look back\n') }, async (root) => {
+    await build(root);
+    const { headingChanges } = JSON.parse(read(root, '.coffer', 'report.json'));
+    assert.deepEqual(headingChanges, [
+      { site: 'demo', file: 'notes/a.md', line: 8, before: 'the end of the road: a look back', after: 'The End of the Road: A Look Back' },
+    ]);
+  });
+});
+
+test('the report has no heading change when no heading changed', async () => {
+  await inTree({ 'coffer.yaml': config(), 'notes/a.md': post('Intro.\n\n## Already Fine\n') }, async (root) => {
+    await build(root);
+    assert.deepEqual(JSON.parse(read(root, '.coffer', 'report.json')).headingChanges, []);
+  });
+});
