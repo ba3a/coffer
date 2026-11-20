@@ -23,6 +23,8 @@
  * @property {{ sentence: string, range: string, spacedEnOption?: string }} dash Dash for a sentence (with its spacing) and for a range. `spacedEnOption` is the sentence dash for `dashStyle: spaced-en`.
  * @property {string} ellipsis The ellipsis mark.
  * @property {NbspRules} nbsp Language-specific non-breaking space rules. Empty when there are none.
+ * @property {boolean} [experimental] The rule set is not reviewed by a native reader yet.
+ * @property {{ after: RegExp, marks: Readonly<Record<string, string>> }} [sentenceEnd] Sentence-final marks: a mark of `marks` that follows a letter matching `after` and ends a sentence is replaced by its value.
  * @property {'none' | 'title' | 'sentence' | 'german'} headingCase Heading case convention.
  * @property {readonly string[]} [smallWords] Words that Title Case keeps in lower case (`headingCase: 'title'`).
  */

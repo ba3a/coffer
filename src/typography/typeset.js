@@ -302,8 +302,31 @@ function typesetPlain(text, rules, sentence) {
     prev = s;
     s = s.replace(TIMES, (m, num, a, b) => (num === '0' && a === '' && b === '' ? m : `${num}${a}×${b}`));
   }
+  if (rules.sentenceEnd) s = replaceSentenceEnd(s, rules.sentenceEnd);
   return bindSpacesIn(s, rules);
 }
+
+/**
+ * Replaces a sentence-final mark that follows a letter of the script. The
+ * mark ends a sentence when a space, the end or a closing mark follows. A
+ * full stop after a one-letter word is an initial and stays. A colon before
+ * an opening quote introduces speech and stays.
+ *
+ * @param {string} text
+ * @param {NonNullable<TypographyRules['sentenceEnd']>} end
+ * @returns {string}
+ */
+function replaceSentenceEnd(text, end) {
+  const after = end.after.source;
+  const others = Object.keys(end.marks).filter((m) => m !== '.').map(escapeRe).join('');
+  const re = new RegExp(
+    String.raw`(?:(?<=\p{L}${after})(\.)|(?<=${after})([${others}]))` +
+      String.raw`(?=$|[»”)\]]|\s+(?!["«“„]))`,
+    'gu',
+  );
+  return text.replace(re, (_m, dot, mark) => end.marks[dot ?? mark]);
+}
+
 
 /**
  * Typesets a string: quotes, apostrophes, dashes, minus, ellipsis and the
