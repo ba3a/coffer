@@ -189,3 +189,5 @@ export {
   normalizeImageKey,
   policyValueProblem,
 } from './images/policy.js';
+export { typeset } from './typography/typeset.js';
+export { foldForSearch } from './typography/fold.js';
