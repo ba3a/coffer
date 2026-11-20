@@ -60,7 +60,7 @@ function isMapping(value) {
  * @param {string} value
  * @returns {string | undefined} The canonical tag, or undefined when invalid.
  */
-function canonicalTag(value) {
+export function canonicalTag(value) {
   try {
     return Intl.getCanonicalLocales(value)[0];
   } catch {
