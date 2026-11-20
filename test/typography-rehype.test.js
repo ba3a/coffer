@@ -119,3 +119,85 @@ test('table cells are typeset', async () => {
   const { html } = await render('| a |\n| - |\n| "x" |');
   assert.match(html, /<td>“x”<\/td>/);
 });
+
+const headingSource = [
+  '## He said "hi" -- really',
+  '',
+  '## the end of the road: a look at it\'s past',
+  '',
+  '### Don\'t panic...',
+  '',
+  'text',
+].join('\n');
+
+test('heading ids equal the ids with typography off', async () => {
+  const off = await renderMarkdown(headingSource, { tocMinHeadings: 1 });
+  const on = await render(headingSource, { tocMinHeadings: 1 });
+  assert.deepEqual(
+    on.toc.map((entry) => entry.id),
+    off.toc.map((entry) => entry.id),
+  );
+  assert.deepEqual(on.ids, off.ids);
+  assert.match(on.html, /<h2 id="he-said-hi----really">/);
+});
+
+test('toc entries hold the typeset heading text', async () => {
+  const { toc, html } = await render(headingSource, { tocMinHeadings: 1 });
+  assert.deepEqual(
+    toc.map((entry) => entry.text),
+    ['He Said “Hi” – Really', 'The End of the Road: A Look at It’s Past', 'Don’t Panic…'],
+  );
+  assert.match(html, /<h3 id="dont-panic">Don’t Panic…<\/h3>/);
+});
+
+test('headings: keep leaves case alone but typesets marks', async () => {
+  const { toc, typographyHeadingChanges } = await render(headingSource, {
+    tocMinHeadings: 1,
+    typography: { ...typography, headings: 'keep' },
+  });
+  assert.deepEqual(
+    toc.map((entry) => entry.text),
+    ['He said “hi” – really', 'the end of the road: a look at it’s past', 'Don’t panic…'],
+  );
+  assert.deepEqual(typographyHeadingChanges, []);
+});
+
+test('changed headings are listed with file and line', async () => {
+  const { typographyHeadingChanges } = await render(headingSource, { file: 'a.md', startLine: 11 });
+  assert.equal(typographyHeadingChanges.length, 3);
+  assert.deepEqual(typographyHeadingChanges[1], {
+    file: 'a.md',
+    line: 13,
+    before: 'the end of the road: a look at it’s past',
+    after: 'The End of the Road: A Look at It’s Past',
+  });
+});
+
+test('keep words and code in a heading are not changed by case', async () => {
+  const { html, typographyHeadingChanges } = await render('## using npm with `foo bar`', {
+    typography: { ...typography, keep: ['npm'] },
+  });
+  assert.match(html, /<h2 id="[^"]+">Using npm with <code>foo bar<\/code><\/h2>/);
+  assert.equal(typographyHeadingChanges.length, 1);
+});
+
+test('h1 to h6 are typeset and cased; keep leaves case', async () => {
+  const source = ['# the "one" thing', '## two', '### three', '#### the "four" way', '##### five -- a', '###### six of it'].join('\n\n');
+  const on = await render(source, { file: 'h.md' });
+  assert.match(on.html, /<h1 id="[^"]+">The “One” Thing<\/h1>/);
+  assert.match(on.html, /<h4 id="[^"]+">The “Four” Way<\/h4>/);
+  assert.match(on.html, /<h5 id="[^"]+">Five – A<\/h5>/);
+  assert.match(on.html, /<h6 id="[^"]+">Six of It<\/h6>/);
+  assert.equal(on.typographyHeadingChanges.length, 6);
+  const kept = await render(source, { typography: { ...typography, headings: 'keep' } });
+  assert.match(kept.html, /<h1 id="[^"]+">the “one” thing<\/h1>/);
+  assert.match(kept.html, /<h4 id="[^"]+">the “four” way<\/h4>/);
+  assert.match(kept.html, /<h6 id="[^"]+">six of it<\/h6>/);
+  assert.deepEqual(kept.typographyHeadingChanges, []);
+});
+
+test('a heading inside data-typography off is not changed or reported', async () => {
+  const { html, typographyHeadingChanges } = await render('<div data-typography="off">\n<h2>the "x" -- y</h2>\n</div>');
+  assert.match(html, /<h2[^>]*>the "x" -- y<\/h2>/);
+  assert.deepEqual(typographyHeadingChanges, []);
+});

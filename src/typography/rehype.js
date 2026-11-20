@@ -1,6 +1,7 @@
 import { visit, SKIP } from 'unist-util-visit';
 import { resolveRules } from './rules/index.js';
 import { typesetSegments } from './typeset.js';
+import { headingCase } from './heading-case.js';
 
 /** @typedef {import('./settings.js').TypographySettings} TypographySettings */
 
@@ -15,7 +16,8 @@ import { typesetSegments } from './typeset.js';
  */
 
 /** Elements whose text is typeset as one block, with its inline elements. */
-const BLOCKS = new Set(['p', 'li', 'td', 'th', 'dd', 'dt']);
+const HEADINGS = new Set(['h1', 'h2', 'h3', 'h4', 'h5', 'h6']);
+const BLOCKS = new Set(['p', 'li', 'td', 'th', 'dd', 'dt', ...HEADINGS]);
 /** Elements that end a run of inline text inside a block. */
 const BOUNDARIES = new Set([
   'p', 'li', 'ul', 'ol', 'dl', 'dd', 'dt', 'blockquote', 'table', 'thead', 'tbody', 'tfoot', 'tr', 'td', 'th',
@@ -55,18 +57,71 @@ function isBareLink(node) {
  */
 
 /**
+ * A heading whose case the heading rule changed.
+ *
+ * @typedef {object} HeadingChange
+ * @property {string} [file] File of the heading.
+ * @property {number} [line] 1-based line of the heading.
+ * @property {string} before Text after the marks were typeset, before the case rule.
+ * @property {string} after Text after the case rule.
+ */
+
+/**
+ * Collects the text nodes of a heading that heading case may change. Code,
+ * bare links and `data-typography="off"` content stand as OPAQUE.
+ *
+ * @param {import('hast').Element} heading
+ * @returns {{ nodes: (import('hast').Text | null)[], text: string }}
+ */
+function headingText(heading) {
+  /** @type {(import('hast').Text | null)[]} */
+  const nodes = [];
+  let text = '';
+  /** @param {import('hast').ElementContent[]} children */
+  const walk = (children) => {
+    for (const child of children) {
+      if (child.type === 'text') {
+        nodes.push(child);
+        text += child.value;
+      } else if (child.type === 'element') {
+        if (isOff(child) || isBareLink(child) || child.tagName === 'img') {
+          nodes.push(null);
+          text += OPAQUE;
+        } else if (child.tagName === 'br') {
+          nodes.push(null);
+          text += '\n';
+        } else {
+          walk(child.children);
+        }
+      } else if (child.type === 'raw') {
+        nodes.push(null);
+        text += OPAQUE;
+      }
+    }
+  };
+  walk(heading.children);
+  return { nodes, text };
+}
+
+/**
  * Rehype plugin: typesets the text of paragraphs, list items, table cells and
  * definitions. The text of a block is joined across its inline elements, so
  * a quote pairs across `<em>`. Attributes, code, raw HTML, image text and
  * elements marked `data-typography="off"` are never changed.
  *
- * @param {{ settings: Pick<TypographySettings, 'enabled' | 'locale' | 'dashStyle'>, file?: string, lineOffset?: number, onWarnings?: (warnings: TypographyWarning[]) => void }} options
+ * Headings (h1 to h6) are typeset too. With `headings: locale` (the default)
+ * the heading case of the locale applies, and each changed heading is reported
+ * to `onHeadingChanges`.
+ *
+ * @param {{ settings: Pick<TypographySettings, 'enabled' | 'locale' | 'dashStyle'> & Partial<Pick<TypographySettings, 'headings' | 'keep'>>, file?: string, lineOffset?: number, onWarnings?: (warnings: TypographyWarning[]) => void, onHeadingChanges?: (changes: HeadingChange[]) => void }} options
  * @returns {(tree: import('hast').Root) => void}
  */
-export function rehypeTypography({ settings, file, lineOffset = 0, onWarnings }) {
+export function rehypeTypography({ settings, file, lineOffset = 0, onWarnings, onHeadingChanges }) {
   return (tree) => {
     /** @type {TypographyWarning[]} */
     const warnings = [];
+    /** @type {HeadingChange[]} */
+    const headingChanges = [];
     if (settings.enabled !== false) {
       const rules = resolveRules(settings.locale);
       const options = { rules, dashStyle: settings.dashStyle };
@@ -121,6 +176,32 @@ export function rehypeTypography({ settings, file, lineOffset = 0, onWarnings })
         };
         collect(block.children);
         flush(run, block);
+        if (HEADINGS.has(block.tagName) && settings.headings !== 'keep') caseHeading(block);
+      };
+
+      /**
+       * Applies the heading case of the locale to a typeset heading.
+       *
+       * @param {import('hast').Element} heading
+       */
+      const caseHeading = (heading) => {
+        const { nodes, text } = headingText(heading);
+        const result = headingCase(text, { rules, keep: settings.keep ?? [] });
+        // The case rule keeps the length of the text; if it did not, leave the heading as it is.
+        if (!result.changed || result.text.length !== text.length) return;
+        let offset = 0;
+        for (const node of nodes) {
+          const length = node ? node.value.length : 1;
+          if (node) node.value = result.text.slice(offset, offset + length);
+          offset += length;
+        }
+        const start = heading.position?.start;
+        headingChanges.push({
+          file,
+          line: start === undefined ? undefined : start.line + lineOffset,
+          before: text.replaceAll(OPAQUE, ''),
+          after: result.text.replaceAll(OPAQUE, ''),
+        });
       };
 
       visit(tree, 'element', (node) => {
@@ -130,5 +211,6 @@ export function rehypeTypography({ settings, file, lineOffset = 0, onWarnings })
       });
     }
     onWarnings?.(warnings);
+    onHeadingChanges?.(headingChanges);
   };
 }

@@ -44,7 +44,7 @@ export const DEFAULT_CODE_THEMES = Object.freeze({
  * @property {number} [headingShift] Whole number added to the level of every heading the Markdown makes, the result kept between h1 and h6 (default 0). A post shown inside a list page uses 1, so its h2 becomes h3 below the h2 that carries its title. Headings written as raw HTML are left as they are.
  * @property {Partial<import('./directives/video.js').VideoOptions>} [video] The rules that recognise remote videos, how they load, and where the local videos of the text are published (default: `DEFAULT_VIDEO_RULES`, `click`, and no local video exists).
  * @property {string} [idPrefix] Text put in front of every `id` of the output, so that several texts on one page have none in common (default: none; it must not contain whitespace). It applies to the ids of headings, of footnotes and of elements and anchors written as raw HTML, to the `aria-describedby`, `aria-labelledby` and `aria-controls` that point at them, and to every link of the text whose target is `#id` of such an id (links to other pages and to ids the text does not have stay as written). `toc`, `ids` and `links` in the result keep the values without the prefix, since they describe the text, not the page.
- * @property {Pick<import('../typography/settings.js').TypographySettings, 'enabled' | 'locale' | 'dashStyle'>} [typography] The resolved typography settings. Given, the text is typeset by the rules of `locale` (unless `enabled` is false), backslash escapes and `:verbatim` are honoured, and unpaired quotes come back in `typographyWarnings`. Left out, the output is not typeset at all.
+ * @property {Pick<import('../typography/settings.js').TypographySettings, 'enabled' | 'locale' | 'dashStyle'> & Partial<Pick<import('../typography/settings.js').TypographySettings, 'headings' | 'keep'>>} [typography] The resolved typography settings. Given, the text is typeset by the rules of `locale` (unless `enabled` is false), backslash escapes and `:verbatim` are honoured, and unpaired quotes come back in `typographyWarnings`. Left out, the output is not typeset at all.
  * @property {string} [videoIdPrefix] Text put between `idPrefix` and `video-` in the id of each video, and in everything that points at it, so that the videos of several texts on one page have different ids while the other ids of the texts stay as they are (default: none; it must not contain whitespace). `ids` keeps the ids of the videos without it.
  */
 
@@ -168,6 +168,7 @@ export const DEFAULT_CAROUSEL_LABELS = Object.freeze({
  * @property {import('../video/types.js').VideoDirective[]} videos The videos of the text, in document order. Each one is an empty `<div data-coffer-video="n"></div>` in `html`, n being its `index`, for the caller to fill in.
  * @property {import('../video/types.js').VideoWarning[]} videoWarnings Features the providers of the videos lack that the text asks for; the text renders without them.
  * @property {FoundLink[]} links Every Markdown link and image written in the text (links the renderer makes up, such as footnote back references and seek links, are left out).
+ * @property {import('../typography/rehype.js').HeadingChange[]} typographyHeadingChanges Headings whose case typography changed, with file, line, before and after; empty without the `typography` option. Heading ids are made from the source text and do not change; `toc` holds the typeset text.
  * @property {import('../typography/rehype.js').TypographyWarning[]} typographyWarnings Unpaired quotes that typography kept as typed, with file and line; empty without the `typography` option.
  * @property {string[]} ids Every `id` a link can point at: heading ids, ids of other elements and of videos and ids and names set by raw HTML, without duplicates.
  */
@@ -177,6 +178,7 @@ export const DEFAULT_CAROUSEL_LABELS = Object.freeze({
  *
  * @typedef {object} Collected
  * @property {TocEntry[]} headings
+ * @property {import('hast').Element[]} headingNodes The elements of `headings`, in the same order; typography changes their text later.
  * @property {string} text
  * @property {{ src: string, alt: string } | null} firstImage
  * @property {TextImage[]} images
@@ -448,7 +450,7 @@ function isCarousel(node) {
 function collect({ lineOffset, onResult }) {
   return (tree) => {
     /** @type {Collected} */
-    const found = { headings: [], text: '', firstImage: null, images: [], carousels: 0, links: [], ids: new Set() };
+    const found = { headings: [], headingNodes: [], text: '', firstImage: null, images: [], carousels: 0, links: [], ids: new Set() };
     /** @type {string[]} */
     const textParts = [];
     /** @type {WeakSet<object>} */
@@ -487,6 +489,7 @@ function collect({ lineOffset, onResult }) {
       if (node.tagName === 'h2' || node.tagName === 'h3') {
         const id = node.properties.id;
         if (typeof id === 'string') {
+          found.headingNodes.push(node);
           found.headings.push({
             id,
             text: toString(node).trim(),
@@ -990,6 +993,8 @@ export async function renderMarkdown(source, options = {}) {
   const typography = options.typography;
   /** @type {import('../typography/rehype.js').TypographyWarning[]} */
   let typographyWarnings = [];
+  /** @type {import('../typography/rehype.js').HeadingChange[]} */
+  let typographyHeadingChanges = [];
   const processor = unified()
     .use(remarkParse)
     .use(remarkGfm)
@@ -1064,6 +1069,9 @@ export async function renderMarkdown(source, options = {}) {
       onWarnings: (found) => {
         typographyWarnings = found;
       },
+      onHeadingChanges: (found) => {
+        typographyHeadingChanges = found;
+      },
     })
     .use(typography ? rehypeRestoreEscapes : noop)
     .use(rehypeStringify, { allowDangerousHtml: true });
@@ -1071,6 +1079,10 @@ export async function renderMarkdown(source, options = {}) {
   const file = await processor.process({ value: source, path: options.file });
   if (!collected) throw new Error('the Markdown pipeline did not run');
 
+  // Typography has changed the text of the headings in place; the ids are those of the source.
+  collected.headings.forEach((entry, i) => {
+    entry.text = toString(/** @type {import('hast').Element} */ (collected?.headingNodes[i])).trim();
+  });
   // The placeholders of the videos are empty, so the titles of their chapters
   // are counted here. The title of a video is not a word of the text.
   const chapterText = videoDirectives.flatMap((video) => video.chapters.map((chapter) => chapter.text));
@@ -1091,6 +1103,7 @@ export async function renderMarkdown(source, options = {}) {
     videoWarnings,
     links: collected.links,
     typographyWarnings,
+    typographyHeadingChanges,
     ids: [...collected.ids],
   };
 }
