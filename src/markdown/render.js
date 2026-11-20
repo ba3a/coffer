@@ -385,10 +385,10 @@ function videos({ source, file, lineOffset, video, idPrefix, onFound }) {
  * are gone from the tree by now, except where a directive that is not defined
  * holds them.
  *
- * @param {{ file?: string, lineOffset: number }} options
+ * @param {{ file?: string, lineOffset: number, allowed?: ReadonlySet<string> }} options `allowed` names directives that another plugin defines and that must pass (none by default).
  * @returns {(tree: import('mdast').Root) => void}
  */
-function rejectDirectives({ file, lineOffset }) {
+export function rejectDirectives({ file, lineOffset, allowed }) {
   return (tree) => {
     visit(tree, (node) => {
       if (
@@ -399,6 +399,7 @@ function rejectDirectives({ file, lineOffset }) {
         return;
       }
       const directive = /** @type {{ name: string }} */ (/** @type {unknown} */ (node));
+      if (allowed?.has(directive.name)) return;
       const start = node.position?.start;
       throw new MarkdownError(
         `unknown directive "${directive.name}" (a colon followed by a letter starts a directive; write \\: for a plain colon)`,
