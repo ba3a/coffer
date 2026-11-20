@@ -1,4 +1,5 @@
 import { isAbsoluteUrl, mapHtmlUrls } from './html-urls.js';
+import { typesetMeta } from './typography/title.js';
 import { decodeEntities, escapeXml, escapeXmlAttribute } from './xml.js';
 
 /** File name of a feed, under the page it belongs to. */
@@ -156,6 +157,19 @@ export function rfc3339(date) {
   return date.toISOString().replace(/\.\d{3}Z$/, 'Z');
 }
 
+const HANG_SPAN_RE = /<span class="hang"(?: data-m="[^"]*")?>([^<]*)<\/span>/g;
+
+/**
+ * Removes the hanging-punctuation spans the renderer wrote, keeping their
+ * text: feed readers have no style for them.
+ *
+ * @param {string} html
+ * @returns {string}
+ */
+export function withoutHangSpans(html) {
+  return html.replace(HANG_SPAN_RE, '$1');
+}
+
 /**
  * Builds the feed entry of a post.
  *
@@ -169,17 +183,19 @@ export function rfc3339(date) {
  * @param {string} [input.excerptHtml] The body the automatic summary is taken from when there is no `summary` (default: `html`), such as the body without its videos.
  * @param {{ path: string, name: string }[]} input.tags
  * @param {string} input.tagsIndexUrl Site-relative URL of the tag tree, used as the scheme of the categories.
+ * @param {Pick<import('./typography/settings.js').TypographySettings, 'enabled' | 'locale' | 'dashStyle' | 'feeds'>} [input.typography] Typography of the post; the title and the summary are typeset in plain mode unless `feeds` is false. Without it they stay as given.
  * @returns {FeedEntry}
  */
-export function createFeedEntry({ baseUrl, url, title, date, summary, html, excerptHtml, tags, tagsIndexUrl }) {
+export function createFeedEntry({ baseUrl, url, title, date, summary, html, excerptHtml, tags, tagsIndexUrl, typography }) {
   const permalink = absoluteUri(baseUrl, url);
-  const full = absolutizeHtml(simplifyPictures(html), permalink, baseUrl);
+  const full = absolutizeHtml(withoutHangSpans(simplifyPictures(html)), permalink, baseUrl);
+  const text = typography && typography.feeds !== false ? (/** @type {string} */ value) => typesetMeta(value, typography) : (/** @type {string} */ value) => value;
   return {
     url: permalink,
-    title,
+    title: text(title),
     published: date,
     updated: date,
-    summary: summary !== null && summary.trim() !== '' ? summary.trim() : excerptOf(excerptHtml ?? full),
+    summary: text(summary !== null && summary.trim() !== '' ? summary.trim() : excerptOf(excerptHtml ?? full)),
     html: full,
     categories: tags.map((tag) => ({
       term: tag.path,

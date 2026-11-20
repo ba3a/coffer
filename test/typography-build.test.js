@@ -215,3 +215,29 @@ test('typography off leaves title and meta text as typed', async () => {
     assert.match(h, /<meta property="og:description" content="He said &quot;hi&quot;\.">/);
   });
 });
+
+const FEED_POST = '"Quoted" start -- of a post.\n\nSecond paragraph.';
+
+test('feed entries have no hang span; titles and summaries are typeset with normal spaces', async () => {
+  const files = { 'coffer.yaml': config(), 'notes/a.md': post(FEED_POST, 'summary: He said "hi" -- 12 km.\n', 'Dis "quoi" -- oui') };
+  await inTree(files, async (root) => {
+    const { out } = await build(root);
+    assert.match(read(out, 'log', 'a', 'index.html'), /class="hang"/);
+    const feed = read(out, 'log', 'feed.xml');
+    assert.ok(!feed.includes('class=&quot;hang&quot;') && !feed.includes('class="hang"'));
+    assert.match(feed, /<title>Dis “quoi” – oui<\/title>/);
+    assert.match(feed, /<summary>He said “hi” – 12 km\.<\/summary>/);
+    assert.ok(!/[  ]/.test(feed.slice(feed.indexOf('<entry>'), feed.indexOf('<content'))));
+  });
+});
+
+test('feeds: false leaves feed titles and summaries as written, still without hang spans', async () => {
+  const files = { 'coffer.yaml': config('    typography: { feeds: false }'), 'notes/a.md': post(FEED_POST, 'summary: He said "hi".\n', 'Dis "quoi"') };
+  await inTree(files, async (root) => {
+    const { out } = await build(root);
+    const feed = read(out, 'log', 'feed.xml');
+    assert.match(feed, /<title>Dis "quoi"<\/title>/);
+    assert.match(feed, /<summary>He said "hi".<\/summary>/);
+    assert.ok(!feed.includes('class=&quot;hang&quot;'));
+  });
+});
