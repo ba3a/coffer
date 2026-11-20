@@ -25,6 +25,7 @@ function configOf(lang = 'en', extra = '') {
     'sites:',
     '  - id: demo',
     '    baseUrl: https://demo.example',
+    '    typography: { enabled: false }',
     `    lang: ${lang}`,
     '    title: Demo',
     '    description: A demo site.',

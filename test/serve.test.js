@@ -41,7 +41,7 @@ test('the canonical URL of a post answers 200 with HTML', async () => {
   const response = await get('/journal/first-dovetail/');
   assert.equal(response.status, 200);
   assert.equal(response.headers.get('content-type'), 'text/html; charset=utf-8');
-  assert.match(await response.text(), /<h1>My first hand-cut dovetail<\/h1>/);
+  assert.match(await response.text(), /<h1>My First Hand-Cut\s+Dovetail<\/h1>/);
 });
 
 test('the same URL without the trailing slash redirects with 308 to the canonical one', async () => {

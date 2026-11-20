@@ -27,7 +27,7 @@
 {% endblock %}
 <article class="docs-page">
 {% block docs_header %}
-<h1{% if docs.titleId %} id="{{ docs.titleId }}"{% endif %}>{{ page.title }}</h1>
+<h1{% if docs.titleId %} id="{{ docs.titleId }}"{% endif %}>{{ page.heading or page.title }}</h1>
 {% endblock %}
 {% if toc.length %}{% block toc %}{% include "partials/toc.njk" %}{% endblock %}{% endif %}
 {% block docs_body %}

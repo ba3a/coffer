@@ -131,13 +131,13 @@ test('post URLs are /journal/{slug}/ whatever the date and the tags', async () =
 test('the post page shows title, date, reading time, the table of contents and the body', async () => {
   await withExample({}, (site) => {
     const html = page(site, '/journal/first-dovetail/');
-    assert.match(html, /<h1>My first hand-cut dovetail<\/h1>/);
+    assert.match(html, /<h1>My First Hand-Cut\s+Dovetail<\/h1>/);
     assert.match(html, /<time datetime="2025-03-14">Published Mar 14, 2025<\/time>/);
     assert.match(html, /\d+ minutes?/);
     const toc = html.indexOf('<details class="toc">');
     const body = html.indexOf('<div class="post-body"');
     assert.ok(toc !== -1 && body !== -1 && toc < body, 'the TOC comes before the body');
-    assert.match(html, /<a href="#marking-out">Marking out<\/a>/);
+    assert.match(html, /<a href="#marking-out">Marking Out<\/a>/);
     assert.match(html, /<h2 id="marking-out">/);
     assert.match(html, /<link rel="stylesheet" href="\/assets\/coffer\.css">/);
   });
@@ -379,7 +379,7 @@ test('the example projects page lists both projects and the project pages resolv
     );
     const tool = page(site, '/made/kerfcalc/');
     assert.match(tool, /<h1>Kerfcalc<\/h1>/);
-    assert.match(tool, /<a href="\/made\/tenon-tumble\/">Tenon Tumble<\/a>/);
+    assert.match(tool, /<a href="\/made\/tenon-tumble\/">Tenon\sTumble<\/a>/);
     assert.match(tool, /<a href="\/journal\/walnut-box\/">walnut keepsake box<\/a>/);
     assert.match(tool, /<dt>License<\/dt>\s*<dd>MIT<\/dd>/);
     assert.match(tool, /<p class="project-pitch">A small command-line calculator for saw kerf/);
@@ -436,7 +436,7 @@ test('the example game has a press kit whose downloads are full resolution and c
     assert.match(section, /<dt>Platforms<\/dt>\s*<dd>Linux, Windows, Web<\/dd>/);
     assert.match(section, /<dt>Price<\/dt>\s*<dd>Free<\/dd>/);
     assert.match(section, /<h3>Short description<\/h3>\s*<p>A relaxed puzzle game/);
-    assert.match(section, /<h3>Description<\/h3>[\s\S]*<li>Short rounds that fit the minutes between jobs\.<\/li>/);
+    assert.match(section, /<h3>Description<\/h3>[\s\S]*<li>Short rounds that fit the minutes between\sjobs\.<\/li>/);
     assert.equal((section.match(/<a class="press-download" /g) ?? []).length, 5);
 
     assert.deepEqual(
@@ -539,5 +539,13 @@ test('the example post shows a video with a poster, chapters and a seek link, wi
     for (const other of manifest.posts.filter((post) => post.slug !== 'first-dovetail')) {
       assert.deepEqual(other.videos, [], other.slug);
     }
+  });
+});
+
+test('the example site is typeset: curly apostrophes in post bodies', async () => {
+  await withExample({}, (site) => {
+    const html = page(site, '/journal/walnut-box/');
+    assert.match(html, /grandmother’s buttons/);
+    assert.doesNotMatch(html, /grandmother's buttons/);
   });
 });

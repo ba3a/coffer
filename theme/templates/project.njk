@@ -5,7 +5,7 @@
 {% block project_header %}
 <header class="project-header">
 <p class="project-meta"><span class="project-kind">{{ project.kindLabel }}</span> <span aria-hidden="true">&middot;</span> <span class="project-status">{{ project.statusLabel }}</span></p>
-<h1>{{ project.name }}</h1>
+<h1>{{ project.heading or project.name }}</h1>
 <p class="project-pitch">{{ project.pitch }}</p>
 </header>
 {% endblock %}

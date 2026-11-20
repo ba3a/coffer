@@ -20,6 +20,7 @@ const SITE_CONFIG = [
   'sites:',
   '  - id: demo',
   '    baseUrl: https://demo.example',
+  '    typography: { enabled: false }',
   '    lang: en',
   '    title: Demo',
   '    description: A demo site.',
@@ -140,9 +141,9 @@ test('the sample tool: guides render in the site theme with a sidebar in the con
     // The configured order first (getting-started, usage), then the rest alphabetically (internals); the generated index leads.
     assert.equal(
       sidebarOf(start),
-      'Documentation@/made/kerfcalc/docs/|Getting started@/made/kerfcalc/docs/getting-started/|Usage@/made/kerfcalc/docs/usage/|Internals@/made/kerfcalc/docs/internals/|Kerfcalc reference@/made/kerfcalc/docs/reference/',
+      'Documentation@/made/kerfcalc/docs/|Getting Started@/made/kerfcalc/docs/getting-started/|Usage@/made/kerfcalc/docs/usage/|Internals@/made/kerfcalc/docs/internals/|Kerfcalc reference@/made/kerfcalc/docs/reference/',
     );
-    assert.match(start, /<li><a href="\/made\/kerfcalc\/docs\/getting-started\/" aria-current="page">Getting started<\/a><\/li>/);
+    assert.match(start, /<li><a href="\/made\/kerfcalc\/docs\/getting-started\/" aria-current="page">Getting Started<\/a><\/li>/);
     assert.match(start, /<nav class="docs-sidebar" aria-label="Kerfcalc: documentation pages">/);
     // Breadcrumbs lead back to the project page.
     assert.match(start, /<nav class="docs-breadcrumbs" aria-label="Breadcrumbs">\s*<ol>\s*<li><a href="\/made\/">Projects<\/a><\/li>\s*<li><a href="\/made\/kerfcalc\/">Kerfcalc<\/a><\/li>\s*<li><a href="\/made\/kerfcalc\/docs\/">Documentation<\/a><\/li>/);
@@ -150,7 +151,7 @@ test('the sample tool: guides render in the site theme with a sidebar in the con
     assert.match(start, /<link rel="stylesheet" href="\/assets\/coffer\.css">/);
     assert.match(start, /<header class="site-header">/);
     // Title from the first heading, not repeated in the body.
-    assert.match(start, /<title>Getting started: Kerfcalc \| Tove Marlowe<\/title>/);
+    assert.match(start, /<title>Getting Started: Kerfcalc \| Tove Marlowe<\/title>/);
     assert.equal(start.split('<h1').length - 1, 1);
     // Previous and next.
     assert.match(start, /<li class="docs-previous"><a rel="prev" href="\/made\/kerfcalc\/docs\/">/);
@@ -161,7 +162,7 @@ test('the sample tool: guides render in the site theme with a sidebar in the con
     // Links between guides are site links, with their anchors.
     assert.match(start, /<a href="\/made\/kerfcalc\/docs\/usage\/">Usage<\/a>/);
     assert.match(start, /<a href="\/made\/kerfcalc\/docs\/usage\/#options">the options<\/a>/);
-    assert.match(read('usage'), /<a href="\/made\/kerfcalc\/docs\/getting-started\/">Getting started<\/a>/);
+    assert.match(read('usage'), /<a href="\/made\/kerfcalc\/docs\/getting-started\/">Getting Started<\/a>/);
     // Links to files outside the published set point at GitHub: `../CHANGELOG.md` and a source file are files, a folder is a tree.
     assert.match(start, /<a href="https:\/\/github\.com\/tove-marlowe\/kerfcalc\/blob\/main\/CHANGELOG\.md">changelog<\/a>/);
     assert.match(start, /<a href="https:\/\/github\.com\/tove-marlowe\/kerfcalc\/blob\/main\/src\/main\/kotlin\/Sample\.kt">Sample\.kt<\/a>/);
@@ -180,7 +181,7 @@ test('the sample tool: guides render in the site theme with a sidebar in the con
     assert.ok(existsSync(join(dir, 'workshop', image.outputs[0].file)));
 
     // The docs index is generated (the folder has no README or index) and lists the pages.
-    assert.match(read(''), /<ul class="docs-index-list">\s*<li><a href="\/made\/kerfcalc\/docs\/getting-started\/">Getting started<\/a><\/li>/);
+    assert.match(read(''), /<ul class="docs-index-list">\s*<li><a href="\/made\/kerfcalc\/docs\/getting-started\/">Getting Started<\/a><\/li>/);
 
     // The project page and the manifest.
     assert.match(readFileSync(join(dir, 'workshop', 'made', 'kerfcalc', 'index.html'), 'utf8'), /<a href="\/made\/kerfcalc\/docs\/">Read the documentation<\/a>/);
@@ -189,7 +190,7 @@ test('the sample tool: guides render in the site theme with a sidebar in the con
       entry.docs?.pages.map((page) => [page.url, page.source, page.title]),
       [
         ['/made/kerfcalc/docs/', null, 'Documentation'],
-        ['/made/kerfcalc/docs/getting-started/', 'docs/getting-started.md', 'Getting started'],
+        ['/made/kerfcalc/docs/getting-started/', 'docs/getting-started.md', 'Getting Started'],
         ['/made/kerfcalc/docs/usage/', 'docs/usage.md', 'Usage'],
         ['/made/kerfcalc/docs/internals/', 'docs/internals.md', 'Internals'],
       ],

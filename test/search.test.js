@@ -111,7 +111,7 @@ test('a Russian query finds other word forms, and only in the blog it is asked i
         ['/zapisi/shkatulka/'],
         `the query "${term}" finds the post of the blog "journal"`,
       );
-      assert.equal(hits[0].title, 'Шкатулка из ореха');
+      assert.equal(hits[0].title.replace(/\s/g, ' '), 'Шкатулка из ореха');
       assert.match(hits[0].excerpt, /<mark>шкатулк\p{L}*<\/mark>/u);
     }
     assert.deepEqual(
@@ -139,7 +139,7 @@ test('the example site is searchable in English, with snippets', async () => {
     const hits = await search.search('dovetails', { blog: 'journal' });
     const dovetail = hits.find((hit) => hit.url === '/journal/first-dovetail/');
     assert.ok(dovetail, 'the dovetail post answers "dovetails"');
-    assert.equal(dovetail.title, 'My first hand-cut dovetail');
+    assert.equal(dovetail.title.replace(/\s/g, ' '), 'My First Hand-Cut Dovetail');
     assert.match(dovetail.excerpt, /<mark>dovetail<\/mark>/);
     assert.deepEqual(dovetail.filters, { blog: ['journal'] });
 

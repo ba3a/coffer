@@ -10,6 +10,10 @@ Every release is a git tag named `v` followed by the version, for example `v0.1.
 
 ## Unreleased
 
+### Changed
+
+- Typography is on by default. Quotes, dashes, ellipses, non-breaking spaces, widows, hanging punctuation and heading case follow the language of the text in posts, guides, project pages, the home page and README sections, and post, page and project titles in the page body are typeset. The output of existing sites changes on update. A site, a blog or a post turns it off with `typography: { enabled: false }` (`typography: false` in post front matter). A post sets its own `lang`, which also sets `lang` on its `<article>` when it differs from the site. An unpaired quote is a build warning with file and line.
+
 ## 0.2.1 - 2026-11-17
 
 ### Fixed

@@ -18,6 +18,7 @@ const SITE_CONFIG = [
   'sites:',
   '  - id: demo',
   '    baseUrl: https://demo.example',
+  '    typography: { enabled: false }',
   '    lang: en',
   '    title: Demo',
   '    description: A demo site.',
@@ -165,7 +166,7 @@ test('the example site: the page of the sample tool shows the Quick start sectio
     const config = loadConfig({ configPath: exampleConfig });
     await buildSites(config, { out: dir, now: new Date('2026-06-01T12:00:00Z'), cacheDir: join(dir, '.cache') });
     const html = readFileSync(join(dir, 'workshop', 'made', 'kerfcalc', 'index.html'), 'utf8');
-    assert.match(html, /<h2[^>]*>Quick start<\/h2>\s*<div class="readme-section">/);
+    assert.match(html, /<h2[^>]*>Quick Start<\/h2>\s*<div class="readme-section">/);
     assert.match(html, /kerfcalc<\/span>/);
     // A link to a guide leads to the guide's page; a link to a file that is not published leads to GitHub.
     assert.match(html, /<a href="\/made\/kerfcalc\/docs\/usage\/#options">usage guide<\/a>/);
