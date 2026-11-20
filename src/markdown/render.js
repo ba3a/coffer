@@ -9,6 +9,8 @@ import { toHtml } from 'hast-util-to-html';
 import { toString } from 'hast-util-to-string';
 import { visit, SKIP } from 'unist-util-visit';
 import { bundledLanguages, createHighlighter } from 'shiki';
+import { rehypeTypography } from '../typography/rehype.js';
+import { remarkEscapes, remarkVerbatim, rehypeRestoreEscapes, VERBATIM_DIRECTIVE } from '../typography/escapes.js';
 import { CarouselSyntaxError, remarkCarousels } from './directives/carousel.js';
 import { MapSyntaxError, remarkMaps } from './directives/map.js';
 import { ReadmeSyntaxError, remarkReadmes } from './directives/readme.js';
@@ -42,6 +44,7 @@ export const DEFAULT_CODE_THEMES = Object.freeze({
  * @property {number} [headingShift] Whole number added to the level of every heading the Markdown makes, the result kept between h1 and h6 (default 0). A post shown inside a list page uses 1, so its h2 becomes h3 below the h2 that carries its title. Headings written as raw HTML are left as they are.
  * @property {Partial<import('./directives/video.js').VideoOptions>} [video] The rules that recognise remote videos, how they load, and where the local videos of the text are published (default: `DEFAULT_VIDEO_RULES`, `click`, and no local video exists).
  * @property {string} [idPrefix] Text put in front of every `id` of the output, so that several texts on one page have none in common (default: none; it must not contain whitespace). It applies to the ids of headings, of footnotes and of elements and anchors written as raw HTML, to the `aria-describedby`, `aria-labelledby` and `aria-controls` that point at them, and to every link of the text whose target is `#id` of such an id (links to other pages and to ids the text does not have stay as written). `toc`, `ids` and `links` in the result keep the values without the prefix, since they describe the text, not the page.
+ * @property {Pick<import('../typography/settings.js').TypographySettings, 'enabled' | 'locale' | 'dashStyle'>} [typography] The resolved typography settings. Given, the text is typeset by the rules of `locale` (unless `enabled` is false), backslash escapes and `:verbatim` are honoured, and unpaired quotes come back in `typographyWarnings`. Left out, the output is not typeset at all.
  * @property {string} [videoIdPrefix] Text put between `idPrefix` and `video-` in the id of each video, and in everything that points at it, so that the videos of several texts on one page have different ids while the other ids of the texts stay as they are (default: none; it must not contain whitespace). `ids` keeps the ids of the videos without it.
  */
 
@@ -165,6 +168,7 @@ export const DEFAULT_CAROUSEL_LABELS = Object.freeze({
  * @property {import('../video/types.js').VideoDirective[]} videos The videos of the text, in document order. Each one is an empty `<div data-coffer-video="n"></div>` in `html`, n being its `index`, for the caller to fill in.
  * @property {import('../video/types.js').VideoWarning[]} videoWarnings Features the providers of the videos lack that the text asks for; the text renders without them.
  * @property {FoundLink[]} links Every Markdown link and image written in the text (links the renderer makes up, such as footnote back references and seek links, are left out).
+ * @property {import('../typography/rehype.js').TypographyWarning[]} typographyWarnings Unpaired quotes that typography kept as typed, with file and line; empty without the `typography` option.
  * @property {string[]} ids Every `id` a link can point at: heading ids, ids of other elements and of videos and ids and names set by raw HTML, without duplicates.
  */
 
@@ -214,6 +218,19 @@ function positiveInteger(value, name, fallback) {
   }
   return value;
 }
+
+/**
+ * Rehype plugin: typography, or nothing when no settings are given.
+ *
+ * @param {Partial<Parameters<typeof rehypeTypography>[0]>} options
+ * @returns {(tree: import('hast').Root) => void}
+ */
+function typesetting({ settings, ...rest }) {
+  return settings ? rehypeTypography({ settings, ...rest }) : () => {};
+}
+
+/** A plugin that does nothing, for the steps that are off. */
+function noop() {}
 
 const wordSegmenter = new Intl.Segmenter(undefined, { granularity: 'word' });
 
@@ -970,6 +987,9 @@ export async function renderMarkdown(source, options = {}) {
   /** The ids of the videos of the text, without either prefix. */
   const videoIds = () => videoDirectives.map((video) => `video-${video.id ?? String(video.index + 1)}`);
 
+  const typography = options.typography;
+  /** @type {import('../typography/rehype.js').TypographyWarning[]} */
+  let typographyWarnings = [];
   const processor = unified()
     .use(remarkParse)
     .use(remarkGfm)
@@ -1002,7 +1022,13 @@ export async function renderMarkdown(source, options = {}) {
         videoWarnings = warnings;
       },
     })
-    .use(rejectDirectives, { file: options.file, lineOffset })
+    .use(typography ? remarkVerbatim : noop)
+    .use(typography ? remarkEscapes : noop)
+    .use(rejectDirectives, {
+      file: options.file,
+      lineOffset,
+      allowed: typography ? new Set([VERBATIM_DIRECTIVE]) : undefined,
+    })
     .use(remarkRehype, { allowDangerousHtml: true })
     .use(dropComments)
     .use(rehypeSlug)
@@ -1031,6 +1057,15 @@ export async function renderMarkdown(source, options = {}) {
       },
     })
     .use(highlightCode, { themes })
+    .use(typesetting, {
+      settings: typography,
+      file: options.file,
+      lineOffset,
+      onWarnings: (found) => {
+        typographyWarnings = found;
+      },
+    })
+    .use(typography ? rehypeRestoreEscapes : noop)
     .use(rehypeStringify, { allowDangerousHtml: true });
 
   const file = await processor.process({ value: source, path: options.file });
@@ -1055,6 +1090,7 @@ export async function renderMarkdown(source, options = {}) {
     videos: videoDirectives,
     videoWarnings,
     links: collected.links,
+    typographyWarnings,
     ids: [...collected.ids],
   };
 }
