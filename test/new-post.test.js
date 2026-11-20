@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { resolveTypography } from '../src/typography/settings.js';
 
 import { parseNewArgs, run } from '../src/cli.js';
 import { loadConfig } from '../src/config.js';
@@ -258,7 +259,7 @@ test('a missing newPostTemplate file is reported and nothing is written', async 
 
 test('createPost throws a NewPostError that lists every problem', () => {
   assert.throws(
-    () => createPost({ blog: { id: 'b', dir: join(tmpdir(), 'coffer-never'), prefix: 'b', title: 'B', index: { type: 'summary', pageSize: null } }, timezone: 'UTC', title: ' ', date: 'x', tags: ['!'] }),
+    () => createPost({ blog: { id: 'b', dir: join(tmpdir(), 'coffer-never'), prefix: 'b', title: 'B', index: { type: 'summary', pageSize: null }, lang: 'en', typography: {}, resolvedTypography: resolveTypography({ lang: 'en' }) }, timezone: 'UTC', title: ' ', date: 'x', tags: ['!'] }),
     (error) => error instanceof NewPostError && error.errors.length === 4,
   );
 });
