@@ -114,12 +114,12 @@ test('the site typography setting turns typography off for every post', async ()
   });
 });
 
-test('the title of a post is typeset in the page body but not in <title>', async () => {
+test('the title of a post is typeset in the page body and in <title>', async () => {
   await inTree({ 'coffer.yaml': config(), 'notes/a.md': post('Text.', '', "'The \"box\" of Tools'") }, async (root) => {
     const { out } = await build(root);
     const html = read(out, 'log', 'a', 'index.html');
     assert.match(html, /<h1>[^<]*“[^<]*<\/h1>/);
-    assert.match(html, /<title>The &quot;box&quot; of Tools/);
+    assert.match(html, /<title>The “box” of Tools/);
   });
 });
 
@@ -160,5 +160,58 @@ test('the blog title on the blog index is typeset in the body', async () => {
   await inTree({ 'coffer.yaml': config().replace('title: Notes', 'title: \'The "Notes"\''), 'notes/a.md': post('Text.') }, async (root) => {
     const { out } = await build(root);
     assert.match(read(out, 'log', 'index.html'), /<h1>The “Notes”<\/h1>/);
+  });
+});
+
+test('title, meta text and share text are typeset in plain mode', async () => {
+  const files = {
+    'coffer.yaml': config().replace('title: Notes }', 'title: Notes, shareSummary: true }'),
+    'notes/tags.yaml': 'alpha:\n  name: Tom "x"\n',
+    'notes/a.md': post('"Вернулся" он в лес -- поздно.', 'lang: ru\nsummary: Он ушёл в лес и "вернулся" -- поздно.\ntags: [alpha]\n', 'Он сказал "привет" в доме'),
+  };
+  await inTree(files, async (root) => {
+    const { out } = await build(root);
+    const html = read(out, 'log', 'a', 'index.html');
+    const share = read(out, 'log', 'a', 'share.txt');
+    const head = html.slice(0, html.indexOf('</head>'));
+    const body = html.slice(html.indexOf('</head>'));
+    assert.match(head, /<title>Он сказал «привет» в доме \| Demo<\/title>/);
+    assert.match(head, /<meta property="og:title" content="Он сказал «привет» в доме \| Demo">/);
+    assert.match(head, /<meta name="twitter:title" content="Он сказал «привет» в доме \| Demo">/);
+    assert.match(head, /<meta property="og:description" content="Он ушёл в лес и «вернулся» – поздно\.">/);
+    assert.match(head, /<meta name="twitter:description" content="Он ушёл в лес и «вернулся» – поздно\.">/);
+    assert.match(share, /^Он сказал «привет» в доме\n/);
+    assert.match(share, /Он ушёл в лес и «вернулся» – поздно\./);
+    assert.ok(!/[  ]/.test(head), 'no no-break space in head');
+    assert.ok(!/[  ]/.test(share), 'no no-break space in share text');
+    assert.ok(!/class="hang"/.test(head) && !share.includes('hang'));
+    assert.ok(body.includes('в лес'), 'body of the same page keeps its no-break spaces');
+    assert.ok(body.includes('class="hang"'), 'body of the same page keeps its hang span');
+    assert.ok(html.includes('>Tom &quot;x&quot;</a>'), 'a tag name stays as written');
+    assert.ok(!html.includes('Tom “x”'), 'a tag name is not typeset');
+  });
+});
+
+test('a French title gets normal spaces in meta text and narrow spaces in the body', async () => {
+  const files = { 'coffer.yaml': config(), 'notes/a.md': post('Quoi ? Oui !', 'lang: fr\nsummary: Quoi ? Oui !\n', 'Dis "quoi" ?') };
+  await inTree(files, async (root) => {
+    const { out } = await build(root);
+    const html = read(out, 'log', 'a', 'index.html');
+    const head = html.slice(0, html.indexOf('</head>'));
+    assert.match(head, /<title>Dis « quoi » \? \| Demo<\/title>/);
+    assert.match(head, /<meta property="og:description" content="Quoi \? Oui !">/);
+    assert.ok(!/[  ]/.test(head));
+    assert.ok(/[  ]/.test(html.slice(html.indexOf('</head>'))));
+  });
+});
+
+test('typography off leaves title and meta text as typed', async () => {
+  await inTree({ 'coffer.yaml': config('    typography: { enabled: false }'), 'notes/a.md': post('Text.', 'summary: He said "hi".\n', 'A "b" c') }, async (root) => {
+    const { out } = await build(root);
+    const html = read(out, 'log', 'a', 'index.html');
+    const h = html.slice(0, html.indexOf('</head>'));
+    assert.ok(!h.includes('“'));
+    assert.match(h, /<title>A &quot;b&quot; c/);
+    assert.match(h, /<meta property="og:description" content="He said &quot;hi&quot;\.">/);
   });
 });

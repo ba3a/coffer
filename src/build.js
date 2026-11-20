@@ -65,7 +65,7 @@ import { buildMeta } from './meta.js';
 import { VIDEO_PLACEHOLDER_ATTRIBUTE } from './markdown/directives/video.js';
 import { MarkdownError, renderMarkdown } from './markdown/render.js';
 import { resolveTypography } from './typography/settings.js';
-import { typesetTitle } from './typography/title.js';
+import { typesetMeta, typesetTitle } from './typography/title.js';
 import {
   REDIRECTS_FILE_NAME,
   checkRedirects,
@@ -891,9 +891,21 @@ async function buildSite(config, site, options, outRoot, version, report) {
   /**
    * The `meta` object of a page (see `meta.js`).
    *
+   * Title and description are typeset in plain mode (normal spaces, no hang
+   * spans) with the given settings, by default those of the site.
+   *
    * @param {import('./meta.js').MetaPage} page
+   * @param {import('./typography/settings.js').TypographySettings} [typography]
    */
-  const metaFor = (page) => buildMeta(site, page);
+  const metaFor = (page, typography = site.resolvedTypography) =>
+    buildMeta(
+      { ...site, title: typesetMeta(site.title, typography), description: typesetMeta(site.description, typography) },
+      {
+        ...page,
+        title: typesetMeta(page.title, typography),
+        description: page.description === undefined ? undefined : typesetMeta(page.description, typography),
+      },
+    );
 
   rmSync(outDir, { recursive: true, force: true });
   mkdirSync(outDir, { recursive: true });
@@ -2930,8 +2942,8 @@ async function buildSite(config, site, options, outRoot, version, report) {
           text: renderShareText({
             baseUrl: site.baseUrl,
             url,
-            title: post.title,
-            summary: post.summary || excerptOf(excerptHtml),
+            title: typesetMeta(post.title, typographyOfPost(blog, post)),
+            summary: typesetMeta(post.summary || excerptOf(excerptHtml), typographyOfPost(blog, post)),
             hashtags: blog.shareHashtags ? hashtagsFor(post.tags.map(nameOf)) : [],
           }),
           url: shareUrlFor(url),
@@ -2960,7 +2972,7 @@ async function buildSite(config, site, options, outRoot, version, report) {
           type: 'article',
           published: post.date,
           tags: view.tagLinks.map((tag) => tag.name),
-        }),
+        }, typographyOfPost(blog, post)),
         post: { ...view, lang: articleLangOf(blog, post) },
         projectBlocks,
         series: view.series,

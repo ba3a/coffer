@@ -19,3 +19,16 @@ export function typesetTitle(text, settings) {
   if (settings.headings !== 'keep') result = headingCase(result, { rules, keep: settings.keep }).text;
   return settings.widows ? widows(result) : result;
 }
+
+/**
+ * Typesets text for `<title>`, meta tags and share text: marks and dashes by
+ * the rules of the locale, normal spaces only, no hang spans, no heading case.
+ *
+ * @param {string} text
+ * @param {Pick<import('./settings.js').TypographySettings, 'enabled' | 'locale' | 'dashStyle'>} settings
+ * @returns {string}
+ */
+export function typesetMeta(text, settings) {
+  if (settings.enabled === false || text === '') return text;
+  return typeset(text, { rules: resolveRules(settings.locale), dashStyle: settings.dashStyle, plain: true });
+}

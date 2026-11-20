@@ -132,7 +132,7 @@ test('a blog with shareSummary: true gives every post a share.txt and a collapse
     const text = readFileSync(join(result.outDir, 'log', 'dovetail', 'share.txt'), 'utf8');
     assert.equal(
       text,
-      'A "tricky" <b>dovetail</b> & more\n\nCutting the joint by hand, with a saw & a chisel.\n\nhttps://demo.example/log/dovetail/\n',
+      'A “tricky” <b>dovetail</b> & more\n\nCutting the joint by hand, with a saw & a chisel.\n\nhttps://demo.example/log/dovetail/\n',
       'the title, the summary and the canonical address, as plain text',
     );
     assert.ok(!text.includes('\r'));
@@ -153,7 +153,7 @@ test('a blog with shareSummary: true gives every post a share.txt and a collapse
     const pre = /<pre class="share-text"[^>]*>([\s\S]*?)<\/pre>/.exec(details)?.[1] ?? '';
     assert.equal(
       pre,
-      'A &quot;tricky&quot; &lt;b&gt;dovetail&lt;/b&gt; &amp; more\n\nCutting the joint by hand, with a saw &amp; a chisel.\n\nhttps://demo.example/log/dovetail/\n',
+      'A “tricky” &lt;b&gt;dovetail&lt;/b&gt; &amp; more\n\nCutting the joint by hand, with a saw &amp; a chisel.\n\nhttps://demo.example/log/dovetail/\n',
     );
     assert.ok(!details.includes('<b>'), 'markup in the title never reaches the page');
 
