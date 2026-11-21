@@ -153,6 +153,15 @@ Highlighted code carries both colour schemes as the variables `--shiki-light`, `
 
 The default theme defines no animation or transition: state changes are instant. The layout is a single column that works from 360 px wide, with a table of contents beside the text on wide screens. Focus is shown with an outline in the accent colour. Printing always uses black on white, hides the navigation and the switch, and prints the address after external links.
 
+## Hanging punctuation
+
+When a paragraph, heading, list item or quote starts with an opening quote, bracket or sentence dash, the engine wraps that first character in `<span class="hang" data-m="quote">`. `data-m` is `quote`, `dash` or `bracket`. The default theme hangs the mark into the margin in two ways:
+
+- `.hang` has `margin-inline-start: calc(-1 * var(--hang, 0.5em))`. The width comes from `--hang`, set per mark by `.hang[data-m="quote"]`, `.hang[data-m="dash"]` and `.hang[data-m="bracket"]`.
+- Text blocks have `hanging-punctuation: first`. Inside `@supports (hanging-punctuation: first)` the `.hang` margin is set to `0`, so a mark never hangs twice.
+
+Lists keep `list-style-position: outside`, so bullets and numbers already hang. A theme that replaces the stylesheet should keep these rules, or style `.hang` itself. Without any style the span does nothing and the page is correct. Feeds, the search index and meta text have no `hang` spans. See [Typography](typography.md#hanging-punctuation).
+
 ## Title cards
 
 Posts without a cover and the tag, series and blog index pages are shown in link previews with a generated card (see [SEO and link previews](seo.md#title-cards)). A theme can restyle the card with three optional things in its directory:

@@ -58,7 +58,8 @@ Unknown keys are errors everywhere in the file, so a misspelled key never passes
 | ---------------- | -------- | ------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | `id`             | yes      | -            | Identifier made of letters, digits, `.`, `_` and `-`. Unique across the file. Names the site's output directory.                                           |
 | `baseUrl`        | yes      | -            | Absolute `https` URL of the site, for example `https://example.org`. No credentials, query or fragment. A trailing slash is removed; a path (`/sub`) is kept. |
-| `lang`           | no       | `en`         | BCP 47 language tag. Used for the `lang` attribute, UI strings and date formatting. Stored in canonical case.                                              |
+| `lang`           | no       | `en`         | BCP 47 language tag. Used for the `lang` attribute, UI strings, date formatting and, unless a blog or post sets its own `lang`, the typography locale. Stored in canonical case.                                              |
+| `typography`     | no       | on           | Typography settings of the site: `enabled`, `locale`, `hanging`, `headings`, `widows`, `feeds`, `dashStyle` and `keep` (see [Typography](typography.md#settings)). Typography is on by default; `typography: { enabled: false }` turns it off. |
 | `timezone`       | no       | `UTC`        | IANA time zone name such as `Europe/Samara`. Dates written without a time are read in this zone. Numeric offsets such as `+04:00` are not accepted.        |
 | `title`          | yes      | -            | Title of the site.                                                                                                                                           |
 | `description`    | no       | empty        | Short description of the site, used for page metadata.                                                                                                      |
@@ -111,6 +112,8 @@ A list of blogs. A site may have several, or none.
 | `dir`    | no       | the `id`       | Directory that holds the blog's posts, relative to the configuration file.                                                                              |
 | `prefix` | no       | the `id`       | URL prefix of the blog, such as `journal` or `notes/2024`. No slash at either end. Set it to the empty string (`prefix: ""`) to serve the blog at the site root. Unique within the site. |
 | `title`  | no       | the site title | Display title of the blog.                                                                                                                               |
+| `lang` | no | the site `lang` | Language of the blog's posts, a BCP 47 tag. It sets the typography locale and the `lang` attribute of a post's `<article>` when it differs from the site. Interface strings and dates keep the site `lang` (see [Typography](typography.md#language-and-locale)). |
+| `typography` | no | the site's | Typography settings of the blog, merged key by key over the site's (see [Typography](typography.md#settings)). |
 | `newPostTemplate` | no | none | Markdown file, relative to the configuration file, whose text `coffer new` puts below the front matter of a new post of this blog (see [Authoring](authoring.md#new-posts-coffer-new)). |
 | `shareSummary` | no | `false` | Give every post a `share.txt` and a collapsed "Share summary" block with a copy button (see [Share summary](sharing.md)). |
 | `shareHashtags` | no | `false` | End the share summary with hashtags made from the tags of the post. Needs `shareSummary: true`. |

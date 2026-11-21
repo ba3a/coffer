@@ -19,6 +19,8 @@ The build gives every page template a `meta` object (built in `src/meta.js`). Th
 | `publishedTime` | For a post, the moment it was published (ISO 8601); otherwise `null`.                                                         |
 | `tags`          | For a post, the names of its tags; otherwise empty.                                                                           |
 
+The `title`, `description` and share text are typeset by the rules of the page's language, as plain text: normal spaces instead of no-break spaces and no `hang` spans (see [Typography](typography.md)).
+
 A `base.njk` rendered without `meta` (a theme test, for example) falls back to a plain `<title>` and description from `page`.
 
 ## Tags in the head
