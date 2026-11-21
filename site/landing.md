@@ -164,7 +164,7 @@ We left at six. The ridge was clear by nine.
 - **📚 Project documentation.** Guides pulled from the project's own repository, plus a reference generated from its source.
 - **🔎 Search and feeds.** Search is built at build time and runs in the visitor's browser. Atom feeds exist per blog, tag, series and project.
 - **📰 Full-post index pages.** A blog can show whole posts on its index, tag pages and series pages, split into pages of a size you choose. Search still finds one hit per post.
-- **✒️ Typography by language.** Curly quotes, dashes, ellipses and non-breaking spaces follow the rules of the text's language (English, Russian, German, French and Armenian), and a post can set its own `lang`. The Markdown stays plain, and one setting turns it off.
+- **✒️ Typography by language.** Curly quotes, dashes, ellipses and non-breaking spaces follow the rules of the text's language (English, Russian, German, French and Armenian, which is experimental), and a post can set its own `lang`. The Markdown stays plain, and one setting turns it off.
 - **🕒 Scheduled posts.** A post dated next Tuesday appears on Tuesday, without a rebuild every hour.
 
 <div class="section-marker" id="compare"></div>
@@ -278,7 +278,7 @@ Not with a `media` block. The originals stay in a folder or an S3-compatible buc
 
 ### Can a site be in another language?
 
-Yes. Each site has its own language and its own theme strings. my.ba3a.dev is in Russian.
+Yes. Each site has its own language and its own theme strings, and a blog or a post can set its own `lang`. The typography follows it. my.ba3a.dev is in Russian.
 
 ### Does it fix my quotes and dashes?
 
