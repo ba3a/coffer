@@ -3,6 +3,7 @@ import { join } from 'node:path';
 import { LineCounter, parseDocument } from 'yaml';
 
 import { normalizeImageKey } from '../images/policy.js';
+import { canonicalTag, readTypographyInput } from '../typography/settings.js';
 
 /**
  * A blog post as read from disk.
@@ -29,6 +30,8 @@ import { normalizeImageKey } from '../images/policy.js';
  * @property {Map<string, import('../images/policy.js').ImageOverride>} images Per-image metadata policy overrides from the `images:` map, by normalized image path (see `normalizeImageKey`); empty when there are none.
  * @property {boolean | null} map True or false to force or suppress the map; null to decide from the post's content.
  * @property {{ file: string, title: string | null }[] | null} tracks The GPX files named by `tracks:` (file names beside the post, with optional titles); null when the front matter has no `tracks:`, which means every `*.gpx` file in a post folder.
+ * @property {string | null} lang Canonical BCP 47 language tag of the post's content (`lang`); null when the front matter has none, which means the blog's language.
+ * @property {import('../typography/settings.js').TypographyInput | null} typography The post's `typography` settings; `typography: false` gives `{ enabled: false }`; null when the front matter has none.
  * @property {Record<string, unknown>} frontMatter The parsed front matter, including keys this module does not know.
  * @property {string} body The Markdown text after the front matter.
  * @property {number} bodyLine 1-based line of the file on which `body` starts.
@@ -503,6 +506,24 @@ function parseInto(file, text, slug, kind, dir, options, errors) {
   const map = optionalBoolean('map');
   const tracks = readTracks(fm.tracks, fail);
 
+  /** @type {string | null} */
+  let lang = null;
+  if (fm.lang !== undefined && fm.lang !== null) {
+    const tag =
+      typeof fm.lang === 'string' && fm.lang.trim() !== '' ? canonicalTag(fm.lang.trim()) : undefined;
+    if (tag === undefined) fail('lang', 'must be a valid language tag such as "en" or "ru"');
+    else lang = tag;
+  }
+
+  /** @type {import('../typography/settings.js').TypographyInput | null} */
+  let typography = null;
+  if (fm.typography === false) {
+    typography = { enabled: false };
+  } else if (fm.typography !== undefined && fm.typography !== null) {
+    if (fm.typography === true) fail('typography', 'must be a mapping, or false to turn typography off');
+    else typography = readTypographyInput(fm.typography, 'typography', fail);
+  }
+
   /** @type {number | null} */
   let seriesPosition = null;
   const rawPosition = fm.seriesPosition;
@@ -575,6 +596,8 @@ function parseInto(file, text, slug, kind, dir, options, errors) {
     images,
     map: map ?? null,
     tracks,
+    lang,
+    typography,
     frontMatter: fm,
     body: parts.body,
     bodyLine: parts.bodyLine,

@@ -11,6 +11,7 @@ import { loadConfig } from '../src/config.js';
 import { run } from '../src/cli.js';
 import { SearchError, buildSearchIndex, indexLanguage, searchPageUrl } from '../src/search.js';
 import { openSearch } from './helpers/pagefind.js';
+import { foldForSearch } from '../src/typography/fold.js';
 
 const exampleDir = fileURLToPath(new URL('../example/', import.meta.url));
 const assetsDir = fileURLToPath(new URL('../theme/assets/', import.meta.url));
@@ -111,7 +112,7 @@ test('a Russian query finds other word forms, and only in the blog it is asked i
         ['/zapisi/shkatulka/'],
         `the query "${term}" finds the post of the blog "journal"`,
       );
-      assert.equal(hits[0].title, 'Шкатулка из ореха');
+      assert.equal(hits[0].title.replace(/\s/g, ' '), 'Шкатулка из ореха');
       assert.match(hits[0].excerpt, /<mark>шкатулк\p{L}*<\/mark>/u);
     }
     assert.deepEqual(
@@ -139,7 +140,7 @@ test('the example site is searchable in English, with snippets', async () => {
     const hits = await search.search('dovetails', { blog: 'journal' });
     const dovetail = hits.find((hit) => hit.url === '/journal/first-dovetail/');
     assert.ok(dovetail, 'the dovetail post answers "dovetails"');
-    assert.equal(dovetail.title, 'My first hand-cut dovetail');
+    assert.equal(dovetail.title.replace(/\s/g, ' '), 'My First Hand-Cut Dovetail');
     assert.match(dovetail.excerpt, /<mark>dovetail<\/mark>/);
     assert.deepEqual(dovetail.filters, { blog: ['journal'] });
 
@@ -353,4 +354,34 @@ test('coffer build prints a Pagefind failure as a message and exits 1', async ()
       });
     },
   );
+});
+
+test('the index is folded, so don\'t and don’t find each other, and the published pages are not folded', async () => {
+  const files = {
+    'coffer.yaml': config('en', '      - { id: journal, dir: journal, prefix: journal, title: Journal }'),
+    'journal/curly.md': post('Curly', 'I think we don\'t need a second plane.'),
+    'journal/straight.md': post('Straight', 'She said :verbatim[don\'t] touch the zebrawood.'),
+  };
+  await inTree(files, async (root) => {
+    const result = await build(root);
+    const html = readFileSync(join(result.outDir, 'journal', 'curly', 'index.html'), 'utf8');
+    assert.match(html, /don’t/, 'the page keeps its typeset apostrophe');
+    const search = await openSearch(result.outDir);
+    const urls = async (/** @type {string} */ term) => (await search.search(term)).map((hit) => hit.url).sort();
+    assert.deepEqual(await urls("don't"), ['/journal/curly/', '/journal/straight/']);
+    assert.deepEqual(await urls(foldForSearch('don’t')), ['/journal/curly/', '/journal/straight/']);
+  });
+});
+
+test('the search script folds the query with the mapping of foldForSearch', () => {
+  const source = readFileSync(join(assetsDir, 'search.js'), 'utf8');
+  const match = /function fold\(value\) \{[\s\S]*?\n  \}\n/.exec(source);
+  assert.ok(match, 'search.js has a fold function');
+  const fold = new Script(`(${match[0].trim()})`).runInNewContext();
+  const sample = '«a» “b” „c‟ ″ 〝d〟 ‘e’ ‚f‛ ‹g› ′ ‐ ‑ – — ― − … a b c ։ plain-text don’t';
+  assert.equal(fold(sample), foldForSearch(sample));
+  for (const code of [0xa0, 0x202f, 0x2026, 0x589, 0x2019, 0x2014, 0x2212, 0x301d, 0x301f]) {
+    const ch = String.fromCodePoint(code);
+    assert.equal(fold(ch), foldForSearch(ch));
+  }
 });

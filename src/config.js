@@ -14,6 +14,7 @@ import { DEFAULT_ELEVATION_THRESHOLD_METERS, DEFAULT_TOLERANCE_METERS } from './
 import { CAMERA_POLICIES, LOCATION_POLICIES } from './images/policy.js';
 import { normalizeMediaConfig } from './media/config.js';
 import { DEFAULT_ATTRIBUTION, DEFAULT_MAX_ZOOM, DEFAULT_TILE_URL, isTileUrl } from './geo/map.js';
+import { readTypographyInput, resolveTypography } from './typography/settings.js';
 import { PROVIDER_NAMES } from './video/rules.js';
 import { patternGroupNames, templateProblem } from './video/urls.js';
 
@@ -42,6 +43,9 @@ export const CONFIG_FILE_NAME = 'coffer.yaml';
  * @property {true} [shareSummary] Present when every post of the blog gets a copy-friendly share summary: a `share.txt` file and a collapsed block at the end of the post. Absent when the blog has none.
  * @property {true} [shareHashtags] Present when the share summary ends with hashtags made from the tags of the post. Absent when it does not.
  * @property {BlogIndexConfig} index What the index page of the blog lists.
+ * @property {string} lang Canonical BCP 47 language tag of the blog's content: its own `lang`, else the site's.
+ * @property {import('./typography/settings.js').TypographyInput} typography The `typography` settings of the blog as written; empty when the blog has none.
+ * @property {import('./typography/settings.js').TypographySettings} resolvedTypography The settings of the blog with the site's and the defaults applied.
  */
 
 /**
@@ -161,6 +165,8 @@ export const CONFIG_FILE_NAME = 'coffer.yaml';
  * @property {MapConfig} map The tiles of the maps of posts.
  * @property {AnalyticsConfig} analytics The optional analytics snippet; `{ provider: 'none' }` when the site has none.
  * @property {ProjectsConfig | null} projects Projects location, or null when the site has no projects.
+ * @property {import('./typography/settings.js').TypographyInput} typography The `typography` settings of the site as written; empty when the site has none.
+ * @property {import('./typography/settings.js').TypographySettings} resolvedTypography The settings of the site with the defaults applied.
  * @property {SiteVideoConfig} video How the videos of the site load and which addresses are recognised as videos.
  */
 
@@ -262,6 +268,7 @@ const SITE_KEYS = [
   'analytics',
   'projects',
   'video',
+  'typography',
 ];
 /** The values of `analytics.provider`. */
 export const ANALYTICS_PROVIDERS = Object.freeze(['none', 'cloudflare', 'custom']);
@@ -694,11 +701,12 @@ function readBlogIndex(entry, here, id, problems) {
  * @param {string} path
  * @param {string} baseDir
  * @param {string} siteTitle
+ * @param {string | undefined} siteLang Canonical language of the site; undefined when it is invalid (already reported).
  * @param {Problems} problems
- * @returns {BlogConfig[]}
+ * @returns {Omit<BlogConfig, 'resolvedTypography'>[]}
  */
-function normalizeBlogs(list, path, baseDir, siteTitle, problems) {
-  /** @type {BlogConfig[]} */
+function normalizeBlogs(list, path, baseDir, siteTitle, siteLang, problems) {
+  /** @type {Omit<BlogConfig, 'resolvedTypography'>[]} */
   const blogs = [];
   /** @type {Map<string, number>} */
   const ids = new Map();
@@ -710,7 +718,7 @@ function normalizeBlogs(list, path, baseDir, siteTitle, problems) {
       problems.add(here, 'must be a mapping');
       return;
     }
-    rejectUnknownKeys(entry, ['id', 'dir', 'prefix', 'title', 'newPostTemplate', 'shareSummary', 'shareHashtags', 'index'], here, problems);
+    rejectUnknownKeys(entry, ['id', 'dir', 'prefix', 'title', 'newPostTemplate', 'shareSummary', 'shareHashtags', 'index', 'lang', 'typography'], here, problems);
     const id = readString(entry, 'id', here, problems, { required: true });
     if (id !== undefined) {
       if (!ID_RE.test(id)) {
@@ -765,11 +773,19 @@ function normalizeBlogs(list, path, baseDir, siteTitle, problems) {
       problems.add(`${here}.shareHashtags`, 'only has an effect together with "shareSummary: true"');
     }
     const blogIndex = readBlogIndex(entry, here, id, problems);
+    const langText = readString(entry, 'lang', here, problems);
+    let blogLang = siteLang;
+    if (langText !== undefined) {
+      blogLang = canonicalLang(langText);
+      if (blogLang === undefined) problems.add(`${here}.lang`, 'must be a valid language tag such as "en" or "ru"');
+    }
+    const typography = readTypographyInput(entry.typography, `${here}.typography`, (key, message) => problems.add(key, message));
     if (
       id !== undefined &&
       dir !== undefined &&
       prefix !== undefined &&
-      title !== undefined
+      title !== undefined &&
+      blogLang !== undefined
     ) {
       blogs.push({
         id,
@@ -782,6 +798,8 @@ function normalizeBlogs(list, path, baseDir, siteTitle, problems) {
         ...(shareSummary ? { shareSummary: true } : {}),
         ...(shareHashtags ? { shareHashtags: true } : {}),
         index: blogIndex,
+        lang: blogLang,
+        typography,
       });
     }
   });
@@ -1376,8 +1394,10 @@ function normalizeSite(raw, index, baseDir, problems) {
     `${path}.blogs`,
     baseDir,
     title ?? '',
+    lang,
     problems,
   );
+  const typography = readTypographyInput(raw.typography, `${path}.typography`, (key, message) => problems.add(key, message));
   const urls = normalizeUrls(
     readMapping(raw, 'urls', path, problems),
     `${path}.urls`,
@@ -1470,6 +1490,7 @@ function normalizeSite(raw, index, baseDir, problems) {
   ) {
     return undefined;
   }
+  const siteLevel = { lang, typography };
   return {
     id,
     baseUrl,
@@ -1488,7 +1509,7 @@ function normalizeSite(raw, index, baseDir, problems) {
     author,
     feeds,
     links,
-    blogs,
+    blogs: blogs.map((blog) => ({ ...blog, resolvedTypography: resolveTypography(siteLevel, blog) })),
     urls,
     location,
     images,
@@ -1497,6 +1518,8 @@ function normalizeSite(raw, index, baseDir, problems) {
     analytics,
     projects,
     video,
+    typography,
+    resolvedTypography: resolveTypography(siteLevel),
   };
 }
 

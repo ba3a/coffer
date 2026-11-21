@@ -20,6 +20,7 @@ const CONFIG = [
   'sites:',
   '  - id: demo',
   '    baseUrl: https://demo.example',
+  '    typography: { enabled: false }',
   '    lang: en',
   '    title: Demo',
   '    description: A demo site.',

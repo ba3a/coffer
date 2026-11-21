@@ -64,6 +64,8 @@ import { inspectSvg } from './images/svg.js';
 import { buildMeta } from './meta.js';
 import { VIDEO_PLACEHOLDER_ATTRIBUTE } from './markdown/directives/video.js';
 import { MarkdownError, renderMarkdown } from './markdown/render.js';
+import { resolveTypography } from './typography/settings.js';
+import { typesetMeta, typesetTitle } from './typography/title.js';
 import {
   REDIRECTS_FILE_NAME,
   checkRedirects,
@@ -889,9 +891,21 @@ async function buildSite(config, site, options, outRoot, version, report) {
   /**
    * The `meta` object of a page (see `meta.js`).
    *
+   * Title and description are typeset in plain mode (normal spaces, no hang
+   * spans) with the given settings, by default those of the site.
+   *
    * @param {import('./meta.js').MetaPage} page
+   * @param {import('./typography/settings.js').TypographySettings} [typography]
    */
-  const metaFor = (page) => buildMeta(site, page);
+  const metaFor = (page, typography = site.resolvedTypography) =>
+    buildMeta(
+      { ...site, title: typesetMeta(site.title, typography), description: typesetMeta(site.description, typography) },
+      {
+        ...page,
+        title: typesetMeta(page.title, typography),
+        description: page.description === undefined ? undefined : typesetMeta(page.description, typography),
+      },
+    );
 
   rmSync(outDir, { recursive: true, force: true });
   mkdirSync(outDir, { recursive: true });
@@ -1336,6 +1350,49 @@ async function buildSite(config, site, options, outRoot, version, report) {
   };
 
   /**
+   * Adds the unpaired quotes that typography kept as typed to the build
+   * warnings, as `{file}:{line}: {message}`, and lists the headings whose
+   * case it changed in the report.
+   *
+   * @param {string} shown How findings name the text's file.
+   * @param {{ typographyWarnings: readonly import('./typography/rehype.js').TypographyWarning[], typographyHeadingChanges?: readonly import('./typography/rehype.js').HeadingChange[] }} rendered
+   */
+  const reportTypographyWarnings = (shown, rendered) => {
+    for (const change of rendered.typographyHeadingChanges ?? []) {
+      report.addHeadingChange({ site: site.id, file: shown, line: change.line, before: change.before, after: change.after });
+    }
+    for (const warning of rendered.typographyWarnings) {
+      warnings.push(`${shown}${warning.line === undefined ? '' : `:${warning.line}`}: ${warning.message}`);
+    }
+  };
+
+  /**
+   * The typography settings of a post: post over blog over site.
+   *
+   * @param {import('./config.js').BlogConfig} blog
+   * @param {Post} post
+   */
+  const typographyOfPost = (blog, post) =>
+    resolveTypography(
+      { lang: site.lang, typography: site.typography },
+      { lang: blog.lang, typography: blog.typography },
+      { lang: post.lang ?? undefined, typography: post.typography ?? undefined },
+    );
+
+  /**
+   * The `lang` of a post's `<article>`: the language of its content when it
+   * differs from the language of the page (the site's), else null.
+   *
+   * @param {import('./config.js').BlogConfig} blog
+   * @param {Post} post
+   * @returns {string | null}
+   */
+  const articleLangOf = (blog, post) => {
+    const lang = post.lang ?? blog.lang;
+    return lang === site.lang ? null : lang;
+  };
+
+  /**
    * Where the poster of a video of a text lies: a file, a problem that is
    * reported at the poster (a picture the image resolver refuses), or null
    * when the image resolver cannot find it.
@@ -1520,9 +1577,12 @@ async function buildSite(config, site, options, outRoot, version, report) {
       const imageOptions = imageOptionsFor(post.file, postUrl(blog, post.slug), page);
       // Both renders of a full post share it, so each local video is copied once.
       const video = postVideoOptions(post, postUrl(blog, post.slug));
+      const typography = typographyOfPost(blog, post);
       /** Reports the features the providers of the post's videos lack; once, from the page render. */
       const reportPostVideoWarnings = (/** @type {RenderedPost} */ result) => {
-        reportVideoWarnings(posix(relative(config.dir, post.file)), result);
+        const shownFile = posix(relative(config.dir, post.file));
+        reportVideoWarnings(shownFile, result);
+        reportTypographyWarnings(shownFile, result);
         return result;
       };
       if ((post.index ?? blog.index.type) !== 'full') {
@@ -1535,6 +1595,7 @@ async function buildSite(config, site, options, outRoot, version, report) {
               images: imageOptions,
               carousel: carouselLabels,
               video,
+              typography,
             }),
           ),
         );
@@ -1563,6 +1624,7 @@ async function buildSite(config, site, options, outRoot, version, report) {
             },
             carousel: carouselLabels,
             video,
+            typography,
           }),
         ),
       );
@@ -1577,6 +1639,7 @@ async function buildSite(config, site, options, outRoot, version, report) {
           },
           carousel: carouselLabels,
           video,
+          typography,
           headingShift: 1,
           idPrefix: `${post.slug}-`,
         }),
@@ -1744,10 +1807,12 @@ async function buildSite(config, site, options, outRoot, version, report) {
         startLine: description.line,
         carousel: carouselLabels,
         video: textVideoOptions,
+        typography: site.resolvedTypography,
         // The descriptions are on the project's page with its own text, so each gives its videos ids of their own.
         videoIdPrefix: name === 'shortDescription' ? 'press-kit-short-' : 'press-kit-long-',
       });
       reportVideoWarnings(shown, rendered);
+      reportTypographyWarnings(shown, rendered);
       for (const directive of rendered.maps) {
         warnings.push(`${shown}:${directive.line ?? description.line}: pressKit.${name}: the ::map directive is only for posts and is left out`);
       }
@@ -2039,6 +2104,7 @@ async function buildSite(config, site, options, outRoot, version, report) {
           }),
           carousel: carouselLabels,
           video: textVideoOptions,
+          typography: site.resolvedTypography,
         });
       } catch (error) {
         if (!(error instanceof MarkdownError)) throw error;
@@ -2047,6 +2113,7 @@ async function buildSite(config, site, options, outRoot, version, report) {
       }
       renderedPages.set(guide, rendered);
       reportVideoWarnings(guide.label, rendered);
+      reportTypographyWarnings(guide.label, rendered);
       guideVideos.set(
         guide,
         await resolveVideos(rendered.videos, { shown: guide.label, url, page: images, locatePoster: guidePoster(fetched.root, guide.rel) }),
@@ -2085,6 +2152,7 @@ async function buildSite(config, site, options, outRoot, version, report) {
           },
           carousel: carouselLabels,
           video: textVideoOptions,
+          typography: site.resolvedTypography,
           // The section is on the project's page with its text and the other sections, so its videos get ids of their own.
           videoIdPrefix: `readme-${directive.index + 1}-`,
         });
@@ -2095,6 +2163,7 @@ async function buildSite(config, site, options, outRoot, version, report) {
       }
       renderedPages.set(page, rendered);
       reportVideoWarnings(page.label, rendered);
+      reportTypographyWarnings(page.label, rendered);
       const videos = await resolveVideos(rendered.videos, {
         shown: page.label,
         url: projectPageUrl,
@@ -2301,8 +2370,10 @@ async function buildSite(config, site, options, outRoot, version, report) {
         // Only the page of a project with a docs source can show a section of its README.
         readme: docsFetched.has(project.slug),
         video: textVideoOptions,
+        typography: site.resolvedTypography,
       });
       reportVideoWarnings(pageLabel, rendered);
+      reportTypographyWarnings(pageLabel, rendered);
       const videos = await resolveVideos(rendered.videos, {
         shown: pageLabel,
         url,
@@ -2574,6 +2645,7 @@ async function buildSite(config, site, options, outRoot, version, report) {
       slug: project.slug,
       url,
       name: project.name,
+      heading: typesetTitle(project.name, site.resolvedTypography),
       pitch: project.pitch,
       kind: project.kind,
       kindLabel: kindLabelOf(project.kind),
@@ -2833,6 +2905,7 @@ async function buildSite(config, site, options, outRoot, version, report) {
           excerptHtml,
           tags: post.tags.map((path) => ({ path, name: nameOf(path) })),
           tagsIndexUrl,
+          typography: typographyOfPost(blog, post),
         });
         feedEntries.set(post, feedEntry);
         for (const slug of aboutProjects) projectFeedEntries.get(slug)?.push(feedEntry);
@@ -2874,8 +2947,8 @@ async function buildSite(config, site, options, outRoot, version, report) {
           text: renderShareText({
             baseUrl: site.baseUrl,
             url,
-            title: post.title,
-            summary: post.summary || excerptOf(excerptHtml),
+            title: typesetMeta(post.title, typographyOfPost(blog, post)),
+            summary: typesetMeta(post.summary || excerptOf(excerptHtml), typographyOfPost(blog, post)),
             hashtags: blog.shareHashtags ? hashtagsFor(post.tags.map(nameOf)) : [],
           }),
           url: shareUrlFor(url),
@@ -2904,8 +2977,8 @@ async function buildSite(config, site, options, outRoot, version, report) {
           type: 'article',
           published: post.date,
           tags: view.tagLinks.map((tag) => tag.name),
-        }),
-        post: view,
+        }, typographyOfPost(blog, post)),
+        post: { ...view, lang: articleLangOf(blog, post) },
         projectBlocks,
         series: view.series,
         toc: rendered.toc,
@@ -2914,6 +2987,7 @@ async function buildSite(config, site, options, outRoot, version, report) {
         share,
         page: {
           title: post.title,
+          heading: typesetTitle(post.title, typographyOfPost(blog, post)),
           description: post.summary ?? '',
           content: withVideos(mapped.html, videos),
         },
@@ -3082,7 +3156,7 @@ async function buildSite(config, site, options, outRoot, version, report) {
           ...withBodies(listPage.items),
           pagination: listPage.pagination,
           tagsUrl: tagUrl(blogBase, site.urls.tags),
-          page: { title: blog.title, description: site.description, content: '' },
+          page: { title: blog.title, heading: typesetTitle(blog.title, site.resolvedTypography), description: site.description, content: '' },
         }),
     });
 
@@ -3463,7 +3537,7 @@ async function buildSite(config, site, options, outRoot, version, report) {
               sourceUrl,
             },
             ...pageAssetsFor(entry.rendered),
-            page: { title: entry.title, description: entry.description, content: entry.html },
+            page: { title: entry.title, heading: typesetTitle(entry.title, site.resolvedTypography), description: entry.description, content: entry.html },
           });
           writeOutput(outDir, entry.file, docsHtml);
           pages.push({ url: entry.url, file: entry.file, type: 'docs', title: entry.title });
@@ -3562,10 +3636,14 @@ async function buildSite(config, site, options, outRoot, version, report) {
             images: imageOptionsFor(home.file, '/', homePage),
             carousel: carouselLabels,
             video: textVideoOptions,
+            typography: site.resolvedTypography,
           })
         : null;
     const homeShown = home ? posix(relative(config.dir, home.file)) : '';
-    if (rendered) reportVideoWarnings(homeShown, rendered);
+    if (rendered) {
+      reportVideoWarnings(homeShown, rendered);
+      reportTypographyWarnings(homeShown, rendered);
+    }
     const homeVideos =
       home && homePage && rendered
         ? await resolveVideos(rendered.videos, { shown: homeShown, url: '/', page: homePage, locatePoster: contentPoster(home.file) })
@@ -3593,6 +3671,7 @@ async function buildSite(config, site, options, outRoot, version, report) {
       ...pageAssetsFor(rendered),
       page: {
         title,
+        heading: typesetTitle(title, site.resolvedTypography),
         description: site.description,
         content: withVideos(withoutMapPlaceholders(rendered?.html ?? ''), homeVideos),
       },

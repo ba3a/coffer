@@ -41,6 +41,7 @@ function configYaml(blogExtra = '') {
     'sites:',
     '  - id: demo',
     '    baseUrl: https://demo.example',
+    '    typography: { enabled: false }',
     '    lang: en',
     '    title: Demo',
     '    contentDir: .',

@@ -137,6 +137,50 @@ table {
   margin: 0 0 1rem;
 }
 
+/* Hanging punctuation. The engine wraps an opening quote, bracket or sentence
+   dash at the start of a block in <span class="hang" data-m="...">. The span
+   pulls the mark into the margin. Where the browser hangs it natively, the span
+   margin is zeroed, so the mark does not hang twice. Lists keep their markers
+   outside the text. */
+.hang {
+  margin-inline-start: calc(-1 * var(--hang, 0.5em));
+}
+
+.hang[data-m="quote"] {
+  --hang: 0.45em;
+}
+
+.hang[data-m="dash"] {
+  --hang: 0.8em;
+}
+
+.hang[data-m="bracket"] {
+  --hang: 0.35em;
+}
+
+p,
+h1,
+h2,
+h3,
+h4,
+h5,
+h6,
+li,
+blockquote {
+  hanging-punctuation: first;
+}
+
+ul,
+ol {
+  list-style-position: outside;
+}
+
+@supports (hanging-punctuation: first) {
+  .hang {
+    margin-inline-start: 0;
+  }
+}
+
 a {
   color: var(--coffer-accent);
   text-underline-offset: 0.15em;

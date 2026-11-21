@@ -2,7 +2,7 @@
 
 {% block main %}
 {% block heading %}
-<h1>{{ page.title }}</h1>
+<h1>{{ page.heading or page.title }}</h1>
 {% if tagsUrl %}<p class="tags-link"><a href="{{ tagsUrl | url }}">{{ 'tags.title' | t }}</a></p>
 {% endif %}
 {% endblock %}

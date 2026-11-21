@@ -12,10 +12,13 @@ import {
   BUILD_INFO_FILE_NAME,
   checkBuildInfo,
   compareBuildInfo,
+  createBuildInfo,
   fetchBuildInfo,
   nextScheduledAt,
+  renderBuildInfo,
 } from '../src/build-info.js';
 import { checkOutput } from '../src/check/index.js';
+import { TYPOGRAPHY_RULES_VERSION } from '../src/typography/version.js';
 import { parseRebuildNeededArgs, run } from '../src/cli.js';
 import { loadConfig, RESERVED_OUTPUT_NAMES } from '../src/config.js';
 import { commitFromLsRemote, readRemoteCommits } from '../src/docs/sources.js';
@@ -126,6 +129,7 @@ function validInfo(changes = {}) {
     engineVersion: '0.1.0',
     sources: { lathe: { url: 'https://example.org/a/lathe.git', ref: 'main', sha: SHA_A } },
     nextScheduledAt: null,
+    typographyRulesVersion: TYPOGRAPHY_RULES_VERSION,
     ...changes,
   };
 }
@@ -288,9 +292,10 @@ test('a build writes build-info.json with the documentation commits and the next
         // The annotated tag is recorded as the commit it points at, which is what the clone is at.
         sources: { lathe: { url, ref: 'v1', sha: head } },
         nextScheduledAt: '2026-06-04T20:00:00.000Z',
+        typographyRulesVersion: TYPOGRAPHY_RULES_VERSION,
       });
       assert.deepEqual(result.manifest.buildInfo, JSON.parse(text));
-      assert.deepEqual(Object.keys(JSON.parse(text)), ['builtAt', 'engineVersion', 'sources', 'nextScheduledAt']);
+      assert.deepEqual(Object.keys(JSON.parse(text)), ['builtAt', 'engineVersion', 'sources', 'nextScheduledAt', 'typographyRulesVersion']);
       // It is a file of the site and not a page: the sitemap, the manifest's pages and the checks leave it alone.
       assert.ok(!result.manifest.sitemap.some((entry) => entry.includes('build-info')));
       assert.ok(!readFileSync(join(dir, 'out', 'demo', 'sitemap.xml'), 'utf8').includes('build-info'));
@@ -592,7 +597,7 @@ test('coffer rebuild-needed refuses addresses and options it cannot use with exi
  * @param {string | null} [next]
  */
 function deployed(sources, next = null) {
-  return JSON.stringify({ builtAt: '2026-06-01T08:00:00.000Z', engineVersion: '0.1.0', sources, nextScheduledAt: next });
+  return JSON.stringify({ builtAt: '2026-06-01T08:00:00.000Z', engineVersion: '0.1.0', sources, nextScheduledAt: next, typographyRulesVersion: TYPOGRAPHY_RULES_VERSION });
 }
 
 test('coffer rebuild-needed answers no, or yes with the reasons, from a local server and a file:// repository', { skip: NO_GIT }, async () => {
@@ -895,4 +900,29 @@ test('rebuild-needed says yes when the landing file of a project is a different 
       });
     });
   });
+});
+
+test('typographyRulesVersion: written, read tolerantly, and compared', () => {
+  const now = new Date('2026-06-01T12:00:00Z');
+  const source = { url: 'https://example.org/a/lathe.git', ref: 'main', sha: SHA_A };
+  const info = createBuildInfo({ builtAt: now, engineVersion: '0.1.0', docs: new Map(), posts: [], now });
+  assert.equal(info.typographyRulesVersion, TYPOGRAPHY_RULES_VERSION);
+  assert.equal(JSON.parse(renderBuildInfo(info)).typographyRulesVersion, TYPOGRAPHY_RULES_VERSION);
+
+  const { typographyRulesVersion: _omitted, ...old } = validInfo();
+  const checked = checkBuildInfo(old);
+  assert.ok('value' in checked);
+  assert.deepEqual(compareBuildInfo(checked.value, new Map([['lathe', source]]), now).map((r) => r.code), ['typography-rules-changed']);
+
+  const older = checkBuildInfo(validInfo({ typographyRulesVersion: TYPOGRAPHY_RULES_VERSION - 1 }));
+  assert.ok('value' in older);
+  assert.deepEqual(compareBuildInfo(older.value, new Map([['lathe', source]]), now).map((r) => r.code), ['typography-rules-changed']);
+
+  const junk = checkBuildInfo(validInfo({ typographyRulesVersion: 'x' }));
+  assert.ok('value' in junk);
+  assert.equal(junk.value.typographyRulesVersion, undefined);
+
+  const current = checkBuildInfo(validInfo());
+  assert.ok('value' in current);
+  assert.deepEqual(compareBuildInfo(current.value, new Map([['lathe', source]]), now), []);
 });

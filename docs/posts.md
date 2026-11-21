@@ -47,6 +47,8 @@ The text of the post.
 | `cover`          | no       | Cover image: a path beside the post (JPEG, PNG, WebP or HEIC; it is resized like any image, see [Images](images.md)), or a URL. |
 | `series`         | no       | Slug of the series the post belongs to, such as `alps`; stored lowercase. See [Series](series.md).          |
 | `seriesPosition` | no       | Whole number that puts the post ahead of the unnumbered ones, by value. Needs `series`; see [Series](series.md). |
+| `lang`           | no       | Language of the post, a BCP 47 tag such as `ru`. It sets the typography locale and the `lang` attribute of the post's `<article>` when it differs from the page. Default: the blog's `lang`, then the site's. See [Typography](typography.md). |
+| `typography`     | no       | Typography settings for this post (`enabled`, `locale`, `hanging`, `headings`, `widows`, `feeds`, `dashStyle`, `keep`). `typography: false` turns typography off for the post. See [Typography](typography.md#settings). |
 | `draft`          | no       | `true` keeps the post out of the published site. Default `false`.                                           |
 | `aliases`        | no       | List of old slugs that redirect permanently to this post; see [URLs](urls.md).                              |
 | `projects`       | no       | List of project slugs the post is about, such as `[kerfcalc]`, as an alternative to carrying the project's tag. The post then gets the project's block, badge and place in its feed. A slug that no project has fails the build and the message names the post. See [Posts about a project](projects.md#posts-about-a-project). |

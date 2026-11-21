@@ -10,6 +10,19 @@ Every release is a git tag named `v` followed by the version, for example `v0.1.
 
 ## Unreleased
 
+### Added
+
+- Typography by language at build time, with rules for `en`, `ru`, `de`, `fr` and `hy` (`hy` is experimental) and a neutral set for other languages: quotes, dashes, ellipses, apostrophes, non-breaking spaces, widow control, hanging punctuation and heading case. The `typography` setting at site, blog and post level has the keys `enabled`, `locale`, `hanging`, `headings`, `widows`, `feeds`, `dashStyle` and `keep`. Documented in `docs/typography.md`.
+- The `lang` key on blogs and in post front matter sets the language of a post's content, its typography locale and the `lang` attribute of its `<article>`.
+- `:verbatim[text]` and `:::verbatim` leave text as typed; a Markdown backslash keeps one character; `data-typography="off"` does the same in raw HTML.
+- The default theme styles the `hang` span and sets `hanging-punctuation`. The example site has a Russian post.
+- `build-info.json` has a `typographyRulesVersion` field, and `coffer rebuild-needed` answers `yes` when the deployed rules are older than the engine's.
+- The search index and the query are folded, so quotes, dashes and no-break spaces do not change what a search finds.
+
+### Changed
+
+- Typography is on by default. Quotes, dashes, ellipses, non-breaking spaces, widows, hanging punctuation and heading case follow the language of the text in posts, guides, project pages, the home page and README sections, and post, page and project titles in the page body are typeset. The output of existing sites changes on update. A site, a blog or a post turns it off with `typography: { enabled: false }` (`typography: false` in post front matter). A post sets its own `lang`, which also sets `lang` on its `<article>` when it differs from the site. An unpaired quote is a build warning with file and line.
+
 ## 0.2.1 - 2026-11-17
 
 ### Fixed

@@ -21,7 +21,7 @@
 {% if project.media.logo %}<p class="game-logo">{{ pictures.card(project.media.logo, '(min-width: 48rem) 20rem, 70vw', true) }}</p>
 {% endif %}
 <p class="project-meta"><span class="project-kind">{{ project.kindLabel }}</span> <span aria-hidden="true">&middot;</span> <span class="project-status">{{ project.statusLabel }}</span></p>
-<h1>{{ project.name }}</h1>
+<h1>{{ project.heading or project.name }}</h1>
 <p class="project-pitch">{{ project.pitch }}</p>
 {% if project.media.keyArt %}<div class="game-key-art">
 {{ pictures.card(project.media.keyArt, '(min-width: 48rem) 44rem, calc(100vw - 2rem)', not project.media.logo) }}

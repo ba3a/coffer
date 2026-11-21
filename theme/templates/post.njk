@@ -2,7 +2,7 @@
 {% from "series-nav.njk" import seriesNav %}
 
 {% block main %}
-<article class="post">
+<article class="post"{% if post.lang %} lang="{{ post.lang }}"{% endif %}>
 <header class="post-header">
 {% block project_badges %}
 {% if projectBlocks.length %}
@@ -13,7 +13,7 @@
 </ul>
 {% endif %}
 {% endblock %}
-<h1>{{ page.title }}</h1>
+<h1>{{ page.heading or page.title }}</h1>
 {% block meta %}
 <p class="post-meta">
 <time datetime="{{ post.date | date('iso') }}">{{ 'post.published' | t({ date: (post.date | date) }) }}</time>

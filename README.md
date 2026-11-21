@@ -11,6 +11,7 @@ The screenshot shows the home page and a post of the example site that ships wit
 ## Features
 
 - **Blogs** with posts, drafts that are previewed but never published, posts dated in the future that appear when their time comes, reading time and a table of contents. See [Posts](docs/posts.md) and [Markdown](docs/markdown.md).
+- **Typography** set at build time by the language of each text: quotes, dashes, spaces, hanging punctuation and heading case, with the source left as typed. See [Typography](docs/typography.md).
 - **Tags** that form a tree, built from the tags you use, with a page for every subtree, counts and optional display names. See [Tags](docs/tags.md).
 - **Series** with "part n of m", previous and next links and a series page. See [Series](docs/series.md).
 - **Projects** as content: a registry of what you make, a page per project, a showcase on the home page, and templates for tools and games (including press kits). See [Projects](docs/projects.md).

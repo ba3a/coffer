@@ -565,3 +565,44 @@ test('mistakes in the images map name the file and the entry', () => {
     assert.match(errors[0], pattern, fields);
   }
 });
+
+/** @param {string} extra */
+const typographyPost = (extra) => ({
+  file: '/b/p.md',
+  slug: 'p',
+  text: `---\ntitle: T\ndate: 2024-01-01\n${extra}---\nBody\n`,
+});
+
+test('lang and typography are read from front matter', () => {
+  const post = parsePostSource(typographyPost('lang: HY-am\ntypography:\n  widows: false\n  locale: ru\n'));
+  assert.equal(post.lang, 'hy-AM');
+  assert.deepEqual(post.typography, { widows: false, locale: 'ru' });
+});
+
+test('typography: false means enabled: false', () => {
+  assert.deepEqual(parsePostSource(typographyPost('typography: false\n')).typography, { enabled: false });
+});
+
+test('posts without lang and typography keep null for both', () => {
+  const post = parsePostSource(typographyPost(''));
+  assert.equal(post.lang, null);
+  assert.equal(post.typography, null);
+});
+
+test('invalid lang and typography keys fail with file and key path', () => {
+  for (const [extra, expected] of [
+    ['lang: not a tag\n', '/b/p.md: lang:'],
+    ['lang: 5\n', '/b/p.md: lang:'],
+    ['typography: true\n', '/b/p.md: typography:'],
+    ['typography: 3\n', '/b/p.md: typography:'],
+    ['typography:\n  widows: maybe\n', '/b/p.md: typography.widows:'],
+    ['typography:\n  locale: "x y"\n', '/b/p.md: typography.locale:'],
+    ['typography:\n  bogus: 1\n', '/b/p.md: typography.bogus:'],
+  ]) {
+    assert.throws(
+      () => parsePostSource(typographyPost(extra)),
+      (error) => error instanceof PostError && error.errors.some((line) => line.startsWith(expected)),
+      extra,
+    );
+  }
+});

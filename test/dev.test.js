@@ -13,6 +13,7 @@ const NOW = new Date('2026-06-01T12:00:00Z');
 const CONFIG = `sites:
   - id: pro
     baseUrl: https://pro.example
+    typography: { enabled: false }
     lang: en
     timezone: UTC
     title: Pro
@@ -21,6 +22,7 @@ const CONFIG = `sites:
       - { id: devlog, dir: content/devlog, prefix: devlog }
   - id: personal
     baseUrl: https://my.example
+    typography: { enabled: false }
     lang: ru
     timezone: Europe/Samara
     title: Личный

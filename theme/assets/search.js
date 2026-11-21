@@ -28,8 +28,24 @@
   var list = root.querySelector('.search-results');
   if (!form || !input || !status || !list) return;
 
+  // The index holds folded text (src/typography/fold.js); the query is folded
+  // with the same mapping, so that "don't" finds "don’t". Keep both in step.
+  function fold(value) {
+    return String(value)
+      .replace(/[«»“”„‟″〝-〟]/g, '"')
+      .replace(/[‘’‚‛‹›′]/g, "'")
+      .replace(/[‐-―−]/g, '-')
+      .replace(/…/g, '...')
+      .replace(/[  ]/g, ' ')
+      .replace(/։/g, '.');
+  }
+
   var UI = window.PagefindModularUI;
   var instance = new UI.Instance({ bundlePath: data.bundle });
+  var triggerSearch = instance.triggerSearch.bind(instance);
+  instance.triggerSearch = function (term) {
+    return triggerSearch(fold(term));
+  };
   // Registered before the Input component's own listeners, so that the filters
   // are in place before the first search.
   var filtersApplied = false;

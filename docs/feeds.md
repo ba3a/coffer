@@ -29,6 +29,7 @@ When the site sets `icon` (see [Configuration](configuration.md)), every feed th
 
 Entry level:
 
+- `title` and `summary` are plain text, typeset by the rules of the post's language with normal spaces: no no-break spaces and no `hang` spans. The `content` reuses the page HTML without `hang` spans. `typography: { feeds: false }` leaves titles and summaries as written. See [Typography](typography.md).
 - `id` and the `alternate` link: the permalink of the post. The address of a post never depends on its date or tags, so the id is stable.
 - `title`, `published` and `updated`: the post's date, as an RFC 3339 time in UTC. coffer does not track edits, so both are the date of the post.
 - `author`: the site's `author` setting (a name, or `name`, `email` and `url`); the site title when none is set.

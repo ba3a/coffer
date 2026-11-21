@@ -35,6 +35,10 @@ The navigation, the table of contents, the series blocks, the tag list, the proj
 
 A theme that replaces `post.njk` or `docs.njk` as a whole (instead of overriding blocks through `{% extends "coffer:post.njk" %}`) must keep these two attributes on the element that holds the text, or its pages are left out of the index.
 
+## Quotes, dashes and spaces
+
+The text of the index and the query are folded to one form: all quotes become `"` and `'`, all dashes become `-`, `…` becomes `...` and no-break spaces become spaces. A visitor who types `don't` finds `don’t`, and a visitor who types `3-5` finds `3–5`. Results show the folded text. See [Typography](typography.md#search).
+
 ## Where the files go
 
 The index and Pagefind's scripts are written to `{out}/{siteId}/pagefind/`. The search page loads `pagefind/pagefind-modular-ui.js` and `pagefind/pagefind.js` from there, together with the theme's own `assets/search.js`. Nothing comes from a CDN. The name `pagefind` is reserved at the top of a site's output, so `urls.projects` cannot start with it.

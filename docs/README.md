@@ -14,6 +14,7 @@ coffer is a static site engine for people who make things and write about them. 
 - [Posts](posts.md): front matter, drafts, scheduled posts and which posts are published.
 - [Markdown](markdown.md): the Markdown dialect, code highlighting, tables of contents and directives.
 - [Tags](tags.md): tag trees, subtree pages, counts, names and descriptions.
+- [Typography](typography.md): quotes, dashes, spaces, hanging punctuation and heading case by language, and how to turn them off.
 - [Series](series.md): ordered runs of posts with navigation and a series page.
 - [Links, images and the build report](links.md): link and image resolution, errors that stop the build, and the report.
 - [Share summary](sharing.md): a copy-friendly summary of a post for sharing by hand.

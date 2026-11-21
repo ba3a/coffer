@@ -34,6 +34,17 @@ export const REPORT_FILE_NAME = 'report.json';
  */
 
 /**
+ * A heading whose case typography changed.
+ *
+ * @typedef {object} HeadingCaseChange
+ * @property {string} [site] Id of the site.
+ * @property {string} file Path of the source file, relative to the configuration file, with forward slashes.
+ * @property {number} [line] 1-based line of the heading.
+ * @property {string} before Heading text before the case change.
+ * @property {string} after Heading text after the case change.
+ */
+
+/**
  * What a build reports: `errors` fail the build, `warnings` are worth fixing,
  * `exactLocations` lists the posts that publish exact locations, and `info` is
  * for the record.
@@ -43,6 +54,7 @@ export const REPORT_FILE_NAME = 'report.json';
  * @property {ReportIssue[]} errors
  * @property {ReportIssue[]} warnings
  * @property {ExactLocation[]} exactLocations
+ * @property {HeadingCaseChange[]} headingChanges
  * @property {ReportIssue[]} info
  */
 
@@ -69,6 +81,24 @@ export function formatExactLocations(entries) {
     return `  ${several ? `${entry.site}: ` : ''}${entry.file}: ${what.join(', ')}`;
   });
   return `${EXACT_LOCATIONS_TITLE} (${entries.length})\n${lines.join('\n')}\n`;
+}
+
+/** Heading of the section that lists the headings whose case typography changed. */
+export const HEADING_CHANGES_TITLE = 'Headings changed by typography';
+
+/**
+ * The section "Headings changed by typography" as text: the heading with the
+ * number of headings, then one line per heading with file, line, old and new text.
+ *
+ * @param {readonly HeadingCaseChange[]} changes Not empty.
+ * @returns {string} Lines ending in a newline.
+ */
+export function formatHeadingChanges(changes) {
+  const lines = changes.map((change) => {
+    const place = change.line === undefined ? change.file : `${change.file}:${change.line}`;
+    return `  ${place}: ${JSON.stringify(change.before)} -> ${JSON.stringify(change.after)}`;
+  });
+  return `${HEADING_CHANGES_TITLE} (${changes.length})\n${lines.join('\n')}\n`;
 }
 
 /**
@@ -119,6 +149,17 @@ export class Report {
     this.info = [];
     /** @type {ExactLocation[]} */
     this.exactLocations = [];
+    /** @type {HeadingCaseChange[]} */
+    this.headingChanges = [];
+  }
+
+  /**
+   * @param {HeadingCaseChange} change A heading whose case typography changed.
+   * @returns {this}
+   */
+  addHeadingChange(change) {
+    this.headingChanges.push({ ...change });
+    return this;
   }
 
   /**
@@ -173,6 +214,7 @@ export class Report {
       errors: this.errors,
       warnings: this.warnings,
       exactLocations: this.exactLocations,
+      headingChanges: this.headingChanges,
       info: this.info,
     };
   }
@@ -197,6 +239,10 @@ export class Report {
     if (this.exactLocations.length > 0) {
       if (lines.length > 0) lines.push('');
       lines.push(...formatExactLocations(this.exactLocations).trimEnd().split('\n'));
+    }
+    if (this.headingChanges.length > 0) {
+      if (lines.length > 0) lines.push('');
+      lines.push(...formatHeadingChanges(this.headingChanges).trimEnd().split('\n'));
     }
     addSection('Info', this.info);
     return lines.length === 0 ? '' : `${lines.join('\n')}\n`;

@@ -155,6 +155,9 @@ test('a valid two-site configuration loads with its values', () => {
         prefix: 'journal',
         title: 'Journal',
         index: { type: 'summary', pageSize: null },
+        lang: 'en',
+        typography: {},
+        resolvedTypography: { enabled: true, locale: 'en', hanging: true, headings: 'locale', widows: true, feeds: true, dashStyle: 'locale', keep: [] },
       },
     ]);
     assert.deepEqual(english.urls, {
@@ -230,6 +233,8 @@ test('defaults are applied to a minimal site', () => {
     analytics: { provider: 'none' },
     projects: null,
     video: { load: 'click', fetchPreviews: true, builtinRules: true, peertubeHosts: [], rules: [] },
+    typography: {},
+    resolvedTypography: { enabled: true, locale: 'en', hanging: true, headings: 'locale', widows: true, feeds: true, dashStyle: 'locale', keep: [] },
   });
 });
 
@@ -242,6 +247,9 @@ test('blog defaults: dir and prefix follow the id, title follows the site', () =
       prefix: 'devlog',
       title: 'Main',
       index: { type: 'summary', pageSize: null },
+      lang: 'en',
+      typography: {},
+      resolvedTypography: { enabled: true, locale: 'en', hanging: true, headings: 'locale', widows: true, feeds: true, dashStyle: 'locale', keep: [] },
     },
   ]);
 });
