@@ -10,6 +10,8 @@ Every release is a git tag named `v` followed by the version, for example `v0.1.
 
 ## Unreleased
 
+## 0.3.0 - 2026-11-21
+
 ### Added
 
 - Typography by language at build time, with rules for `en`, `ru`, `de`, `fr` and `hy` (`hy` is experimental) and a neutral set for other languages: quotes, dashes, ellipses, apostrophes, non-breaking spaces, widow control, hanging punctuation and heading case. The `typography` setting at site, blog and post level has the keys `enabled`, `locale`, `hanging`, `headings`, `widows`, `feeds`, `dashStyle` and `keep`. Documented in `docs/typography.md`.

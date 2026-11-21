@@ -90,7 +90,7 @@ rsync -av public/ host:/var/www/
 - **🧰 Tool authors.** Your docs stay in your repository. The site pulls them at build time and renders them in your theme.
 - **🔒 Privacy-minded photographers.** Location and camera data are stripped unless you say otherwise, and every build lists the posts that publish an exact position.
 
-**Not for you** if you want a CMS with a web editor, thousands of ready-made themes or a large community. coffer is a one-person project at version 0.2.1.
+**Not for you** if you want a CMS with a web editor, thousands of ready-made themes or a large community. coffer is a one-person project at version 0.3.0.
 
 <div class="section-marker" id="how-it-works"></div>
 
@@ -186,7 +186,7 @@ Hugo is a fast static generator with a large ecosystem and thousands of themes. 
 
 ### What you give up
 
-- It is version 0.2.1 with one maintainer. Before 1.0 a minor version may need a change in your site, and the changelog says so.
+- It is version 0.3.0 with one maintainer. Before 1.0 a minor version may need a change in your site, and the changelog says so.
 - It needs Node.js 24 or newer.
 - There is one default theme and the one you write. There is no theme gallery.
 - It is developed and tested on Windows and Linux.
@@ -255,7 +255,7 @@ npx coffer serve example/dist/workshop
 npx coffer dev --config example/coffer.yaml
 
 # in your own project
-npm install git+https://github.com/ba3a/coffer.git#v0.2.1
+npm install git+https://github.com/ba3a/coffer.git#v0.3.0
 ```
 
 <div class="section-marker" id="faq"></div>
@@ -286,7 +286,7 @@ Yes, at build time. `"quotes"` and `--` in the source become the marks of the po
 
 ### How stable is it?
 
-It is 0.2.1 and follows semantic versioning. Before 1.0 a minor version may need a change in your site, and the changelog lists it. Pin a tag, and upgrade when you choose.
+It is 0.3.0 and follows semantic versioning. Before 1.0 a minor version may need a change in your site, and the changelog lists it. Pin a tag, and upgrade when you choose.
 
 ### Which systems does it run on?
 
