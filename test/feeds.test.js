@@ -111,7 +111,7 @@ test('the example site gets a blog feed, tag subtree feeds and a series feed, al
     assert.deepEqual(
       feeds.map((feed) => [feed.type, feed.url, feed.entries]),
       [
-        ['blog', '/journal/feed.xml', 5],
+        ['blog', '/journal/feed.xml', 6],
         ['series', '/journal/series/boxes-by-hand/feed.xml', 2],
         ['tag', '/journal/tags/projects/feed.xml', 3],
         ['tag', '/journal/tags/projects/kerfcalc/feed.xml', 2],
@@ -148,6 +148,7 @@ test('a tag feed covers the whole subtree, a series feed every part, newest firs
       `${base}/ridge-walk/`,
       `${base}/mountain-weekend/`,
       `${base}/photo-notes/`,
+      `${base}/stanok-dlya-rubanka/`,
     ]);
     assert.deepEqual(ids('/journal/tags/workshop/feed.xml'), [
       `${base}/walnut-box/`,

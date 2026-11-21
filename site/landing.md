@@ -45,13 +45,13 @@ coffer turns a folder of Markdown and photos into plain files that any static ho
 
 ```console
 $ npx coffer build --config example/coffer.yaml
-workshop: 5 post(s), 26 page(s) -> …/dist/workshop
+workshop: 6 post(s), 27 page(s) -> …/dist/workshop
 Posts publishing exact locations (2)
   content/journal/mountain-weekend.md: 1 image(s)
   content/journal/ridge-walk/index.md: 1 image(s), 1 track(s)
 
 $ npx coffer check --config example/coffer.yaml
-workshop: 28 page(s), 12 feed(s), 22 image(s) checked, no failures
+workshop: 29 page(s), 12 feed(s), 22 image(s) checked, no failures
 ```
 
 <div class="section-marker" id="problem"></div>

@@ -97,7 +97,7 @@ test('the draft and the future-dated post are absent from a normal build', async
     assert.equal(existsSync(join(site, 'journal', 'spring-open-house')), false);
     assert.deepEqual(
       manifest.posts.map((post) => post.slug),
-      ['first-dovetail', 'mountain-weekend', 'photo-notes', 'ridge-walk', 'walnut-box'],
+      ['first-dovetail', 'mountain-weekend', 'photo-notes', 'ridge-walk', 'stanok-dlya-rubanka', 'walnut-box'],
     );
     const index = page(site, '/journal/');
     assert.doesNotMatch(index, /planer-notes|Spring open house/);
@@ -160,6 +160,7 @@ test('the manifest is written and lists the pages and the posts', async () => {
         '/journal/ridge-walk/',
         '/journal/search/',
         '/journal/series/boxes-by-hand/',
+        '/journal/stanok-dlya-rubanka/',
         '/journal/tags/',
         '/journal/tags/projects/',
         '/journal/tags/projects/kerfcalc/',
@@ -246,7 +247,7 @@ test('coffer build with --out, --now and --drafts builds the example from the co
       { encoding: 'utf8', cwd: tmpdir() },
     );
     assert.equal(result.status, 0, result.stderr);
-    assert.match(result.stdout, /workshop: 5 post\(s\), 26 page\(s\)/);
+    assert.match(result.stdout, /workshop: 6 post\(s\), 27 page\(s\)/);
     assert.equal(existsSync(join(out, 'workshop', 'journal', 'spring-open-house')), false);
 
     const preview = spawnSync(
@@ -255,7 +256,7 @@ test('coffer build with --out, --now and --drafts builds the example from the co
       { encoding: 'utf8', cwd: tmpdir() },
     );
     assert.equal(preview.status, 0, preview.stderr);
-    assert.match(preview.stdout, /workshop: 7 post\(s\), 30 page\(s\)/);
+    assert.match(preview.stdout, /workshop: 8 post\(s\), 31 page\(s\)/);
     assert.ok(existsSync(join(out, 'workshop', 'journal', 'spring-open-house', 'index.html')));
   } finally {
     rmSync(out, { recursive: true, force: true });
@@ -547,5 +548,16 @@ test('the example site is typeset: curly apostrophes in post bodies', async () =
     const html = page(site, '/journal/walnut-box/');
     assert.match(html, /grandmother’s buttons/);
     assert.doesNotMatch(html, /grandmother's buttons/);
+  });
+});
+
+test('the Russian example post is typeset with Russian rules', async () => {
+  await withExample({}, (site) => {
+    const html = page(site, '/journal/stanok-dlya-rubanka/');
+    assert.match(html, /<article class="post" lang="ru">/);
+    assert.match(html, /«/);
+    assert.match(html, /»/);
+    assert.match(html, /— так/);
+    assert.match(html, /…/);
   });
 });
