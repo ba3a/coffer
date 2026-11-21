@@ -444,3 +444,22 @@ test('the video figure, its preview, player box and chapters are styled with the
     assert.doesNotMatch(rule.body, /\b(rgb|hsl|hwb|lab|lch|oklch|oklab)a?\(|#[0-9a-f]{3,8}\b/i, `${rule.selectors.join(', ')}: colours come from tokens`);
   }
 });
+
+test('.hang pulls the mark into the margin, with a width per mark', () => {
+  assert.match(ruleBody(bare, '.hang'), /margin-inline-start:\s*calc\(-1 \* var\(--hang, 0\.5em\)\)/);
+  for (const mark of ['quote', 'dash', 'bracket']) {
+    assert.match(ruleBody(bare, `.hang[data-m="${mark}"]`), /--hang:\s*[\d.]+em/, `${mark} sets --hang`);
+  }
+});
+
+test('native hanging-punctuation zeroes the span margin, and lists stay outside', () => {
+  assert.match(bare, /hanging-punctuation:\s*first/);
+  const block = /@supports \(hanging-punctuation: first\)\s*\{([\s\S]*?\})\s*\}/.exec(bare);
+  assert.ok(block, '@supports block exists');
+  assert.match(block[1], /\.hang\s*\{[^}]*margin-inline-start:\s*0\b/);
+  assert.match(ruleBody(bare, 'ul,\nol'), /list-style-position:\s*outside/);
+});
+
+test('the stylesheet makes no external request', () => {
+  assert.doesNotMatch(bare, /@import|url\(\s*["']?(?:https?:)?\/\//i);
+});
