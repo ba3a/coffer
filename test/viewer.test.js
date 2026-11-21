@@ -231,7 +231,7 @@ test('every image of a page links to its high-resolution file, which is publishe
 
     // The viewer and its files are loaded in this order, after the page; the example blog also has a share summary, whose script comes last.
     const scripts = [...html.matchAll(/<script src="([^"]*)" defer><\/script>/g)].map((match) => match[1]);
-    assert.deepEqual(scripts, ['/assets/carousel.js', ...VIEWER_SCRIPTS, '/assets/share.js']);
+    assert.deepEqual(scripts, ['/assets/carousel.js', '/assets/hang-lines.js', ...VIEWER_SCRIPTS, '/assets/share.js']);
     for (const href of VIEWER_STYLES) assert.ok(html.includes(`<link rel="stylesheet" href="${href}">`), href);
     for (const file of [...VIEWER_SCRIPTS, ...VIEWER_STYLES]) {
       assert.ok(existsSync(join(result.outDir, ...file.slice(1).split('/'))), `${file} is published`);

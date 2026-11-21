@@ -158,6 +158,23 @@ table {
   --hang: 0.35em;
 }
 
+/* Line-start hanging. With `hangLines` the engine also wraps opening marks inside
+   a paragraph in <span class="hang-l" data-m="...">. hang-lines.js adds
+   "is-lead" to the ones that start a line. The shift is relative, so it moves
+   the glyph only and never changes where the line breaks. */
+.hang-l.is-lead {
+  position: relative;
+  inset-inline-start: calc(-1 * var(--hang, 0.5em));
+}
+
+.hang-l[data-m="quote"] {
+  --hang: 0.45em;
+}
+
+.hang-l[data-m="bracket"] {
+  --hang: 0.35em;
+}
+
 p,
 h1,
 h2,

@@ -10,6 +10,7 @@
  * @property {boolean} [enabled] False turns every rule off.
  * @property {string} [locale] Canonical language tag that overrides the typography locale only.
  * @property {boolean} [hanging] Hanging punctuation.
+ * @property {boolean} [hangLines] Also hang an opening quote or bracket that starts a line inside a paragraph (needs the theme script).
  * @property {'locale' | 'keep'} [headings] `keep` turns heading case off.
  * @property {boolean} [widows] Keep the last two words together.
  * @property {boolean} [feeds] Also typeset feed titles and summaries.
@@ -24,6 +25,7 @@
  * @property {boolean} enabled
  * @property {string} locale Typography locale: `typography.locale`, else the content language.
  * @property {boolean} hanging
+ * @property {boolean} hangLines
  * @property {'locale' | 'keep'} headings
  * @property {boolean} widows
  * @property {boolean} feeds
@@ -36,6 +38,7 @@ export const TYPOGRAPHY_KEYS = Object.freeze([
   'enabled',
   'locale',
   'hanging',
+  'hangLines',
   'headings',
   'widows',
   'feeds',
@@ -43,7 +46,7 @@ export const TYPOGRAPHY_KEYS = Object.freeze([
   'keep',
 ]);
 
-const BOOLEAN_KEYS = ['enabled', 'hanging', 'widows', 'feeds'];
+const BOOLEAN_KEYS = ['enabled', 'hanging', 'hangLines', 'widows', 'feeds'];
 const CHOICES = { headings: ['locale', 'keep'], dashStyle: ['locale', 'spaced-en'] };
 
 /**
@@ -142,6 +145,7 @@ export function resolveTypography(site, blog, post) {
     enabled: true,
     locale: lang,
     hanging: true,
+    hangLines: false,
     headings: 'locale',
     widows: true,
     feeds: true,

@@ -4,6 +4,7 @@ sites:
   - id: workshop
     baseUrl: https://tove-marlowe.example
     lang: en
+    typography: { hangLines: true }
     timezone: Europe/Berlin
     title: Tove Marlowe
     description: Small wooden things, and notes on making them.

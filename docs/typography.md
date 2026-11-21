@@ -53,6 +53,7 @@ typography:
   enabled: true          # false turns everything off
   locale: ru             # optional: override the typography locale
   hanging: true          # hanging punctuation
+  hangLines: false       # also hang a mark that starts a line inside a paragraph (needs the theme script)
   headings: locale       # locale | keep
   widows: true           # keep the last two words together
   feeds: true            # also typeset feed titles and summaries
@@ -101,6 +102,12 @@ Words with an inner capital (`iPhone`), words with digits, all-caps words, and w
 ## Hanging punctuation
 
 An opening quote, bracket or sentence dash at the start of a paragraph, heading, list item or quote hangs into the margin, so the text lines up. The build wraps the mark in `<span class="hang" data-m="quote">`. The default theme styles it, and uses `hanging-punctuation: first` where the browser supports it. See [Themes](themes.md#hanging-punctuation). `hanging: false` turns it off.
+
+### Hanging at the start of a line
+
+A bracket or quote in the middle of a paragraph can also start a line. Only the browser knows where lines break, so this needs a small script. Set `hangLines: true` at the site level to turn it on. The build then wraps each opening quote or bracket that follows a space in `<span class="hang-l" data-m="bracket">`, and the default theme loads `/assets/hang-lines.js` on pages with text. The script marks the ones that start a line, and the stylesheet moves them into the margin. The move changes no layout, so it never changes where a line breaks. Without JavaScript the page is correct and nothing hangs.
+
+A blog or a post can set `hangLines: false` to leave its marks as they are. The script loads only when the site setting is on. `hangLines` has no effect when `hanging` is `false`. A mark after a no-break space, in code or in a block with `data-typography="off"` is never marked. See [Themes](themes.md#hanging-punctuation).
 
 ## Where it applies
 

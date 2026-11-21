@@ -854,6 +854,7 @@ async function buildSite(config, site, options, outRoot, version, report) {
     const viewerImages = texts.flatMap((text) => text.viewerImages);
     const scripts = texts.some((text) => text.carousels > 0) ? ['/assets/carousel.js'] : [];
     if (texts.some((text) => text.videos.length > 0)) scripts.push('/assets/video.js');
+    if (texts.length > 0 && site.resolvedTypography.enabled && site.resolvedTypography.hangLines) scripts.push('/assets/hang-lines.js');
     const styles = [];
     let viewerData = '';
     if (viewerImages.length > 0) {

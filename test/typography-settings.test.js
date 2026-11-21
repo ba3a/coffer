@@ -34,6 +34,7 @@ test('defaults of resolveTypography', () => {
     enabled: true,
     locale: 'en',
     hanging: true,
+    hangLines: false,
     headings: 'locale',
     widows: true,
     feeds: true,
@@ -51,6 +52,7 @@ test('resolveTypography merges post over blog over site and joins keep lists', (
     enabled: true,
     locale: 'en',
     hanging: false,
+    hangLines: false,
     headings: 'keep',
     widows: false,
     feeds: false,
@@ -97,7 +99,7 @@ test('blog lang falls back to the site lang, which defaults to en', () => {
 test('invalid typography values fail with the key path', () => {
   assert.deepEqual(
     errors({
-      typography: { enabled: 'yes', locale: 'not a tag', hanging: 1, widows: 'no', feeds: [], dashStyle: 'em', extra: 1 },
+      typography: { enabled: 'yes', locale: 'not a tag', hanging: 1, hangLines: 'yes', widows: 'no', feeds: [], dashStyle: 'em', extra: 1 },
       blogs: [{ id: 'a' }, { id: 'b', lang: '!!', typography: { headings: 'upper', keep: ['ok', '', 3] } }, { id: 'c', typography: 'on' }],
     }),
     [
@@ -106,9 +108,10 @@ test('invalid typography values fail with the key path', () => {
       'coffer.yaml: sites[0].blogs[1].typography.keep[1]: must be a non-empty string',
       'coffer.yaml: sites[0].blogs[1].typography.keep[2]: must be a non-empty string',
       'coffer.yaml: sites[0].blogs[2].typography: must be a mapping',
-      'coffer.yaml: sites[0].typography.extra: unknown key (expected one of: enabled, locale, hanging, headings, widows, feeds, dashStyle, keep)',
+      'coffer.yaml: sites[0].typography.extra: unknown key (expected one of: enabled, locale, hanging, hangLines, headings, widows, feeds, dashStyle, keep)',
       'coffer.yaml: sites[0].typography.enabled: must be true or false',
       'coffer.yaml: sites[0].typography.hanging: must be true or false',
+      'coffer.yaml: sites[0].typography.hangLines: must be true or false',
       'coffer.yaml: sites[0].typography.widows: must be true or false',
       'coffer.yaml: sites[0].typography.feeds: must be true or false',
       'coffer.yaml: sites[0].typography.dashStyle: must be one of: locale, spaced-en',

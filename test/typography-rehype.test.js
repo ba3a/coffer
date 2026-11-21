@@ -223,6 +223,31 @@ test('brackets and sentence dashes hang; other starts do not', async () => {
   assert.equal((item.html.match(/class="hang"/g) ?? []).length, 2);
 });
 
+test('hangLines marks opening marks after a space inside a paragraph', async () => {
+  const lines = { ...full, widows: false, hangLines: true };
+  const { html } = await render('one two (three four) and "five six" now', { typography: lines });
+  assert.match(html, /one two <span class="hang-l" data-m="bracket">\(<\/span>three four\) and <span class="hang-l" data-m="quote">“<\/span>five six” now/);
+  const first = await render('(one) two (three)', { typography: lines });
+  assert.match(first.html, /<p><span class="hang" data-m="bracket">\(<\/span>one\) two <span class="hang-l" data-m="bracket">\(<\/span>three\)/);
+  const ru = await render('Мы сделали («это» работает) тут', { typography: { ...lines, locale: 'ru' } });
+  assert.match(ru.html, /<span class="hang-l" data-m="bracket">\(<\/span>«это»/);
+});
+
+test('hangLines is off by default and needs hanging', async () => {
+  const source = 'one two (three four) five';
+  assert.equal((await render(source, { typography: full })).html.includes('hang-l'), false);
+  assert.equal((await render(source, { typography: { ...full, hangLines: true, hanging: false } })).html.includes('hang-l'), false);
+});
+
+test('hangLines leaves code, off blocks, no-break spaces and a second pass alone', async () => {
+  const lines = { ...full, hangLines: true };
+  const source = 'a `x (y)` b\n\n<div data-typography="off">\n<p>one (two) three</p>\n</div>\n\nin (three) four';
+  const { html } = await render(source, { typography: lines });
+  assert.equal(html.includes('hang-l'), false);
+  const twice = await render('one (two) three', { typography: lines });
+  assert.equal((twice.html.match(/hang-l/g) ?? []).length, 1);
+});
+
 test('the hang span is found through an inline element', async () => {
   const { html } = await render('*"a b* c" d', { typography: full });
   assert.match(html, /<em><span class="hang" data-m="quote">“<\/span>a/);

@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
@@ -257,4 +257,29 @@ test('the report has no heading change when no heading changed', async () => {
     await build(root);
     assert.deepEqual(JSON.parse(read(root, '.coffer', 'report.json')).headingChanges, []);
   });
+});
+
+test('hangLines marks line-start candidates and loads the script only when the site turns it on', async () => {
+  const body = 'We tried the clamp (the old one) and "it worked" at last.';
+  await inTree({ 'coffer.yaml': config('    typography: { hangLines: true }'), 'notes/a.md': post(body) }, async (root) => {
+    const { out } = await build(root);
+    const html = read(out, 'log', 'a', 'index.html');
+    assert.match(html, /<span class="hang-l" data-m="bracket">\(<\/span>the old one\)/);
+    assert.match(html, /<script src="\/assets\/hang-lines\.js" defer><\/script>/);
+    assert.ok(existsSync(join(out, 'assets', 'hang-lines.js')), 'the script is published');
+    assert.ok(existsSync(join(out, 'assets', 'coffer.css')));
+  });
+  await inTree({ 'coffer.yaml': config(), 'notes/a.md': post(body) }, async (root) => {
+    const { out } = await build(root);
+    const html = read(out, 'log', 'a', 'index.html');
+    assert.ok(!html.includes('hang-l'), 'off by default');
+    assert.ok(!html.includes('hang-lines.js'));
+  });
+  await inTree(
+    { 'coffer.yaml': config('    typography: { hangLines: true }'), 'notes/a.md': post(body, 'typography: { hangLines: false }\n') },
+    async (root) => {
+      const { out } = await build(root);
+      assert.ok(!read(out, 'log', 'a', 'index.html').includes('hang-l"'), 'a post can turn it off');
+    },
+  );
 });

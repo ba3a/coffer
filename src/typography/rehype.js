@@ -85,6 +85,59 @@ function hangFirst(block) {
   }
 }
 
+/** Elements whose text is never marked for line-start hanging. */
+const NO_LINE_HANG = new Set(['code', 'kbd', 'samp', 'pre', 'script', 'style', 'svg', 'math', 'textarea']);
+
+/**
+ * Wraps each opening quote or bracket that follows a space inside a block in
+ * `<span class="hang-l" data-m="...">`. The theme script finds the ones that
+ * the browser put at the start of a line and moves them into the margin.
+ * A mark after a no-break space cannot start a line and is left alone.
+ *
+ * @param {import('hast').Element} block
+ */
+function markLineHangs(block) {
+  /** @param {import('hast').Element} parent */
+  const walk = (parent) => {
+    for (let i = 0; i < parent.children.length; i++) {
+      const child = parent.children[i];
+      if (!child) continue;
+      if (child.type === 'element') {
+        const classes = child.properties?.className;
+        if (Array.isArray(classes) && (classes.includes('hang') || classes.includes('hang-l'))) continue;
+        if (NO_LINE_HANG.has(child.tagName) || isOff(child) || isBareLink(child)) continue;
+        walk(child);
+        continue;
+      }
+      if (child.type !== 'text') continue;
+      const chars = Array.from(child.value);
+      /** @type {import('hast').ElementContent[]} */
+      const pieces = [];
+      let buffer = '';
+      chars.forEach((char, index) => {
+        const mark = HANGING.get(char);
+        if (mark && mark !== 'dash' && index > 0 && chars[index - 1] === ' ') {
+          if (buffer) pieces.push({ type: 'text', value: buffer });
+          buffer = '';
+          pieces.push({
+            type: 'element',
+            tagName: 'span',
+            properties: { className: ['hang-l'], dataM: mark },
+            children: [{ type: 'text', value: char }],
+          });
+        } else {
+          buffer += char;
+        }
+      });
+      if (pieces.length === 0) continue;
+      if (buffer) pieces.push({ type: 'text', value: buffer });
+      parent.children.splice(i, 1, ...pieces);
+      i += pieces.length - 1;
+    }
+  };
+  walk(block);
+}
+
 /**
  * A link whose text is its own address (a bare URL or email) is not typeset.
  *
@@ -162,7 +215,7 @@ function headingText(heading) {
  * the heading case of the locale applies, and each changed heading is reported
  * to `onHeadingChanges`.
  *
- * @param {{ settings: Pick<TypographySettings, 'enabled' | 'locale' | 'dashStyle'> & Partial<Pick<TypographySettings, 'headings' | 'keep' | 'hanging' | 'widows'>>, plain?: boolean, file?: string, lineOffset?: number, onWarnings?: (warnings: TypographyWarning[]) => void, onHeadingChanges?: (changes: HeadingChange[]) => void }} options
+ * @param {{ settings: Pick<TypographySettings, 'enabled' | 'locale' | 'dashStyle'> & Partial<Pick<TypographySettings, 'headings' | 'keep' | 'hanging' | 'hangLines' | 'widows'>>, plain?: boolean, file?: string, lineOffset?: number, onWarnings?: (warnings: TypographyWarning[]) => void, onHeadingChanges?: (changes: HeadingChange[]) => void }} options
  * @returns {(tree: import('hast').Root) => void}
  */
 export function rehypeTypography({ settings, plain = false, file, lineOffset = 0, onWarnings, onHeadingChanges }) {
@@ -176,6 +229,7 @@ export function rehypeTypography({ settings, plain = false, file, lineOffset = 0
       const options = { rules, dashStyle: settings.dashStyle, plain };
       const keepWidows = !plain && settings.widows === true;
       const keepHanging = !plain && settings.hanging === true;
+      const keepLineHanging = keepHanging && settings.hangLines === true;
 
       /** @type {Entry[][]} Runs flushed for the block being typeset. */
       let runs = [];
@@ -240,6 +294,7 @@ export function rehypeTypography({ settings, plain = false, file, lineOffset = 0
         if (!TEXT_BLOCKS.has(block.tagName)) return;
         if (keepWidows) joinWidows(runs);
         if (keepHanging) hangFirst(block);
+        if (keepLineHanging) markLineHangs(block);
       };
 
       /**
