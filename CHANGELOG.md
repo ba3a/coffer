@@ -10,6 +10,12 @@ Every release is a git tag named `v` followed by the version, for example `v0.1.
 
 ## Unreleased
 
+## 0.3.2 - 2026-11-21
+
+### Fixed
+
+- `typography.hangLines` now moves the text after a hanging mark to the content edge. Before, only the mark moved and a gap stayed.
+
 ## 0.3.1 - 2026-11-21
 
 ### Added
