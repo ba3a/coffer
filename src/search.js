@@ -1,6 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import * as pagefind from 'pagefind';
+import { foldForSearch } from './typography/fold.js';
 
 /** Name of the directory with the search index and the Pagefind scripts, at the root of a site's output. */
 export const SEARCH_DIR_NAME = 'pagefind';
@@ -33,6 +34,19 @@ export function searchPageUrl(blogBase) {
  */
 export function indexLanguage(lang) {
   return lang.split('-')[0].toLowerCase();
+}
+
+/**
+ * Folds the text of an HTML page for the index, and only the text: tags and
+ * attributes stay as they are, and the published page is never changed. The
+ * titles and excerpts of results come from the index, so both show folded
+ * text: the Pagefind API has no way to index one form and display another.
+ *
+ * @param {string} html
+ * @returns {string}
+ */
+export function foldHtmlText(html) {
+  return html.replace(/>([^<]+)</g, (_, text) => `>${foldForSearch(text)}<`);
 }
 
 /**
@@ -88,7 +102,7 @@ export async function buildSearchIndex({ outDir, lang, basePath = '', pages }) {
     for (const page of pages) {
       const added = await index.addHTMLFile({
         url: `${basePath}${page.url}`,
-        content: readFileSync(join(outDir, ...page.file.split('/')), 'utf8'),
+        content: foldHtmlText(readFileSync(join(outDir, ...page.file.split('/')), 'utf8')),
       });
       if (added.errors.length > 0) errors.push(`${page.file}: ${added.errors.join('; ')}`);
       else indexed += 1;
