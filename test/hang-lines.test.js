@@ -14,17 +14,27 @@ const source = readFileSync(fileURLToPath(new URL('../theme/assets/hang-lines.js
  */
 function fakeMark(left, direction = 'ltr') {
   const classes = new Set(['hang-l']);
+  /** @type {Record<string, string>} */
+  const props = {};
+  const rtl = direction === 'rtl';
   const block = {
     getBoundingClientRect: () => ({ left: 100, right: 500 }),
     style: { direction, paddingLeft: '10px', paddingRight: '10px', borderLeftWidth: '0px', borderRightWidth: '0px' },
   };
-  return {
+  const mark = {
     classes,
-    classList: { add: (/** @type {string} */ c) => classes.add(c), remove: (/** @type {string} */ c) => classes.delete(c) },
+    props,
+    classList: { add: (/** @type {string} */ c) => classes.add(c), remove: (/** @type {string} */ c) => classes.delete(c), contains: (/** @type {string} */ c) => classes.has(c) },
+    style: { setProperty: (/** @type {string} */ name, /** @type {string} */ value) => (props[name] = value) },
     closest: () => block,
-    getBoundingClientRect: () => ({ left, right: left + 6 }),
+    // A mark with is-lead sits 6px (its width) further into the margin.
+    getBoundingClientRect: () => {
+      const moved = classes.has('is-lead') ? (rtl ? 6 : -6) : 0;
+      return { left: left + moved, right: left + 6 + moved, width: 6 };
+    },
     block,
   };
+  return mark;
 }
 
 /**
@@ -59,6 +69,16 @@ test('a mark at the content edge of its block gets is-lead, one inside the line 
   assert.ok(marks[0]?.classes.has('is-lead'));
   assert.ok(!marks[1]?.classes.has('is-lead'));
   assert.ok(marks[2]?.classes.has('is-lead'));
+  assert.equal(marks[0]?.props['--hang-w'], '6px', 'the width of the mark goes to the stylesheet');
+});
+
+test('a mark that a reflow moves off the line start loses is-lead', () => {
+  const mark = fakeMark(110);
+  const plain = mark.getBoundingClientRect;
+  // After the hang is applied the word moves up to the previous line.
+  mark.getBoundingClientRect = () => (mark.classes.has('is-lead') ? { left: 300, right: 306, width: 6 } : plain());
+  run([mark]);
+  assert.ok(!mark.classes.has('is-lead'));
 });
 
 test('a resize measures again and drops marks that moved off the line start', () => {
@@ -66,7 +86,7 @@ test('a resize measures again and drops marks that moved off the line start', ()
   const { listeners, frames } = run(marks);
   assert.ok(marks[0]?.classes.has('is-lead'));
   const mark = /** @type {ReturnType<typeof fakeMark>} */ (marks[0]);
-  mark.getBoundingClientRect = () => ({ left: 300, right: 306 });
+  mark.getBoundingClientRect = () => ({ left: 300, right: 306, width: 6 });
   listeners.resize?.();
   listeners.resize?.();
   assert.equal(frames.length, 1, 'resize events in one frame run once');
@@ -76,9 +96,10 @@ test('a resize measures again and drops marks that moved off the line start', ()
 
 test('right-to-left text measures from the right edge', () => {
   const lead = fakeMark(0, 'rtl');
-  lead.getBoundingClientRect = () => ({ left: 484, right: 490 });
+  const leadPlain = { left: 484, right: 490, width: 6 };
+  lead.getBoundingClientRect = () => (lead.classes.has('is-lead') ? { left: 490, right: 496, width: 6 } : leadPlain);
   const inner = fakeMark(0, 'rtl');
-  inner.getBoundingClientRect = () => ({ left: 300, right: 306 });
+  inner.getBoundingClientRect = () => ({ left: 300, right: 306, width: 6 });
   run([lead, inner]);
   assert.ok(lead.classes.has('is-lead'));
   assert.ok(!inner.classes.has('is-lead'));
