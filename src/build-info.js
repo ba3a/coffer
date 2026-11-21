@@ -1,4 +1,5 @@
 import { redactUrl, tailOf } from './docs/sources.js';
+import { TYPOGRAPHY_RULES_VERSION } from './typography/version.js';
 
 /**
  * `build-info.json`: what a deployed site says about how it was built, so that
@@ -45,6 +46,7 @@ export const MAX_REDIRECTS = 3;
  * @property {string} engineVersion Version of coffer that made it.
  * @property {Record<string, BuildInfoSource>} sources Git documentation sources by project slug, sorted by slug.
  * @property {string | null} nextScheduledAt ISO 8601 date of the earliest post that is not a draft and is dated after the build's "now"; null when there is none.
+ * @property {number} typographyRulesVersion Version of the typography rules the build applied (`TYPOGRAPHY_RULES_VERSION`).
  */
 
 /** A project slug, as a key of `sources` (the name of a folder in the cache of repositories). */
@@ -105,9 +107,10 @@ export function nextScheduledAt(posts, now) {
  * @param {ReadonlyMap<string, string>} [input.landings] The landing file of each project that has one, by project slug.
  * @param {readonly { draft: boolean, date: Date }[]} input.posts Every post of the site.
  * @param {Date} input.now The build's "now".
+ * @param {number} [input.typographyRulesVersion] Default: the engine's {@link TYPOGRAPHY_RULES_VERSION}.
  * @returns {BuildInfo}
  */
-export function createBuildInfo({ builtAt, engineVersion, docs, landings = new Map(), posts, now }) {
+export function createBuildInfo({ builtAt, engineVersion, docs, landings = new Map(), posts, now, typographyRulesVersion = TYPOGRAPHY_RULES_VERSION }) {
   /** @type {[string, BuildInfoSource][]} */
   const sources = [];
   for (const [slug, fetched] of docs) {
@@ -122,6 +125,7 @@ export function createBuildInfo({ builtAt, engineVersion, docs, landings = new M
     engineVersion,
     sources: Object.fromEntries(sources),
     nextScheduledAt: nextScheduledAt(posts, now),
+    typographyRulesVersion,
   };
 }
 
@@ -143,6 +147,7 @@ export function renderBuildInfo(info) {
  * @property {string} engineVersion
  * @property {Map<string, BuildInfoSource>} sources
  * @property {string | null} nextScheduledAt
+ * @property {number} [typographyRulesVersion] Absent in a file from an older engine, and when the field is not a non-negative integer.
  */
 
 /**
@@ -188,7 +193,12 @@ export function checkBuildInfo(value) {
   }
   const next = value.nextScheduledAt;
   if (next !== null && !isMoment(next)) return { problem: '"nextScheduledAt" is missing or is neither null nor an ISO 8601 date and time' };
-  return { value: { builtAt: value.builtAt, engineVersion: value.engineVersion, sources, nextScheduledAt: next } };
+  /** @type {ReadBuildInfo} */
+  const read = { builtAt: value.builtAt, engineVersion: value.engineVersion, sources, nextScheduledAt: next };
+  // Tolerant: a file without the field (an older engine) is valid; an unusable value counts as missing.
+  const rules = value.typographyRulesVersion;
+  if (typeof rules === 'number' && Number.isInteger(rules) && rules >= 0) read.typographyRulesVersion = rules;
+  return { value: read };
 }
 
 // ---------------------------------------------------------------------------
@@ -355,13 +365,18 @@ export async function fetchBuildInfo(address, options = {}) {
  * One reason a new build is needed.
  *
  * @typedef {object} Reason
- * @property {'deployed-unavailable' | 'source-added' | 'source-removed' | 'source-url-changed' | 'source-ref-changed' | 'source-sha-changed' | 'source-landing-changed' | 'scheduled-time-passed'} code
+ * @property {'deployed-unavailable' | 'source-added' | 'source-removed' | 'source-url-changed' | 'source-ref-changed' | 'source-sha-changed' | 'source-landing-changed' | 'scheduled-time-passed' | 'typography-rules-changed'} code
  * @property {string} message
  * @property {string} [source] The project slug, for the reasons that are about a source.
  */
 
 /**
  * Compares what is deployed with what is current, source by source.
+ *
+ * Assumption: the engine has no incremental cache. Every build re-typesets
+ * the whole site, so a deployed site is stale for typography exactly when it
+ * was built with a lower (or no) rules version than this engine has. If an
+ * incremental cache is added, its key must include `TYPOGRAPHY_RULES_VERSION`.
  *
  * @param {ReadBuildInfo} deployed
  * @param {ReadonlyMap<string, BuildInfoSource>} current The sources as configured, with the commit each one is at now.
@@ -399,6 +414,15 @@ export function compareBuildInfo(deployed, current, now) {
     reasons.push({
       code: 'scheduled-time-passed',
       message: `a post scheduled for ${deployed.nextScheduledAt} is due (it is ${now.toISOString()})`,
+    });
+  }
+  if ((deployed.typographyRulesVersion ?? 0) < TYPOGRAPHY_RULES_VERSION) {
+    reasons.push({
+      code: 'typography-rules-changed',
+      message:
+        deployed.typographyRulesVersion === undefined
+          ? `the deployed build has no typography rules version; the engine has ${TYPOGRAPHY_RULES_VERSION}`
+          : `the typography rules changed from version ${deployed.typographyRulesVersion} to ${TYPOGRAPHY_RULES_VERSION}`,
     });
   }
   return reasons;
