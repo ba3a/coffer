@@ -10,6 +10,12 @@ Every release is a git tag named `v` followed by the version, for example `v0.1.
 
 ## Unreleased
 
+## 0.3.1 - 2026-11-21
+
+### Added
+
+- `typography.hangLines` (off by default) also hangs an opening quote or bracket that starts a line inside a paragraph. The default theme loads `hang-lines.js` when the site turns it on. The setting is documented in `docs/typography.md`.
+
 ## 0.3.0 - 2026-11-21
 
 ### Added
